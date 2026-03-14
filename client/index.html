@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>playgrid</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        color: #f4f6fb;
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      body {
+        position: relative;
+      }
+
+      #game-container {
+        width: 100%;
+        height: 100%;
+      }
+
+      #game-container canvas {
+        display: block;
+      }
+
+      #lobby-overlay,
+      #waiting-room-overlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(0, 0, 0, 0.72);
+        z-index: 10;
+      }
+
+      #lobby-overlay.visible,
+      #waiting-room-overlay.visible {
+        display: flex;
+      }
+
+      .lobby-panel,
+      .waiting-room-panel {
+        width: min(960px, 100%);
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        padding: 24px;
+        border: 1px solid rgba(126, 207, 255, 0.22);
+        border-radius: 18px;
+        background: rgba(26, 26, 46, 0.96);
+        box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+      }
+
+      .waiting-room-panel {
+        width: min(560px, 100%);
+      }
+
+      .overlay-header {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .overlay-title {
+        font-size: clamp(1.75rem, 4vw, 2.5rem);
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      .overlay-subtitle {
+        color: #9aa3b2;
+        line-height: 1.5;
+      }
+
+      .section-title {
+        font-size: 0.82rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #7ecfff;
+      }
+
+      .lobby-notice {
+        display: none;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid transparent;
+        line-height: 1.5;
+      }
+
+      .lobby-notice.visible {
+        display: block;
+      }
+
+      .lobby-notice.info {
+        background: rgba(126, 207, 255, 0.14);
+        border-color: rgba(126, 207, 255, 0.3);
+        color: #d9f3ff;
+      }
+
+      .lobby-notice.error {
+        background: rgba(255, 107, 107, 0.14);
+        border-color: rgba(255, 107, 107, 0.32);
+        color: #ffd9d9;
+      }
+
+      .lobby-create-section,
+      .lobby-list-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .lobby-create-form {
+        display: grid;
+        grid-template-columns: minmax(0, 1.8fr) 180px auto;
+        gap: 12px;
+        align-items: end;
+      }
+
+      .field-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .field-label {
+        font-size: 0.82rem;
+        color: #b8c2d1;
+      }
+
+      .lobby-input,
+      .lobby-select,
+      .lobby-button {
+        min-height: 44px;
+        border-radius: 12px;
+        border: 1px solid rgba(126, 207, 255, 0.16);
+        font: inherit;
+      }
+
+      .lobby-input,
+      .lobby-select {
+        width: 100%;
+        padding: 0 14px;
+        background: #10101d;
+        color: #f4f6fb;
+      }
+
+      .lobby-button {
+        padding: 0 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+      }
+
+      .lobby-button:hover:not(:disabled) {
+        transform: translateY(-1px);
+        border-color: rgba(126, 207, 255, 0.42);
+      }
+
+      .lobby-button:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+
+      .lobby-button-primary {
+        background: #7ecfff;
+        color: #081018;
+      }
+
+      .lobby-button-secondary {
+        background: #1d2538;
+        color: #f4f6fb;
+      }
+
+      .lobby-button-ghost {
+        background: transparent;
+        color: #d3d8e4;
+      }
+
+      .lobby-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .lobby-filter-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border: 1px solid rgba(126, 207, 255, 0.16);
+        border-radius: 999px;
+        background: #10101d;
+        color: #dce2ee;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .lobby-filter-button.active {
+        background: rgba(126, 207, 255, 0.18);
+        border-color: rgba(126, 207, 255, 0.46);
+        color: #f4fbff;
+      }
+
+      .filter-badge {
+        min-width: 28px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.1);
+        text-align: center;
+        font-size: 0.82rem;
+      }
+
+      .lobby-table-wrapper {
+        overflow: hidden;
+        border: 1px solid rgba(126, 207, 255, 0.14);
+        border-radius: 14px;
+        background: #10101d;
+      }
+
+      .lobby-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .lobby-table th,
+      .lobby-table td {
+        padding: 14px 16px;
+        text-align: left;
+        border-bottom: 1px solid rgba(126, 207, 255, 0.08);
+      }
+
+      .lobby-table th {
+        font-size: 0.82rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #7ecfff;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .lobby-table tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      .lobby-empty-row td {
+        color: #9aa3b2;
+        text-align: center;
+        padding: 28px 16px;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 0.88rem;
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .status-pill.is-waiting {
+        color: #8ff0b0;
+      }
+
+      .status-pill.is-in-progress {
+        color: #8fc6ff;
+      }
+
+      .status-pill.is-ended {
+        color: #f7b0b0;
+      }
+
+      .row-state {
+        color: #8f97a6;
+      }
+
+      .waiting-room-player-list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .waiting-room-player,
+      .waiting-room-empty {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        background: #10101d;
+        border: 1px solid rgba(126, 207, 255, 0.1);
+      }
+
+      .waiting-room-empty {
+        color: #9aa3b2;
+      }
+
+      .waiting-room-player-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .waiting-room-player-name {
+        font-weight: 600;
+      }
+
+      .waiting-room-chip {
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: rgba(126, 207, 255, 0.16);
+        color: #d9f3ff;
+        font-size: 0.78rem;
+      }
+
+      .waiting-room-ready {
+        font-size: 0.92rem;
+      }
+
+      .waiting-room-ready.ready {
+        color: #8ff0b0;
+      }
+
+      .waiting-room-ready.not-ready {
+        color: #d7dde8;
+      }
+
+      .waiting-room-controls {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .lobby-button.is-active {
+        background: rgba(143, 240, 176, 0.18);
+        border-color: rgba(143, 240, 176, 0.38);
+        color: #dcffe6;
+      }
+
+      @media (max-width: 720px) {
+        #lobby-overlay,
+        #waiting-room-overlay {
+          padding: 16px;
+        }
+
+        .lobby-panel,
+        .waiting-room-panel {
+          padding: 18px;
+        }
+
+        .lobby-create-form {
+          grid-template-columns: 1fr;
+        }
+
+        .lobby-table-wrapper {
+          overflow-x: auto;
+        }
+
+        .waiting-room-controls .lobby-button,
+        .lobby-create-form .lobby-button {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game-container"></div>
+    <div id="lobby-overlay"></div>
+    <div id="waiting-room-overlay"></div>
+    <script type="module" src="/src/index.ts"></script>
+  </body>
+</html>

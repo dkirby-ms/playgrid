@@ -1,0 +1,431 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { mockCreateRoom, sharedExports } = vi.hoisted(() => ({
+  mockCreateRoom: vi.fn(),
+  sharedExports: {
+    CREATE_GAME: "create_game",
+    JOIN_GAME: "join_game",
+    LEAVE_GAME: "leave_game",
+    START_GAME: "start_game",
+    SET_READY: "set_ready",
+    GAME_LIST: "game_list",
+    GAME_JOINED: "game_joined",
+    GAME_UPDATED: "game_updated",
+    GAME_REMOVED: "game_removed",
+    GAME_STARTED: "game_started",
+    GAME_PLAYERS: "game_players",
+    LOBBY_ERROR: "lobby_error",
+    DEFAULT_MAP_SIZE: 128,
+    LOBBY_DEFAULTS: {
+      MIN_PLAYERS: 1,
+      MAX_PLAYERS: 8,
+      MIN_GAME_NAME_LENGTH: 1,
+      MAX_GAME_NAME_LENGTH: 32,
+    },
+  },
+}));
+
+vi.mock("colyseus", () => ({
+  Room: class {},
+  matchMaker: { createRoom: mockCreateRoom },
+}));
+
+vi.mock("@eschaton/playgrid-shared", () => sharedExports);
+
+const shared = await import("@eschaton/playgrid-shared");
+const lobbyModule = await import("../rooms/LobbyRoom")
+  .catch(() => import("../rooms/LobbyRoom.ts"))
+  .catch(() => import("../rooms/LobbyRoom.js"))
+  .catch(() => null);
+
+const {
+  GAME_JOINED,
+  GAME_STARTED,
+  GAME_PLAYERS,
+  LOBBY_ERROR,
+  LOBBY_DEFAULTS,
+  DEFAULT_MAP_SIZE,
+} = shared;
+
+const LobbyRoom = lobbyModule?.LobbyRoom;
+const describeLobby = LobbyRoom ? describe : describe.skip;
+
+type MockClient = {
+  sessionId: string;
+  send: ReturnType<typeof vi.fn>;
+  userId?: string;
+  displayName?: string;
+  auth?: {
+    userId: string;
+    displayName: string;
+    isGuest: boolean;
+  };
+};
+
+type TestRoom = Record<string, any>;
+
+function createClient(sessionId: string, displayName = sessionId): MockClient {
+  return {
+    sessionId,
+    displayName,
+    userId: sessionId,
+    send: vi.fn(),
+  };
+}
+
+function createLobbyRoom(): TestRoom {
+  if (!LobbyRoom) {
+    throw new Error("LobbyRoom is not available in the template yet");
+  }
+
+  const games = new Map<string, any>();
+  const players = new Map<string, any>();
+
+  return Object.assign(Object.create(LobbyRoom.prototype), {
+    state: { games, players },
+    games,
+    waitingPlayers: new Map<string, Map<string, any>>(),
+    playerGameMap: new Map<string, string>(),
+    sessions: new Map<string, { userId: string; displayName: string; isGuest: boolean }>(),
+    pendingGameOptions: new Map<string, Record<string, unknown>>(),
+    gameRoomIds: new Map<string, string>(),
+    clients: [] as MockClient[],
+    broadcast: vi.fn(),
+    onMessage: vi.fn(),
+    setState: vi.fn(),
+    setSimulationInterval: vi.fn(),
+  });
+}
+
+function registerClient(
+  room: TestRoom,
+  client: MockClient,
+  overrides: Partial<{ userId: string; displayName: string; isGuest: boolean }> = {},
+) {
+  const userId = overrides.userId ?? client.userId ?? client.sessionId;
+  const displayName = overrides.displayName ?? client.displayName ?? `Player ${client.sessionId}`;
+  const isGuest = overrides.isGuest ?? true;
+
+  client.userId = userId;
+  client.displayName = displayName;
+  client.auth = { userId, displayName, isGuest };
+
+  room.sessions.set(client.sessionId, {
+    sessionId: client.sessionId,
+    userId,
+    displayName,
+    isGuest,
+    currentGameId: undefined,
+  });
+  room.state.players.set(client.sessionId, {
+    userId,
+    displayName,
+    isGuest,
+    activeGameId: "",
+  });
+
+  if (!room.clients.some((existing: MockClient) => existing.sessionId === client.sessionId)) {
+    room.clients.push(client);
+  }
+}
+
+function getGames(room: TestRoom) {
+  return room.games ?? room.state?.games;
+}
+
+function getGameIds(room: TestRoom): string[] {
+  return Array.from(getGames(room).keys());
+}
+
+function getGame(room: TestRoom, gameId: string) {
+  return getGames(room).get(gameId);
+}
+
+function getWaitingPlayers(room: TestRoom, gameId: string): Map<string, any> {
+  return room.waitingPlayers.get(gameId) ?? new Map<string, any>();
+}
+
+function getTrackedGameId(room: TestRoom, sessionId: string): string | undefined {
+  return room.playerGameMap.get(sessionId)
+    ?? room.sessions.get(sessionId)?.currentGameId
+    ?? room.state?.players?.get(sessionId)?.activeGameId;
+}
+
+function findPayload(client: MockClient, messageType: string) {
+  const match = client.send.mock.calls.find(([type]) => type === messageType);
+  return match?.[1];
+}
+
+function findLastPayload(client: MockClient, messageType: string) {
+  const match = [...client.send.mock.calls].reverse().find(([type]) => type === messageType);
+  return match?.[1];
+}
+
+function expectLobbyError(client: MockClient, expectedText: string | RegExp) {
+  const payload = findLastPayload(client, LOBBY_ERROR) as { message?: string } | undefined;
+  expect(payload?.message).toBeTruthy();
+
+  if (typeof expectedText === "string") {
+    expect(payload?.message?.toLowerCase()).toContain(expectedText.toLowerCase());
+    return;
+  }
+
+  expect(payload?.message).toMatch(expectedText);
+}
+
+async function createGame(
+  room: TestRoom,
+  client: MockClient,
+  payload: Record<string, unknown> = {},
+): Promise<string> {
+  const before = new Set(getGameIds(room));
+
+  await room.handleCreateGame(client, {
+    name: "Test Game",
+    maxPlayers: 4,
+    mapSize: DEFAULT_MAP_SIZE,
+    ...payload,
+  });
+
+  const joined = findPayload(client, GAME_JOINED) as { gameId?: string } | undefined;
+  return joined?.gameId ?? getGameIds(room).find((id) => !before.has(id)) ?? "";
+}
+
+describeLobby("LobbyRoom pregame flow", () => {
+  let room: TestRoom;
+  let host: MockClient;
+  let guest: MockClient;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    room = createLobbyRoom();
+    host = createClient("host-session", "Host");
+    guest = createClient("guest-session", "Guest");
+    registerClient(room, host, { userId: "host-user", displayName: "Host" });
+    registerClient(room, guest, { userId: "guest-user", displayName: "Guest" });
+    mockCreateRoom.mockResolvedValue({ roomId: "game-room-123" });
+  });
+
+  it("creates a waiting game and seeds the host in waitingPlayers", async () => {
+    const gameId = await createGame(room, host);
+
+    expect(gameId).toBeTruthy();
+    expect(getGame(room, gameId)).toMatchObject({
+      status: "waiting",
+      playerCount: 1,
+    });
+    expect(getWaitingPlayers(room, gameId).get(host.sessionId)).toMatchObject({
+      userId: host.sessionId,
+      displayName: "Host",
+      isReady: false,
+    });
+    expect(getTrackedGameId(room, host.sessionId)).toBe(gameId);
+    expect(mockCreateRoom).not.toHaveBeenCalled();
+  });
+
+  it("sends GAME_JOINED without a roomId while the game is still waiting", async () => {
+    const gameId = await createGame(room, host);
+
+    const joinedPayload = findPayload(host, GAME_JOINED) as { gameId?: string; roomId?: string } | undefined;
+
+    expect(joinedPayload?.gameId).toBe(gameId);
+    expect(joinedPayload?.roomId).toBeUndefined();
+  });
+
+  it("allows a second player to join a waiting game", async () => {
+    const gameId = await createGame(room, host);
+
+    await room.handleJoinGame(guest, { gameId });
+
+    expect(getGame(room, gameId)?.playerCount).toBe(2);
+    expect(getWaitingPlayers(room, gameId).get(guest.sessionId)).toMatchObject({
+      userId: guest.sessionId,
+      displayName: "Guest",
+      isReady: false,
+    });
+    expect(getTrackedGameId(room, guest.sessionId)).toBe(gameId);
+    expect(findPayload(guest, GAME_JOINED)).toEqual(expect.objectContaining({ gameId }));
+  });
+
+  it("toggles ready state and broadcasts GAME_PLAYERS", async () => {
+    const gameId = await createGame(room, host);
+    await room.handleJoinGame(guest, { gameId });
+
+    host.send.mockClear();
+    guest.send.mockClear();
+
+    room.handleSetReady(guest, { ready: true });
+    expect(getWaitingPlayers(room, gameId).get(guest.sessionId)?.isReady).toBe(true);
+    expect(findPayload(host, GAME_PLAYERS)).toEqual(
+      expect.objectContaining({ gameId, players: expect.any(Array) }),
+    );
+    expect(findPayload(guest, GAME_PLAYERS)).toEqual(
+      expect.objectContaining({ gameId, players: expect.any(Array) }),
+    );
+
+    room.handleSetReady(guest, { ready: false });
+    expect(getWaitingPlayers(room, gameId).get(guest.sessionId)?.isReady).toBe(false);
+  });
+
+  it("starts a game through matchMaker and notifies the waiting players", async () => {
+    const gameId = await createGame(room, host);
+    await room.handleJoinGame(guest, { gameId });
+
+    host.send.mockClear();
+    guest.send.mockClear();
+
+    await room.handleStartGame(host);
+
+    expect(mockCreateRoom).toHaveBeenCalledTimes(1);
+    expect(getGame(room, gameId)?.status).toBe("in_progress");
+    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
+    expect(findPayload(guest, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
+  });
+
+  it("supports the full create → join → ready → start path", async () => {
+    const gameId = await createGame(room, host, { name: "Full Flow" });
+
+    await room.handleJoinGame(guest, { gameId });
+    room.handleSetReady(host, { ready: true });
+    room.handleSetReady(guest, { ready: true });
+    await room.handleStartGame(host);
+
+    expect(getWaitingPlayers(room, gameId).size).toBe(0);
+    expect(getGame(room, gameId)?.status).toBe("in_progress");
+    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
+    expect(findPayload(guest, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
+  });
+
+  it("blocks non-host players from starting a game", async () => {
+    const gameId = await createGame(room, host);
+    await room.handleJoinGame(guest, { gameId });
+
+    guest.send.mockClear();
+    await room.handleStartGame(guest);
+
+    expect(mockCreateRoom).not.toHaveBeenCalled();
+    expectLobbyError(guest, "host");
+  });
+
+  it("rejects joins for games that are already marked in progress but not joinable", async () => {
+    const gameId = await createGame(room, host);
+    const game = getGame(room, gameId);
+    game.status = "in_progress";
+    delete game.roomId;
+
+    const lateJoiner = createClient("late-joiner", "Late");
+    registerClient(room, lateJoiner, { userId: "late-user", displayName: "Late" });
+
+    await room.handleJoinGame(lateJoiner, { gameId });
+
+    expectLobbyError(lateJoiner, /starting|started/i);
+  });
+
+  it("rejects joins when the game is already full", async () => {
+    const gameId = await createGame(room, host, { maxPlayers: 1 });
+
+    await room.handleJoinGame(guest, { gameId });
+
+    expectLobbyError(guest, "full");
+  });
+
+  it("rejects joins for missing games", async () => {
+    await room.handleJoinGame(guest, { gameId: "missing-game" });
+
+    expectLobbyError(guest, "not");
+  });
+
+  it("does not allow creating or joining another game while already tracked in one", async () => {
+    const hostGameId = await createGame(room, host);
+
+    const otherHost = createClient("other-host", "Other Host");
+    registerClient(room, otherHost, { userId: "other-host-user", displayName: "Other Host" });
+    const otherGameId = await createGame(room, otherHost, { name: "Other Game" });
+
+    host.send.mockClear();
+    await room.handleCreateGame(host, { name: "Second Game" });
+    expectLobbyError(host, /leave your current game|already/i);
+
+    host.send.mockClear();
+    await room.handleJoinGame(host, { gameId: otherGameId });
+    expectLobbyError(host, /leave your current game|already/i);
+    expect(getTrackedGameId(room, host.sessionId)).toBe(hostGameId);
+  });
+
+  it("removes a leaving player from the waiting list", async () => {
+    const gameId = await createGame(room, host);
+    await room.handleJoinGame(guest, { gameId });
+
+    room.handleLeaveGame(guest);
+
+    expect(getWaitingPlayers(room, gameId).has(guest.sessionId)).toBe(false);
+    expect(getGame(room, gameId)?.playerCount).toBe(1);
+    expect(getTrackedGameId(room, guest.sessionId)).toBeFalsy();
+  });
+
+  it("removes the game when the host leaves an otherwise empty waiting game", async () => {
+    const gameId = await createGame(room, host);
+
+    room.handleLeaveGame(host);
+
+    expect(getGames(room).has(gameId)).toBe(false);
+    expect(room.waitingPlayers.has(gameId)).toBe(false);
+  });
+
+  it("cleans up tracked waiting-room membership on disconnect", async () => {
+    const gameId = await createGame(room, host);
+    await room.handleJoinGame(guest, { gameId });
+
+    room.onLeave(guest);
+
+    expect(getWaitingPlayers(room, gameId).has(guest.sessionId)).toBe(false);
+    expect(getTrackedGameId(room, guest.sessionId)).toBeFalsy();
+  });
+
+  it("allows a solo host to start a game", async () => {
+    const gameId = await createGame(room, host);
+
+    await room.handleStartGame(host);
+
+    expect(mockCreateRoom).toHaveBeenCalledTimes(1);
+    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
+  });
+
+  it("keeps multiple waiting games isolated from each other", async () => {
+    const gameOneId = await createGame(room, host, { name: "Game One" });
+
+    const otherHost = createClient("other-host", "Other Host");
+    registerClient(room, otherHost, { userId: "other-host-user", displayName: "Other Host" });
+    const gameTwoId = await createGame(room, otherHost, { name: "Game Two" });
+
+    expect(gameOneId).not.toBe(gameTwoId);
+    expect(getWaitingPlayers(room, gameOneId).has(host.sessionId)).toBe(true);
+    expect(getWaitingPlayers(room, gameOneId).has(otherHost.sessionId)).toBe(false);
+    expect(getWaitingPlayers(room, gameTwoId).has(otherHost.sessionId)).toBe(true);
+    expect(getWaitingPlayers(room, gameTwoId).has(host.sessionId)).toBe(false);
+  });
+
+  it("keeps a game waiting if matchMaker room creation fails", async () => {
+    const gameId = await createGame(room, host);
+    mockCreateRoom.mockRejectedValueOnce(new Error("boom"));
+
+    host.send.mockClear();
+    await room.handleStartGame(host);
+
+    expect(getGame(room, gameId)?.status).toBe("waiting");
+    expectLobbyError(host, "fail");
+  });
+
+  it("truncates long game names and clamps invalid player limits to a positive integer", async () => {
+    const longName = "x".repeat(LOBBY_DEFAULTS.MAX_GAME_NAME_LENGTH + 12);
+    const gameId = await createGame(room, host, {
+      name: longName,
+      maxPlayers: -5,
+    });
+
+    const entry = getGame(room, gameId);
+
+    expect(entry?.name.length).toBeLessThanOrEqual(LOBBY_DEFAULTS.MAX_GAME_NAME_LENGTH);
+    expect(entry?.maxPlayers).toBe(1);
+  });
+});

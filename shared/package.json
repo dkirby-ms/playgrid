@@ -1,0 +1,13 @@
+{
+  "name": "@eschaton/playgrid-shared",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@colyseus/schema": "^3.0.0"
+  }
+}
