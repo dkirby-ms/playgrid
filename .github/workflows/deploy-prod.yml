@@ -70,64 +70,15 @@ jobs:
           echo "✗ Health check failed after $MAX_ATTEMPTS attempts"
           exit 1
 
-      - name: Notify Discord on success
-        if: success()
-        run: |
-          curl -X POST "${{ secrets.DISCORD_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "embeds": [{
-                "title": "✅ Deploy Prod Success",
-                "description": "PlayGrid production environment deployed successfully",
-                "color": 3066993,
-                "fields": [
-                  {
-                    "name": "Commit",
-                    "value": "[${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})",
-                    "inline": true
-                  },
-                  {
-                    "name": "Author",
-                    "value": "${{ github.actor }}",
-                    "inline": true
-                  },
-                  {
-                    "name": "Environment",
-                    "value": "prod",
-                    "inline": true
-                  }
-                ],
-                "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'"
-              }]
-            }'
-
-      - name: Notify Discord on failure
-        if: failure()
-        run: |
-          curl -X POST "${{ secrets.DISCORD_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "embeds": [{
-                "title": "❌ Deploy Prod Failed",
-                "description": "PlayGrid production deployment failed",
-                "color": 15158332,
-                "fields": [
-                  {
-                    "name": "Commit",
-                    "value": "[${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})",
-                    "inline": true
-                  },
-                  {
-                    "name": "Author",
-                    "value": "${{ github.actor }}",
-                    "inline": true
-                  },
-                  {
-                    "name": "Workflow Run",
-                    "value": "[View logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})",
-                    "inline": true
-                  }
-                ],
-                "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'"
-              }]
-            }'
+      - name: Notify Discord
+        if: always()
+        uses: ./.github/actions/discord-notify
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          status: ${{ job.status }}
+          environment: prod
+          deployment-url: https://${{ vars.CONTAINER_APP_FQDN }}
+          commit-sha: ${{ github.sha }}
+          author: ${{ github.actor }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
