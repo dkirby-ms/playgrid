@@ -1,0 +1,125 @@
+name: Discord Notification
+description: Send deployment notification to Discord webhook
+
+inputs:
+  webhook-url:
+    description: Discord webhook URL
+    required: true
+  status:
+    description: Deployment status (success or failure)
+    required: true
+  environment:
+    description: Environment name (dev, uat, prod)
+    required: true
+  deployment-url:
+    description: Deployment URL
+    required: false
+  commit-sha:
+    description: Commit SHA
+    required: true
+  author:
+    description: Commit author
+    required: true
+  repository:
+    description: GitHub repository
+    required: true
+  run-id:
+    description: GitHub Actions run ID
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Notify Discord on success
+      if: inputs.status == 'success'
+      shell: bash
+      run: |
+        SHORT_SHA="${{ inputs.commit-sha }}"
+        SHORT_SHA="${SHORT_SHA:0:7}"
+        
+        curl -X POST "${{ inputs.webhook-url }}" \
+          -H "Content-Type: application/json" \
+          -d @- <<EOF
+        {
+          "embeds": [{
+            "title": "✅ Deploy ${{ inputs.environment }} Success",
+            "description": "PlayGrid ${{ inputs.environment }} environment deployed successfully",
+            "color": 3066993,
+            "fields": [
+              {
+                "name": "Environment",
+                "value": "${{ inputs.environment }}",
+                "inline": true
+              },
+              {
+                "name": "Commit",
+                "value": "[${SHORT_SHA}](https://github.com/${{ inputs.repository }}/commit/${{ inputs.commit-sha }})",
+                "inline": true
+              },
+              {
+                "name": "Author",
+                "value": "${{ inputs.author }}",
+                "inline": true
+              },
+              {
+                "name": "Deployment URL",
+                "value": "${{ inputs.deployment-url }}",
+                "inline": false
+              },
+              {
+                "name": "Workflow",
+                "value": "[View run](https://github.com/${{ inputs.repository }}/actions/runs/${{ inputs.run-id }})",
+                "inline": false
+              }
+            ],
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+          }]
+        }
+        EOF
+
+    - name: Notify Discord on failure
+      if: inputs.status == 'failure'
+      shell: bash
+      run: |
+        SHORT_SHA="${{ inputs.commit-sha }}"
+        SHORT_SHA="${SHORT_SHA:0:7}"
+        
+        curl -X POST "${{ inputs.webhook-url }}" \
+          -H "Content-Type: application/json" \
+          -d @- <<EOF
+        {
+          "embeds": [{
+            "title": "❌ Deploy ${{ inputs.environment }} Failed",
+            "description": "PlayGrid ${{ inputs.environment }} deployment encountered an error",
+            "color": 15158332,
+            "fields": [
+              {
+                "name": "Environment",
+                "value": "${{ inputs.environment }}",
+                "inline": true
+              },
+              {
+                "name": "Commit",
+                "value": "[${SHORT_SHA}](https://github.com/${{ inputs.repository }}/commit/${{ inputs.commit-sha }})",
+                "inline": true
+              },
+              {
+                "name": "Author",
+                "value": "${{ inputs.author }}",
+                "inline": true
+              },
+              {
+                "name": "Error Context",
+                "value": "Check the workflow logs for detailed error information",
+                "inline": false
+              },
+              {
+                "name": "Workflow Run",
+                "value": "[View logs](https://github.com/${{ inputs.repository }}/actions/runs/${{ inputs.run-id }})",
+                "inline": false
+              }
+            ],
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+          }]
+        }
+        EOF
