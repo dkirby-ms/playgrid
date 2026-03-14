@@ -7,6 +7,8 @@ import { WebSocketTransport } from "@colyseus/ws-transport";
 import { config } from "./config.js";
 import { connectDb } from "./db.js";
 import { BaseGameRoom } from "./game/BaseGameRoom.js";
+import { gameRegistry } from "./game/GameRegistry.js";
+import { checkersPlugin } from "./games/checkers/index.js";
 import { LobbyRoom } from "./rooms/LobbyRoom.js";
 
 type ExpressResponse = {
@@ -41,6 +43,8 @@ const server = new Server({
     server: createServer(app),
   }),
 });
+
+gameRegistry.register(checkersPlugin);
 
 server.define("game", BaseGameRoom);
 server.define("lobby", LobbyRoom);

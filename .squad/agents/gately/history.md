@@ -153,6 +153,13 @@
 - Updated `client/src/ui/LobbyScreen.ts` so the create-game form now includes a game type dropdown, create payloads send `gameType`, and the lobby table shows a new Type column with a friendly label.
 - Verified the workspace again with `npm run build && npm run lint && npm run test` after the two requested feature commits.
 
+### 2026-03-14: Checkers Server Plugin (Issue #18)
+
+- Added `server/src/games/checkers/CheckersPlugin.ts` implementing the shared `GamePlugin<CheckersState>` contract with sequential turn config, board setup, player lifecycle hooks, move handling, forced multi-jump support, and win evaluation driven by the pure checkers logic helpers.
+- Added `server/src/games/checkers/index.ts` and registered the plugin in `server/src/index.ts`, so new checkers rooms now boot through `BaseGameRoom` with the game registry.
+- Added `server/src/__tests__/CheckersPlugin.test.ts` to cover board initialization, player normalization, move validation, chained captures, win reporting, disconnect handling, and ended-state lifecycle behavior.
+- Re-ran `npm run build && npm run lint && npm run test` after the plugin landed to verify the server and workspace stayed healthy.
+
 ### 2026-03-14: Checkers Renderer (Issue #25)
 
 - Added `client/src/renderers/CheckersRenderer.ts` as the first concrete PixiJS game renderer, drawing an 8×8 centered board plus circular checkers pieces directly from shared Colyseus state.

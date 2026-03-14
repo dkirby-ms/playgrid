@@ -1,3 +1,4 @@
+import type { Schema } from "@colyseus/schema";
 import type { GamePlugin } from "@eschaton/shared";
 
 export class GameRegistry {
@@ -7,12 +8,12 @@ export class GameRegistry {
 
   private constructor() {}
 
-  register(plugin: GamePlugin) {
+  register<TState extends Schema>(plugin: GamePlugin<TState>) {
     if (this.plugins.has(plugin.id)) {
       throw new Error(`Game plugin "${plugin.id}" is already registered.`);
     }
 
-    this.plugins.set(plugin.id, plugin);
+    this.plugins.set(plugin.id, plugin as unknown as GamePlugin);
   }
 
   get(gameType: string): GamePlugin {
