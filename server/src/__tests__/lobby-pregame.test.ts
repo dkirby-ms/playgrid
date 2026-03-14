@@ -458,6 +458,25 @@ describeLobby("LobbyRoom pregame flow", () => {
     expect(getTrackedGameId(room, guest.sessionId)).toBeFalsy();
   });
 
+  it("clears an in-progress game assignment when a lobby client disconnects", async () => {
+    const gameId = await createGame(room, host);
+    const trackedSession = room.sessions.get(host.sessionId);
+    const game = getGame(room, gameId);
+
+    if (!trackedSession || !game) {
+      throw new Error("Expected host session and game to exist");
+    }
+
+    game.status = "in_progress";
+    trackedSession.currentGameId = gameId;
+
+    room.onLeave(host);
+
+    expect(trackedSession.currentGameId).toBeUndefined();
+    expect(room.sessions.has(host.sessionId)).toBe(false);
+    expect(getGame(room, gameId)?.status).toBe("in_progress");
+  });
+
   it("allows a solo host to start a game", async () => {
     const gameId = await createGame(room, host);
 

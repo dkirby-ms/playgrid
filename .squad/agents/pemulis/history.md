@@ -164,3 +164,10 @@
 - Updated `server/src/index.ts` so the public room type `"game"` now uses `BaseGameRoom`, and updated `LobbyRoom` to pass `expectedPlayers` plus enforce plugin minimum player counts before creating the live game room.
 - Verified the integration with new `server/src/__tests__/BaseGameRoom.test.ts` coverage and a full `npm run build && npm run lint && npm run test` pass.
 
+### Active-game disconnect cleanup (2026-03-14)
+
+- Hardened `server/src/rooms/LobbyRoom.ts` so a lobby disconnect explicitly clears `session.currentGameId` before the existing leave flow runs when the tracked game is already `in_progress`.
+- Left `BaseGameRoom`'s disconnect path intact but added regression coverage proving a leave during the waiting phase only flips `PlayerInfo.isConnected` and does not crash or end the room early.
+- Reset `client/src/Application.ts` transient game/waiting-room state before joining the lobby so a fresh lobby connection never carries stale room UI or auto-rejoin behavior.
+- Re-verified the workspace with `npm run build && npm run lint && npm run test` after adding the new disconnect regression tests.
+

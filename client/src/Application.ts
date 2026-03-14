@@ -146,6 +146,9 @@ export class PlaygridApp {
 
   private async connectToLobby(): Promise<void> {
     this.ensureInitialized();
+    this.lobbyRoom = null;
+    this.gameRoom = null;
+    this.waitingRoomScene.hideOverlay();
     this.statusText.text = "Connecting to lobby…";
 
     try {

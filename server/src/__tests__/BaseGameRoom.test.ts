@@ -250,6 +250,30 @@ describeRoom("BaseGameRoom", () => {
     expect(room.disconnect).toHaveBeenCalledTimes(1);
   });
 
+  it("marks a departed waiting player disconnected without ending the room", async () => {
+    const room = createRoom();
+    const plugin = createPlugin({
+      lifecycle: {
+        onCreate: vi.fn(),
+        onPlayerJoin: vi.fn(),
+        onPlayerLeave: vi.fn(),
+      },
+    });
+
+    mockGameRegistry.get.mockReturnValue(plugin);
+    room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+    const firstPlayer = createClient("player-1");
+    room.onJoin(firstPlayer);
+
+    await expect(room.onLeave(firstPlayer, mockedCloseCode.NORMAL_CLOSURE)).resolves.toBeUndefined();
+
+    expect(room.state.players.get(firstPlayer.sessionId)).toMatchObject({ isConnected: false });
+    expect(plugin.lifecycle.onPlayerLeave).toHaveBeenCalledWith(room.state, firstPlayer.sessionId);
+    expect(room.disconnect).not.toHaveBeenCalled();
+    expect(room.state.phase).toBe("waiting");
+  });
+
   it("marks a departed player disconnected and ends the game by forfeit when one player remains", async () => {
     const room = createRoom();
     const plugin = createPlugin({

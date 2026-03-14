@@ -84,6 +84,14 @@ export class LobbyRoom extends Room {
   }
 
   override onLeave(client: Client, _code: number) {
+    const session = this.sessions.get(client.sessionId);
+    if (session?.currentGameId) {
+      const game = this.games.get(session.currentGameId);
+      if (game?.status === "in_progress") {
+        session.currentGameId = undefined;
+      }
+    }
+
     this.handleLeaveGame(client);
     this.sessions.delete(client.sessionId);
   }
