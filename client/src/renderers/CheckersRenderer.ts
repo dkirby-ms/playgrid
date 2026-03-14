@@ -429,7 +429,7 @@ export class CheckersRenderer implements GameRenderer {
       ? Number(nextState.mustCaptureFrom)
       : NO_FORCED_CAPTURE;
     this.players = this.parsePlayers(nextState);
-    this.isFlipped = this.getLocalPlayerColor() === RED;
+    this.isFlipped = this.getLocalPlayerColor() === BLACK;
   }
 
   private syncSelectionWithState(): void {

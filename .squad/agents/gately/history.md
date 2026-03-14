@@ -181,3 +181,9 @@
 - Subscribed the renderer to the Colyseus `game-end` room message so it can show a semi-transparent board overlay with win/lose/draw messaging when the shared state reaches `phase === "ended"`.
 - Re-verified the workspace with `npm run build && npm run lint && npm run test` after the polish pass.
 
+### 2026-03-14: Checkers Orientation + Lobby Player Count Locks (Issues #48 and #51)
+
+- Updated `client/src/renderers/CheckersRenderer.ts` so the local red player sees a flipped board, keeping their pieces at the bottom while translating click targets back to real board indexes.
+- Updated `client/src/ui/LobbyScreen.ts` so Checkers always forces `maxPlayers` to `2` and keeps the selector disabled for that game type.
+- Re-verified the workspace with `npm run build && npm run lint && npm run test` after landing both bug-fix commits.
+
