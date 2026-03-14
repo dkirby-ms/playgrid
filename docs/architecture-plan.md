@@ -91,8 +91,8 @@ User connects → LobbyRoom (persistent)
 **Current state — no changes needed yet.**
 - Single Node.js process
 - LocalPresence (in-memory)
-- SQLite for persistence (file-based)
-- Deploy: Single VPS/container
+- PostgreSQL (Azure Database for PostgreSQL Flexible Server)
+- Deploy: Azure Container Apps (single replica, Consumption plan)
 
 ### Phase 2: Multi-Process (100-1000 concurrent games)
 **Timeline: After first 3 games are live and we hit 50 concurrent games**
@@ -114,7 +114,7 @@ User connects → LobbyRoom (persistent)
    - Each process on different port (2567, 2568, 2569...)
    - Proxy listens on 2567, routes to backends
 4. **Shared persistence**
-   - Switch SQLite to PostgreSQL
+   - PostgreSQL with connection pooling
    - Connection pool shared across processes via env config
 
 **Load Balancing:**
@@ -148,6 +148,113 @@ User connects → LobbyRoom (persistent)
 - Game type as first-class concept (enables future plugin loading)
 - Room disposal logs outcomes (enables future analytics)
 - Spectator flag in state sync (enables future viewer features)
+
+---
+
+## 2.1 Cloud Infrastructure (Azure Container Apps)
+
+### Deployment Model
+
+**Phase 1: Single Replica (Current)**
+- **Platform:** Azure Container Apps (Consumption plan)
+- **Compute:** Single container, 0.5–1 vCPU, 1–2 Gi memory
+- **Database:** Azure Database for PostgreSQL Flexible Server (Burstable tier)
+- **Container Registry:** Azure Container Registry (Basic)
+- **Ingress:** ACA's native Envoy ingress with port 2567, WebSocket support built-in
+- **Custom Domain:** playgrid.kirbytoso.xyz (cert managed by ACA)
+- **Cost:** ~$20–30/mo (ACA + ACR + modest PostgreSQL tier)
+
+**Why ACA (not VPS or self-managed)?**
+- Serverless consumption pricing aligns with Phase 1 sporadic usage
+- WebSocket support via Envoy proxy (no additional configuration)
+- Integrates with Azure ecosystem (PostgreSQL, Key Vault, App Insights)
+- Scales to multi-replica when needed (sticky sessions via Envoy)
+- Deployment via GitHub Actions + Azure Container Registry
+
+### Scaling Phases
+
+**Phase 2: Multi-Replica (~6 months out, 50+ concurrent games)**
+- Increase replicas to 2–3 on ACA
+- Enable sticky sessions in Envoy (required for WebSocket room affinity)
+- Add Azure Cache for Redis (Colyseus RedisPresence across replicas)
+- Upgrade PostgreSQL tier
+- Add application monitoring (Application Insights)
+- Cost: ~$90–140/mo
+
+**Phase 3: Full Scale (1000+ concurrent games)**
+- 3–10 ACA replicas with auto-scaling on concurrent connections
+- Redis Cluster for presence
+- Dedicated PostgreSQL instance
+- Azure Front Door for global load balancing
+- Cost: ~$360–700/mo
+
+### Supporting Infrastructure
+
+**All Phases:**
+- **Azure Container Registry:** Image storage and building
+- **Application Insights:** Logging, performance monitoring
+- **Azure Key Vault:** Secrets management (database credentials, Discord webhook, etc.)
+
+**GitHub Actions CI/CD:**
+- Branch strategy: main (dev) → uat → prod
+- Workflows: `ci.yml` (test on PR), `deploy-dev.yml` (main push), `deploy-uat.yml` (uat push), `deploy-prod.yml` (manual/tag)
+- Build: `az acr build` (cloud build in ACR, faster than local Docker)
+- Deploy: `az containerapp update` (update running container)
+- Health checks: Post-deploy curl to verify service readiness
+- Notifications: Discord webhook to #play-grid channel
+
+**Security & Compliance:**
+- GitHub Environments for scoped secrets (dev/staging/prod)
+- ACA Managed Identity for ACR pull (no admin credentials in workflows)
+- OIDC-based Azure login (no static credentials)
+- Key Vault references for sensitive config
+- Pinned GitHub Action versions
+- Minimal workflow permissions
+
+### Colyseus-Specific Considerations
+
+**WebSocket Affinity:**
+- ACA sticky sessions keep clients connected to same replica
+- Critical for reconnection after temporary network loss
+- Colyseus `allowReconnection` window: 30s (configurable per game)
+
+**State Synchronization:**
+- Phase 1: Local state, no inter-process communication needed (1 replica)
+- Phase 2+: RedisPresence syncs room registry across replicas
+- Note: Sticky sessions route clients to correct replica, but Redis is still needed for room discovery
+
+**Message Passing:**
+- Colyseus rooms broadcast state diffs efficiently
+- ACA consumption plan is cost-effective for typical message volumes
+
+### Database Strategy
+
+**PostgreSQL from Day One:**
+- Simplifies operations (no SQLite → PostgreSQL migration later)
+- Supports concurrent writes from Colyseus processes
+- Connection pooling via `pg` module or pgBouncer
+- Backup/recovery via Azure backup service
+- Flexible Server: Burstable tier for Phase 1, scales to General Purpose as needed
+
+**Game Data:**
+```sql
+CREATE TABLE games (
+  id TEXT PRIMARY KEY,
+  game_type TEXT NOT NULL,
+  created_at TIMESTAMP,
+  ended_at TIMESTAMP,
+  outcome TEXT,  -- JSON: { winner, scores, etc. }
+  duration_seconds INTEGER
+);
+
+CREATE TABLE game_participants (
+  game_id TEXT REFERENCES games(id),
+  user_id TEXT NOT NULL,
+  role TEXT,  -- 'player', 'spectator'
+  joined_at TIMESTAMP,
+  left_at TIMESTAMP
+);
+```
 
 ---
 
@@ -563,8 +670,8 @@ CREATE TABLE game_participants (
 
 **Where to log:**
 - `BaseGameRoom.onDispose()` writes to database
-- Use simple SQLite file for Phase 1
-- No ORM, just raw SQL with better-sqlite3
+- Phase 1 uses PostgreSQL (Azure Database for PostgreSQL Flexible Server)
+- No ORM, use raw SQL with connection pooling
 
 ### Phase 2: Stats & Leaderboards
 
@@ -824,7 +931,7 @@ import { GAME_ENDED } from "@eschaton/playgrid-shared/gameTypes";
 **Goal:** Log games and start tracking stats
 
 **Tasks:**
-- [ ] Set up SQLite database in server
+- [ ] Set up PostgreSQL database connection in server
 - [ ] Create schema (games, game_participants)
 - [ ] Implement logging in `BaseGameRoom.onDispose()`
 - [ ] Add `GameHistory` API in LobbyRoom
@@ -1000,7 +1107,7 @@ import { GAME_ENDED } from "@eschaton/playgrid-shared/gameTypes";
 
 ✅ **Plugin-based game system** with IGamePlugin interface  
 ✅ **Integrated spectators** in GameRoom (not separate rooms)  
-✅ **SQLite → PostgreSQL** migration path for persistence  
+✅ **PostgreSQL from day one** for persistence  
 ✅ **Single lobby, multiple game types** model  
 ✅ **Pure function game logic** separated from Colyseus  
 ✅ **Dynamic client rendering** per game type  
@@ -1019,10 +1126,11 @@ import { GAME_ENDED } from "@eschaton/playgrid-shared/gameTypes";
 | Decision | Choice | Alternative Considered | Reason |
 |----------|--------|----------------------|---------|
 | State sync | Colyseus Schema | Manual JSON diffing | Built-in, battle-tested |
-| Persistence | SQLite → PostgreSQL | MongoDB | Relational fits game data |
+| Persistence | PostgreSQL (Azure) | SQLite, MongoDB | Relational fits game data, scalable from day one |
 | Scaling | Redis Presence | Consul | Official Colyseus support |
 | Client rendering | PixiJS 8 | Phaser, three.js | Already chosen, lightweight |
-| Process manager | PM2 | Docker Swarm | Simpler for Phase 2 |
+| Cloud platform | Azure Container Apps | AWS ECS, GCP Cloud Run | User preference, primal-grid reference |
+| CI/CD | GitHub Actions | Azure DevOps | User preference, primal-grid reference |
 | Testing | Vitest | Jest | Already in scaffold |
 
 ---

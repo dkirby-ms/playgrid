@@ -163,3 +163,46 @@ Start simple, scale deliberately. Build what we need now, design for what we'll 
 - Scaling timeline is realistic and matches Colyseus distributed infrastructure readiness
 
 **Canonical record:** `.squad/decisions.md` (merged from inbox, old decision marked superseded)
+
+---
+
+### 2026-03-14T: Architecture Documents Updated for Cloud Decisions
+
+**Status:** Complete
+
+**What was updated:**
+
+1. **docs/architecture-plan.md:**
+   - **Scaling Strategy (Phase 1):** Changed deployment from "Single VPS/container" to "Azure Container Apps (single replica, Consumption plan)", SQLite → PostgreSQL (Azure Database for PostgreSQL Flexible Server)
+   - **Scaling Strategy (Phase 2):** Removed "Switch SQLite to PostgreSQL" (now from day one)
+   - **Persistence section:** Updated to reference PostgreSQL instead of SQLite, with Azure-specific infrastructure
+   - **Persistence Phase 4 (add logging):** Changed "Set up SQLite database" to "Set up PostgreSQL database connection"
+   - **Technical Decisions Summary:** 
+     - Changed "SQLite → PostgreSQL migration path" to "PostgreSQL from day one"
+     - Updated tech table: Persistence now shows "PostgreSQL (Azure)" with rationale "Relational fits game data, scalable from day one"
+     - Added cloud platform row: "Azure Container Apps" with "User preference, primal-grid reference"
+     - Added CI/CD row: "GitHub Actions" with "User preference, primal-grid reference"
+   - **NEW SECTION: 2.1 Cloud Infrastructure (Azure Container Apps):**
+     - Deployment model for Phase 1 (single replica, ACA Consumption plan)
+     - PostgreSQL database strategy and schema
+     - Scaling roadmap for Phase 2 and 3 with cost estimates
+     - Supporting infrastructure: ACR, App Insights, Key Vault
+     - GitHub Actions CI/CD pipeline overview
+     - Security/compliance: OIDC, Managed Identity, Key Vault, Environment protection
+     - Colyseus-specific considerations: WebSocket affinity, state sync, message passing
+     - Database strategy with SQL schema examples
+
+2. **docs/game-systems-design.md:** No updates needed (no outdated references found)
+
+3. **docs/client-architecture.md:** No updates needed (no outdated references found)
+
+**Why these changes matter:**
+- Brings formal design documents into alignment with approved cloud architecture decisions from .squad/decisions.md
+- Reflects PostgreSQL-from-day-one decision (eliminates migration complexity mentioned in cancelled old decision)
+- Documents Azure infrastructure choices (Container Apps, PostgreSQL Flexible Server) with clear rationale
+- Provides comprehensive cloud strategy spanning all three scaling phases
+- Clarifies deployment patterns, supporting services, and operational considerations for the team
+- Ensures all stakeholders can reference a single source of truth in architecture-plan.md
+
+**Files modified:** 1 file (docs/architecture-plan.md)
+**Files checked:** 3 files (game-systems-design.md, client-architecture.md also reviewed, no changes needed)
