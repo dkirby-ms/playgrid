@@ -722,3 +722,101 @@ This skill is reusable for other ACA + monorepo projects and should be reviewed 
 User answers to Hal's 5 open questions from the cloud architecture proposal. PostgreSQL from the start simplifies operations and eliminates migration complexity; the other decisions clarify infrastructure strategy and communication channels.
 
 ---
+
+---
+
+## Session: Backlog Decomposition (2026-03-14T13:08:51Z)
+
+### Hal: Backlog Decomposition — P0 Scope
+
+**Status:** Approved
+**Date:** 2026-03-14
+
+P0 consists of 7 infrastructure-only items: env config, static file serving, PostgreSQL connection, database schema, Dockerfile, CI pipeline, lint setup. Game logic deliberately excluded from P0.
+
+**Rationale:**
+- Team cannot ship without these foundations
+- Can be built in parallel with game work
+- Clear demarcation: infrastructure first, features second
+
+**Items:** p0-env-config, p0-static-serving, p0-postgresql-connection, p0-db-schema, p0-dockerfile, p0-ci-pipeline, p0-lint-setup
+
+---
+
+### Hal: Backlog Decomposition — P1 Scope
+
+**Status:** Approved
+**Date:** 2026-03-14
+
+P1 (Checkers MVP) split into 4 sub-phases: (A) Plugin Foundation, (B) Checkers Logic, (C) Client Architecture, (D) Checkers Renderer. 16 items total, enabling parallel work streams.
+
+**Rationale:**
+- Sub-phases maximize parallelism: Pemulis builds server infra while Gately builds client
+- Clear ordering prevents blockers: plugins before logic, architecture before renderers
+- Steeply can test as components land
+
+**Items:** P1A:4 (plugin system), P1B:4 (checkers logic), P1C:5 (client scenes), P1D:3 (renderer)
+
+---
+
+### Hal: Backlog Decomposition — GameRoom Preservation
+
+**Status:** Approved
+**Date:** 2026-03-14
+
+New `BaseGameRoom` coexists alongside existing `GameRoom.ts`. Old GameRoom is NOT modified.
+
+**Rationale:**
+- Avoids breaking existing lobby flow during transition
+- Allows incremental migration to new plugin system
+- Old GameRoom can be removed once new system proven
+
+---
+
+### Hal: Backlog Decomposition — Critical Path
+
+**Status:** Approved
+**Date:** 2026-03-14
+
+Longest dependency chain: env-config → static-serving → shared-game-types → base-game-state → base-game-room → checkers-plugin → e2e-checkers
+
+**Rationale:**
+- Identifies serialization bottleneck for tracking progress
+- Other items branch off this spine in parallel
+- Critical path timing determines earliest project completion
+
+---
+
+### Hal: Backlog Decomposition — Team Assignments
+
+**Status:** Approved
+**Date:** 2026-03-14
+
+| Agent | Items | Role |
+|-------|-------|------|
+| Pemulis | 10 | P0 + P1A: all server infrastructure and plugin foundation |
+| Gately | 11 | P1B–D + P2: game logic, client architecture, renderers, second game |
+| Steeply | 6 | Tests across all phases (blocked until code lands) |
+| Marathe | 5 | CI/CD, Docker, Bicep, deployment pipelines |
+| Joelle | 2 | Docs, guides, communication (blocked on P1 stability) |
+
+**Rationale:**
+- Pemulis and Marathe can start immediately on P0 (no dependencies)
+- Gately can start on client architecture (no server deps yet)
+- Steeply waits for code to test against
+- Maximizes team throughput in first sprint
+
+---
+
+### Hal: Backlog Decomposition — P2 Deferred
+
+**Status:** Approved
+**Date:** 2026-03-14
+
+Explicitly deferred to P2: deployment pipelines (UAT/prod), Bicep infrastructure, reconnection, spectator mode, Application Insights, second game (Backgammon), documentation updates.
+
+**Rationale:**
+- These don't block a playable Checkers game
+- P2 is lower priority than shipping MVP
+- Can be tackled after P1 stabilizes
+
