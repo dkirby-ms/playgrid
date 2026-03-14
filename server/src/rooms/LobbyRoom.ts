@@ -281,11 +281,21 @@ export class LobbyRoom extends Room {
       return;
     }
 
+    const registeredPlugin = gameRegistry.getAll().length > 0
+      ? gameRegistry.get(game.gameType)
+      : undefined;
+    const minPlayers = registeredPlugin?.metadata.playerCount[0] ?? 1;
+    if (players.size < minPlayers) {
+      this.sendError(client, `At least ${minPlayers} players are required to start this game.`);
+      return;
+    }
+
     try {
       const room = await matchMaker.createRoom("game", {
         gameId: game.id,
         gameType: game.gameType,
         maxPlayers: game.maxPlayers,
+        expectedPlayers: players.size,
       });
 
       game.status = "in_progress";

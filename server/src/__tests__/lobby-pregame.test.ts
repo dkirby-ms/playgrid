@@ -303,6 +303,7 @@ describeLobby("LobbyRoom pregame flow", () => {
       gameId,
       gameType: "checkers",
       maxPlayers: 4,
+      expectedPlayers: 2,
     });
     expect(getGame(room, gameId)?.status).toBe("in_progress");
     expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
@@ -463,7 +464,26 @@ describeLobby("LobbyRoom pregame flow", () => {
     await room.handleStartGame(host);
 
     expect(mockCreateRoom).toHaveBeenCalledTimes(1);
+    expect(mockCreateRoom).toHaveBeenCalledWith("game", {
+      gameId,
+      gameType: "checkers",
+      maxPlayers: 4,
+      expectedPlayers: 1,
+    });
     expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
+  });
+
+  it("requires the plugin minimum player count before starting when games are registered", async () => {
+    const plugin = createPlugin(2, 4);
+    mockGameRegistry.getAll.mockReturnValue([plugin]);
+    mockGameRegistry.has.mockReturnValue(true);
+    mockGameRegistry.get.mockReturnValue(plugin);
+
+    await createGame(room, host);
+    await room.handleStartGame(host);
+
+    expect(mockCreateRoom).not.toHaveBeenCalled();
+    expectLobbyError(host, "at least 2 players");
   });
 
   it("keeps multiple waiting games isolated from each other", async () => {

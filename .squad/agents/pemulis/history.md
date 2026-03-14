@@ -157,3 +157,10 @@
 - Updated shared lobby contracts and `server/src/rooms/LobbyRoom.ts` so waiting-game entries now carry `gameType`, validate against `gameRegistry` only when plugins actually exist, and clamp requested player counts to plugin metadata when a matching plugin is registered.
 - Added focused Vitest coverage for both the standalone turn manager and the lobby's new `gameType` validation / passthrough behavior, including the pre-plugin empty-registry fallback.
 
+### BaseGameRoom orchestration (2026-03-14)
+
+- Added `server/src/game/BaseGameRoom.ts` as the plugin-driven Colyseus room that loads a registered game plugin, creates shared `BaseGameState` instances, wires plugin action handlers, and drives turn flow through `TurnManager`.
+- `BaseGameRoom` tracks `PlayerInfo` connection state, starts play once the expected player count joins, advances `state.currentTurn` / `state.turnNumber`, and resolves end-game cleanup for action-driven wins, timeouts, and leave-triggered forfeits.
+- Updated `server/src/index.ts` so the public room type `"game"` now uses `BaseGameRoom`, and updated `LobbyRoom` to pass `expectedPlayers` plus enforce plugin minimum player counts before creating the live game room.
+- Verified the integration with new `server/src/__tests__/BaseGameRoom.test.ts` coverage and a full `npm run build && npm run lint && npm run test` pass.
+

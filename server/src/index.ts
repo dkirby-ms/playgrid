@@ -6,7 +6,7 @@ import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { config } from "./config.js";
 import { connectDb } from "./db.js";
-import { GameRoom } from "./rooms/GameRoom.js";
+import { BaseGameRoom } from "./game/BaseGameRoom.js";
 import { LobbyRoom } from "./rooms/LobbyRoom.js";
 
 type ExpressResponse = {
@@ -42,7 +42,7 @@ const server = new Server({
   }),
 });
 
-server.define("game", GameRoom);
+server.define("game", BaseGameRoom);
 server.define("lobby", LobbyRoom);
 
 const startServer = async () => {
