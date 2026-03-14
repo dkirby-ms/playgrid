@@ -969,3 +969,88 @@ This keeps transition/status messaging available without obstructing the board o
 User request — captured for team memory and future upgrade planning.
 
 ---
+
+---
+
+## Session: E2E Test Suites (Lobby & Checkers) (2026-03-14)
+
+### Hal: E2E Testing Strategy for Game Plugins
+
+**Status:** Approved  
+**Date:** 2026-03-14  
+**Decision:** All future game plugins (Backgammon, Dominoes, etc.) must use the "Grey Box" E2E testing pattern established in PR #58.
+
+**Details:**
+- **UI Interaction:** Use standard Playwright DOM selectors for Lobby, Waiting Room, and React/HTML overlays
+- **Game Interaction:** Do **not** use coordinate-based clicks on the Canvas. Instead, use the `window.__PLAYGRID_E2E__.app.gameRoom` harness to send actions (moves, rolls) directly to the server
+- **State Verification:** Assert against the synchronized state returned by the server, not the pixel output of the Canvas
+
+**Rationale:**
+- Canvas testing is flaky across environments/resolutions
+- We care about *Game Logic* and *State Synchronization* correctness in E2E
+- Input handling (clicks → events) should be unit tested in the renderer if necessary, but is lower risk than game rule regression
+
+---
+
+### Hal: PR Review Gate for Stacked Branches
+
+**Status:** Approved  
+**Date:** 2026-03-14  
+
+**Decision:** PRs targeting `dev` must be independently reviewable against the base branch.
+
+**Rule:**
+- No unrelated commits from other open PRs in the diff
+- No cross-agent history or test changes unless directly required by the issue
+- If a branch is stacked on another unmerged PR, rebase/cherry-pick or refresh after the lower PR lands before approval
+
+**Rationale:**
+- Keeps review scope explicit
+- Prevents accidental double-approval of unrelated work
+- Makes rollback/revert boundaries match the issue being solved
+- Critical with multiple agents landing adjacent work to the same branch
+
+**Example:** PR #57 was initially blocked because it included unrelated commits from PR #56. After rebasing, it was approved.
+
+---
+
+### Steeply: Dedicated Lobby Playwright Configuration
+
+**Status:** Approved  
+**Date:** 2026-03-14  
+
+**Decision:** Use a dedicated Playwright config (`playwright.lobby.config.ts`) for the lobby suite, and point `npm run test:e2e` at it. Keep a root `playwright.config.ts` that re-exports the lobby config.
+
+**Operational Details:**
+- Web server command: `DATABASE_URL= npm run dev`
+- Base URL: `http://127.0.0.1:3000`
+- Browser: Chromium only
+- Workers: 1
+- Test match: `**/lobby.spec.ts`
+
+**Rationale:**
+- Isolates lobby E2E suite from unrelated browser specs that are not part of issue #52 and are not stable enough to gate this work
+- Allows gating on stable lobby workflow without blocking other tests
+- Conventional Playwright setup in place for future test suites
+
+---
+
+### Steeply: Grey Box E2E Harness for Checkers
+
+**Status:** Approved  
+**Date:** 2026-03-14  
+
+**Decision:** Use a lightweight browser-only E2E harness for gameplay tests: expose the live `PlaygridApp` instance from `client/src/index.ts` only when the app is loaded with `?e2e=1`, then have Playwright drive lobby/waiting-room UI normally while sending Checkers moves through the real browser `gameRoom` connection.
+
+**Operational Details:**
+- Root `playwright.config.ts` targets the server-served app on `http://127.0.0.1:2567`
+- Starts E2E by building client bundle, then running server in development mode
+- Move harness accessed as `window.__PLAYGRID_E2E__.app.gameRoom`
+- 31-move deterministic test sequence covers promotion, king movement, no-valid-moves win
+
+**Rationale:**
+- Checkers gameplay is rendered on a Pixi canvas, so DOM-driven move automation is brittle
+- Using the same room objects that the browser players already joined keeps coverage end-to-end and avoids fake test clients taking player seats
+- The suite can assert win/loss messaging, promotion, king movement, invalid-action errors, and synchronized state changes deterministically
+- Environment-agnostic (no coordinate-based clicks, no timing issues)
+
