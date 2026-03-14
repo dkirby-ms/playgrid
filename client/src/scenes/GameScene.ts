@@ -2,6 +2,7 @@ import type { Room } from "@colyseus/sdk";
 import { Container, Text } from "pixi.js";
 import { RendererRegistry, type GameRenderer } from "../renderers";
 import type { Scene } from "./Scene";
+import { HUD, type HUDEvent, type HUDPlayer } from "../ui/HUD";
 
 export interface GameSceneEnterData {
   room: Room;
@@ -19,7 +20,7 @@ export class GameScene implements Scene {
 
   private renderer: GameRenderer | null = null;
   private stateChangeHandler: ((state: unknown) => void) | null = null;
-  private leaveButton: HTMLButtonElement | null = null;
+  private hud: HUD | null = null;
   private width = 0;
   private height = 0;
 
@@ -40,6 +41,8 @@ export class GameScene implements Scene {
     this.messageText.anchor.set(0.5);
     this.messageText.visible = false;
     this.container.addChild(this.messageText);
+    this.hud = new HUD();
+    this.hud.onEvent((event) => this.handleHUDEvent(event));
   }
 
   onEnter(data?: unknown): void {
@@ -51,7 +54,6 @@ export class GameScene implements Scene {
     }
 
     this.room = enterData.room;
-    this.createLeaveButton();
 
     if (!this.rendererRegistry.has(enterData.gameType)) {
       this.showMessage(`No renderer available for ${enterData.gameType}.`);
@@ -64,12 +66,15 @@ export class GameScene implements Scene {
 
     this.stateChangeHandler = (state) => {
       this.renderer?.onStateChange(state);
+      this.updateHUD(state);
     };
     this.room.onStateChange(this.stateChangeHandler);
 
     if (this.width > 0 && this.height > 0) {
       this.renderer.resize(this.width, this.height);
     }
+
+    this.initHUD();
   }
 
   onExit(): void {
@@ -95,7 +100,7 @@ export class GameScene implements Scene {
 
     this.stateChangeHandler = null;
     this.room = null;
-    this.removeLeaveButton();
+    this.hud?.hide();
     this.hideMessage();
 
     if (!this.renderer) {
@@ -110,33 +115,82 @@ export class GameScene implements Scene {
     this.renderer = null;
   }
 
-  private createLeaveButton(): void {
-    const host = document.getElementById("app") ?? document.body;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = "Leave Game";
-    button.className = "lobby-button lobby-button-ghost";
-    Object.assign(button.style, {
-      position: "fixed",
-      top: "16px",
-      right: "16px",
-      zIndex: "20",
-      background: "rgba(16, 16, 29, 0.92)",
-      borderColor: "rgba(126, 207, 255, 0.22)",
-    });
-    button.addEventListener("click", this.handleLeaveButtonClick);
-    host.appendChild(button);
-    this.leaveButton = button;
-  }
-
-  private removeLeaveButton(): void {
-    if (!this.leaveButton) {
+  private initHUD(): void {
+    if (!this.room || !this.hud) {
       return;
     }
 
-    this.leaveButton.removeEventListener("click", this.handleLeaveButtonClick);
-    this.leaveButton.remove();
-    this.leaveButton = null;
+    const players = this.extractPlayersFromState(this.room.state);
+    const currentTurn = this.extractCurrentTurn(this.room.state);
+
+    this.hud.show(this.room, {
+      players,
+      currentTurn,
+      showTimer: false,
+    });
+  }
+
+  private updateHUD(state: unknown): void {
+    if (!this.hud || !this.room) {
+      return;
+    }
+
+    const players = this.extractPlayersFromState(state);
+    const currentTurn = this.extractCurrentTurn(state);
+
+    this.hud.update({
+      players,
+      currentTurn,
+    });
+  }
+
+  private extractPlayersFromState(state: unknown): HUDPlayer[] {
+    const players: HUDPlayer[] = [];
+
+    if (typeof state !== "object" || state === null) {
+      return players;
+    }
+
+    const stateObj = state as Record<string, unknown>;
+
+    if (Array.isArray(stateObj.players)) {
+      for (const player of stateObj.players) {
+        if (typeof player === "object" && player !== null) {
+          const playerObj = player as Record<string, unknown>;
+          players.push({
+            userId: String(playerObj.userId ?? ""),
+            displayName: String(playerObj.displayName ?? "Player"),
+            score: typeof playerObj.score === "number" ? playerObj.score : 0,
+            isCurrent: false,
+          });
+        }
+      }
+    }
+
+    const currentTurn = this.extractCurrentTurn(state);
+    if (currentTurn) {
+      const currentPlayerIndex = players.findIndex((p) => p.userId === currentTurn);
+      if (currentPlayerIndex !== -1) {
+        players[currentPlayerIndex].isCurrent = true;
+      }
+    }
+
+    return players;
+  }
+
+  private extractCurrentTurn(state: unknown): string | undefined {
+    if (typeof state !== "object" || state === null) {
+      return undefined;
+    }
+
+    const stateObj = state as Record<string, unknown>;
+    return typeof stateObj.currentTurn === "string" ? stateObj.currentTurn : undefined;
+  }
+
+  private handleHUDEvent(event: HUDEvent): void {
+    if (event.type === "leave") {
+      void this.onEventCallback({ type: "leave_game" });
+    }
   }
 
   private showMessage(message: string): void {
@@ -149,7 +203,4 @@ export class GameScene implements Scene {
     this.messageText.visible = false;
   }
 
-  private readonly handleLeaveButtonClick = (): void => {
-    void this.onEventCallback({ type: "leave_game" });
-  };
 }
