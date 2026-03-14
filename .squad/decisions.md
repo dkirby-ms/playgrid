@@ -75,6 +75,8 @@ Start with SQLite for Phase 1 (simple file-based), migrate to PostgreSQL when sc
 - PostgreSQL supports concurrent writes from multiple processes
 - Migration path is straightforward
 
+**⚠️ Superseded by: 2026-03-14T13:01:17Z — PostgreSQL from day one**
+
 ---
 
 ### Hal: Game Implementation Order
@@ -700,5 +702,23 @@ Created reusable skill: `.squad/skills/azure-container-apps-monorepo-pipeline/SK
 - Health checks and post-deploy verification
 
 This skill is reusable for other ACA + monorepo projects and should be reviewed alongside pipeline implementation.
+
+---
+
+### 2026-03-14T13:01:17Z: User directive — Cloud architecture answers
+
+**Status:** Approved  
+**By:** dkirby-ms (via Copilot)  
+**Date:** 2026-03-14T13:01:17Z  
+
+**Decisions:**
+1. **Database:** PostgreSQL from day one (replaces phased SQLite → PostgreSQL migration)
+2. **Branch strategy:** Matches primal-grid (main → uat → prod)
+3. **Custom domain:** playgrid.kirbytoso.xyz (already owned)
+4. **Phase 2 timeline:** ~6 months out — no rush on multi-replica scaling
+5. **Discord notifications:** Separate #play-grid channel in same Discord server as primal-grid
+
+**Rationale:**
+User answers to Hal's 5 open questions from the cloud architecture proposal. PostgreSQL from the start simplifies operations and eliminates migration complexity; the other decisions clarify infrastructure strategy and communication channels.
 
 ---

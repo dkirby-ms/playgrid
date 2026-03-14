@@ -144,3 +144,22 @@ Start simple, scale deliberately. Build what we need now, design for what we'll 
 - Confirms single-replica Phase 1 constraint is operationally sound.
 - Suggests Phase 2 readiness timeline depends on distributed Colyseus infrastructure (RedisPresence, PostgreSQL shared state), not just replica count.
 - Pipeline design should include post-deploy health checks and smoke tests before marking success.
+
+---
+
+### 2026-03-14T13:01:17Z: User answers — Cloud architecture proposal
+
+**Directive received:** User (dkirby-ms) answered 5 open questions from the architecture proposal:
+
+1. **Database:** PostgreSQL from day one (not SQLite → PostgreSQL phased migration)
+2. **Branch strategy:** main → uat → prod (matches primal-grid)
+3. **Custom domain:** playgrid.kirbytoso.xyz (already owned, no DNS work needed)
+4. **Phase 2 timeline:** ~6 months out (no rush on 50+ concurrent game scaling)
+5. **Discord:** #play-grid channel in existing Discord server (separate from other comms)
+
+**Implications for Architecture:**
+- Phase 1 now uses PostgreSQL instead of SQLite — simplifies one less migration, but requires connection pooling / multi-process coordination from day one (validate this aligns with single-replica Phase 1 constraint)
+- Domain is pre-registered, cert/DNS setup is straightforward
+- Scaling timeline is realistic and matches Colyseus distributed infrastructure readiness
+
+**Canonical record:** `.squad/decisions.md` (merged from inbox, old decision marked superseded)

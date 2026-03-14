@@ -72,3 +72,23 @@
 - Pipeline analysis: `.squad/decisions.md` (merged from inbox)
 - Reusable skill: `.squad/skills/azure-container-apps-monorepo-pipeline/SKILL.md`
 - Reference: `dkirby-ms/primal-grid` (`.github/workflows/`, `infra/main.bicep`, `Dockerfile`)
+
+---
+
+### 2026-03-14T13:01:17Z: User answers — Cloud architecture proposal
+
+**Directive received:** User (dkirby-ms) answered 5 open questions from the architecture proposal:
+
+1. **Database:** PostgreSQL from day one (not SQLite → PostgreSQL phased migration)
+2. **Branch strategy:** main → uat → prod (matches primal-grid)
+3. **Custom domain:** playgrid.kirbytoso.xyz (already owned, no DNS work needed)
+4. **Phase 2 timeline:** ~6 months out (no rush on 50+ concurrent game scaling)
+5. **Discord:** #play-grid channel in existing Discord server (separate from other comms)
+
+**Implications for Pipeline & Infrastructure:**
+- Phase 1 PostgreSQL from day one — validate PG version compatibility, connection string secrets, and whether single-replica + PostgreSQL requires any special Colyseus coordination (Hal's constraint: Phase 1 = 1 replica only)
+- Domain pre-registered speeds up cert/DNS/ingress setup
+- GitHub Actions pattern aligns with primal-grid, no changes to proposed deploy workflows
+- Phase 2 trigger is 50+ concurrent games, timeline ~6mo — gives pipeline team runway to stabilize Phase 1 infrastructure before distributed scaling work
+
+**Canonical record:** `.squad/decisions.md` (merged from inbox, old decision marked superseded)
