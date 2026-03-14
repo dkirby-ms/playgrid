@@ -126,3 +126,32 @@
 - **Available to you:** Issue templates (bug-report.yml, feature-request.yml, chore.yml), CONTRIBUTING.md, updated README.md
 - **Impact:** All agents can now use structured issue templates and refer to CONTRIBUTING.md for contributor guidance.
 
+
+### 2026-03-14T15:30:00Z: Deploy-UAT Workflow Created (Issue #30)
+
+**Accomplishment:** Created `.github/workflows/deploy-uat.yml` following the deploy-dev pattern established in PR #60.
+
+**Details:**
+- **Trigger:** Push to `uat` branch (parallel to deploy-dev which triggers on `main`)
+- **Environment:** Uses GitHub Environment `uat` for scoped secrets/vars (AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, DISCORD_WEBHOOK_URL)
+- **Target:** Deploys to `playgrid-uat` Container App via environment-scoped `CONTAINER_APP_NAME` variable
+- **Pattern Reuse:** Identical structure to deploy-dev — OIDC auth, ACR build with SHA tags, Container App update, 15s wait, health check (10 attempts × 5s), Discord notifications on success/failure
+- **Concurrency:** `group: deploy-uat, cancel-in-progress: false` prevents parallel UAT deploys
+- **Health Check:** Validates `https://${{ vars.CONTAINER_APP_FQDN }}/health` returns `"status":"ok"` JSON
+
+**Branch/PR:**
+- Branch: `squad/30-deploy-uat` (from `dev`)
+- PR #63: Draft, targeting `dev` branch
+- Commit: "ci: add deploy-uat workflow (uat branch → Azure)"
+
+**Acceptance Criteria Met:**
+✅ Triggers on push to uat  
+✅ Deploys to UAT Container App  
+✅ Uses uat GitHub Environment  
+✅ Health check after deploy
+
+**Next Steps:**
+- Infrastructure team must configure GitHub Environment `uat` with appropriate secrets/vars
+- Environment-level protection rules (approvals, wait timers) can be added via GitHub UI if desired for UAT gatekeeping
+- Container App `playgrid-uat` must exist in Azure with matching resource group and ACR integration
+
