@@ -76,6 +76,7 @@ type LobbyEventCallback = (event: LobbyEvent) => void;
 
 const GAME_TYPE_OPTIONS = [
   { value: "checkers", label: "Checkers" },
+  { value: "backgammon", label: "Backgammon" },
 ] as const;
 const MAX_DISPLAY_NAME_LENGTH = 24;
 
@@ -436,7 +437,7 @@ export class LobbyScreen {
   }
 
   private getSelectedMaxPlayers(): number {
-    if (this.getSelectedGameType() === "checkers") {
+    if (this.isTwoPlayerGameType(this.getSelectedGameType())) {
       return 2;
     }
 
@@ -444,12 +445,16 @@ export class LobbyScreen {
   }
 
   private syncGameTypeConstraints(): void {
-    const isTwoPlayerGame = this.getSelectedGameType() === "checkers";
+    const isTwoPlayerGame = this.isTwoPlayerGameType(this.getSelectedGameType());
     if (isTwoPlayerGame) {
       this.maxPlayersInput.value = "2";
     }
 
     this.maxPlayersInput.disabled = this.isCreatePending || isTwoPlayerGame;
+  }
+
+  private isTwoPlayerGameType(gameType: string): boolean {
+    return gameType === "checkers" || gameType === "backgammon";
   }
 
   private setActiveFilter(filter: LobbyFilter): void {
