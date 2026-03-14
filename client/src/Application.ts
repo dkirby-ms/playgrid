@@ -1,5 +1,11 @@
-import { Client, type Room } from "@colyseus/sdk";
+import { type Room } from "@colyseus/sdk";
 import { Application as PixiApplication, Text } from "pixi.js";
+import {
+  ConnectionManager,
+  ConnectionState,
+  type ConnectionErrorEvent,
+  type ConnectionStateChangeEvent,
+} from "./networking";
 import { rendererRegistry } from "./renderers";
 import { SceneManager } from "./SceneManager";
 import {
@@ -49,11 +55,11 @@ function createStatusText(app: PixiApplication): Text {
 
 export class PlaygridApp {
   pixiApp!: PixiApplication;
-  client!: Client;
   sceneManager!: SceneManager;
   lobbyRoom: ColyseusRoom | null = null;
   gameRoom: ColyseusRoom | null = null;
 
+  private connectionManager!: ConnectionManager;
   private statusText!: Text;
   private statusHideTimeoutId: number | null = null;
   private statusVisibleInGame = false;
