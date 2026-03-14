@@ -275,3 +275,55 @@ Bicep outputs all values needed for configuring GitHub Actions environment varia
 - Run deploy-infra workflow for each environment (dev → uat → prod)
 - Configure GitHub Actions environment variables from deployment outputs
 - Validate deploy workflows against provisioned infrastructure
+
+### 2026-03-14T19:30:00Z: Discord Webhook Integration for Deploy Workflows (Issue #43)
+
+**Accomplishment:** Enhanced all three deploy workflows (dev/uat/prod) with improved Discord webhook notifications.
+
+**Details:**
+- **Reusable Composite Action:** Created `.github/actions/discord-notify/action.yml` to eliminate code duplication across workflows
+- **Enhanced Success Notifications:**
+  - Added deployment URL field (was missing from original implementation)
+  - Included workflow run link for context
+  - Shortened commit SHA to 7 characters for cleaner display
+  - Color-coded green (3066993)
+- **Enhanced Failure Notifications:**
+  - Added explicit "Error Context" field directing users to logs
+  - Included workflow run link with clear "View logs" text
+  - Color-coded red (15158332)
+- **Implementation Pattern:**
+  - Used `if: always()` with `${{ job.status }}` for cleaner conditional logic
+  - Single composite action called once per workflow instead of two separate curl steps
+  - Accepts all context as inputs (webhook URL, environment, deployment URL, commit SHA, author, repository, run ID)
+
+**Files Modified:**
+- `.github/workflows/deploy-dev.yml` — Replaced 60 lines of curl logic with 12 lines calling composite action
+- `.github/workflows/deploy-uat.yml` — Same pattern
+- `.github/workflows/deploy-prod.yml` — Same pattern
+- `.github/actions/discord-notify/action.yml` — New reusable action (125 lines)
+
+**Net Effect:** -183 lines +161 lines (22 lines saved, significant duplication eliminated)
+
+**Branch/PR:**
+- Branch: `squad/43-discord-webhook` (from `dev`)
+- PR #73: Draft, targeting `dev` branch
+- Commit: `edc4bb5` - "ci: add Discord webhook for deploy notifications"
+
+**Acceptance Criteria Met:**
+✅ Deploy success sends message with environment and URL  
+✅ Deploy failure sends message with error context  
+✅ Webhook URL from GitHub secret (`DISCORD_WEBHOOK_URL`)  
+✅ Works for dev, uat, and prod deploys  
+✅ Simple curl-based webhook — no additional dependencies
+
+**Technical Notes:**
+- Discord embed format uses rich fields for structured data
+- Timestamps formatted as ISO 8601 UTC for Discord compatibility
+- Composite actions run in-repository (`./.github/actions/`) — no external dependencies
+- Webhook secret scoped to environment (dev/uat/prod GitHub Environments)
+
+**Next Steps:**
+- Team review and approve PR #73
+- Merge to `dev`
+- Test notifications on next deployment to each environment
+- Consider adding custom message field for manual workflow dispatches (future enhancement)
