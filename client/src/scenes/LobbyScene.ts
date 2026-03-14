@@ -22,6 +22,10 @@ export class LobbyScene implements Scene {
     this.lobbyScreen.bindToRoom(room);
   }
 
+  setDisplayName(displayName: string): void {
+    this.lobbyScreen.setDisplayName(displayName);
+  }
+
   showNotice(message: string, tone: "info" | "error"): void {
     this.lobbyScreen.showNotice(message, tone);
   }

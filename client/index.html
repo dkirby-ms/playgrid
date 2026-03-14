@@ -117,11 +117,23 @@
         color: #ffd9d9;
       }
 
+      .lobby-profile-section,
       .lobby-create-section,
       .lobby-list-section {
         display: flex;
         flex-direction: column;
         gap: 12px;
+      }
+
+      .lobby-profile-form {
+        display: flex;
+        gap: 12px;
+        align-items: end;
+        flex-wrap: wrap;
+      }
+
+      .lobby-profile-form .field-group {
+        flex: 1 1 240px;
       }
 
       .lobby-create-form {
@@ -365,6 +377,11 @@
           padding: 18px;
         }
 
+        .lobby-profile-form {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
         .lobby-create-form {
           grid-template-columns: 1fr;
         }
@@ -373,6 +390,7 @@
           overflow-x: auto;
         }
 
+        .lobby-profile-form .lobby-button,
         .waiting-room-controls .lobby-button,
         .lobby-create-form .lobby-button {
           width: 100%;

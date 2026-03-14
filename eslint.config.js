@@ -31,6 +31,14 @@ export default tseslint.config(
     },
   },
   {
+    files: ["playwright.config.ts", "playwright.lobby.config.ts", "vitest.config.ts", "e2e/**/*.{ts,tsx}"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     rules: {
       "no-console": "off",

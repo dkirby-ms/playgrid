@@ -67,6 +67,7 @@ export interface LobbyErrorPayload {
 export type LobbyEvent =
   | { type: "join_game"; gameId: string; roomId: string; gameType: string }
   | { type: "waiting"; gameId: string; gameInfo: GameSessionInfo | null; isHost: boolean }
+  | { type: "set_display_name"; displayName: string }
   | { type: "error"; message: string };
 
 type LobbyFilter = "all" | "waiting" | "in_progress";
@@ -76,6 +77,7 @@ type LobbyEventCallback = (event: LobbyEvent) => void;
 const GAME_TYPE_OPTIONS = [
   { value: "checkers", label: "Checkers" },
 ] as const;
+const MAX_DISPLAY_NAME_LENGTH = 24;
 
 function createElement<K extends keyof HTMLElementTagNameMap>(
   tagName: K,
@@ -106,6 +108,7 @@ export class LobbyScreen {
   private readonly subtitleEl: HTMLParagraphElement;
   private readonly notificationEl: HTMLDivElement;
   private readonly gameListBody: HTMLTableSectionElement;
+  private readonly playerNameInput: HTMLInputElement;
   private readonly gameNameInput: HTMLInputElement;
   private readonly gameTypeInput: HTMLSelectElement;
   private readonly maxPlayersInput: HTMLSelectElement;
@@ -142,6 +145,27 @@ export class LobbyScreen {
 
     this.notificationEl = createElement("div", "lobby-notice");
     this.notificationEl.setAttribute("role", "status");
+
+    const playerSection = createElement("section", "lobby-profile-section");
+    const playerHeading = createElement("h2", "section-title", "Player name");
+    const playerForm = createElement("form", "lobby-profile-form");
+    const playerNameField = createElement("label", "field-group");
+    const playerNameLabel = createElement("span", "field-label", "Display name");
+    this.playerNameInput = createElement("input", "lobby-input") as HTMLInputElement;
+    this.playerNameInput.type = "text";
+    this.playerNameInput.name = "player-name";
+    this.playerNameInput.placeholder = "Player name";
+    this.playerNameInput.maxLength = MAX_DISPLAY_NAME_LENGTH;
+    playerNameField.append(playerNameLabel, this.playerNameInput);
+
+    const saveNameButton = createElement("button", "lobby-button lobby-button-secondary", "Save Name") as HTMLButtonElement;
+    saveNameButton.type = "submit";
+    playerForm.append(playerNameField, saveNameButton);
+    playerForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      this.handleSaveDisplayName();
+    });
+    playerSection.append(playerHeading, playerForm);
 
     const createSection = createElement("section", "lobby-create-section");
     const createHeading = createElement("h2", "section-title", "Create a session");
@@ -239,7 +263,7 @@ export class LobbyScreen {
     tableWrapper.append(table);
     listSection.append(listHeading, tableWrapper);
 
-    panel.append(header, this.notificationEl, createSection, filtersSection, listSection);
+    panel.append(header, this.notificationEl, playerSection, createSection, filtersSection, listSection);
     this.overlay.append(panel);
 
     this.renderGameList();
@@ -248,6 +272,10 @@ export class LobbyScreen {
 
   onEvent(callback: LobbyEventCallback): void {
     this.eventCallback = callback;
+  }
+
+  setDisplayName(displayName: string): void {
+    this.playerNameInput.value = displayName;
   }
 
   bindToRoom(room: Room): void {
@@ -348,6 +376,18 @@ export class LobbyScreen {
     this.show();
     this.subtitleEl.textContent = "Could not connect to the lobby room. Check that the server is running.";
     this.showNotice(message, "error", false);
+  }
+
+  private handleSaveDisplayName(): void {
+    const displayName = this.playerNameInput.value.trim().slice(0, MAX_DISPLAY_NAME_LENGTH);
+    this.playerNameInput.value = displayName;
+
+    if (!displayName) {
+      this.showNotice("Player name is required.", "error");
+      return;
+    }
+
+    this.eventCallback?.({ type: "set_display_name", displayName });
   }
 
   private handleCreateGame(): void {

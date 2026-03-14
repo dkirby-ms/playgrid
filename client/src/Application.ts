@@ -20,6 +20,7 @@ const GAME_HEIGHT = 600;
 const LOBBY_ROOM_NAME = "lobby";
 const STATUS_MARGIN = 12;
 const STATUS_HIDE_DELAY_MS = 2500;
+const DISPLAY_NAME_STORAGE_KEY = "playgrid.display-name";
 
 type ColyseusRoom = Room<Record<string, unknown>>;
 type Notice = { message: string; tone: "info" | "error" };
@@ -63,6 +64,8 @@ export class PlaygridApp {
   private statusText!: Text;
   private statusHideTimeoutId: number | null = null;
   private statusVisibleInGame = false;
+  private displayName = "";
+  private isDisplayNameUpdatePending = false;
   private readonly rendererRegistry = rendererRegistry;
   private readonly lobbyScene = new LobbyScene((event) => {
     void this.handleLobbyEvent(event);
@@ -102,6 +105,9 @@ export class PlaygridApp {
     this.sceneManager.register(this.lobbyScene);
     this.sceneManager.register(this.waitingRoomScene);
     this.sceneManager.register(this.gameScene);
+
+    this.displayName = this.loadDisplayName();
+    this.lobbyScene.setDisplayName(this.displayName);
 
     this.statusText = createStatusText(this.pixiApp);
     this.layoutStatusText();
@@ -156,7 +162,7 @@ export class PlaygridApp {
     await this.showLobby({ message: "Game room closed. Back in the lobby.", tone: "info" });
   }
 
-  private async connectToLobby(): Promise<void> {
+  private async connectToLobby(notice?: Notice): Promise<void> {
     this.ensureInitialized();
     this.lobbyRoom = null;
     this.gameRoom = null;
@@ -164,16 +170,27 @@ export class PlaygridApp {
     this.setStatus("Connecting to lobby…", { persistent: true });
 
     try {
-      this.lobbyRoom = (await this.client.joinOrCreate(LOBBY_ROOM_NAME)) as ColyseusRoom;
-      this.lobbyScene.bindToRoom(this.lobbyRoom);
-      await this.showLobby();
-      console.log(`[playgrid] Joined lobby room: ${this.getRoomLabel(this.lobbyRoom)}`);
+      const joinOptions = this.displayName ? { displayName: this.displayName } : undefined;
+      const room = (await this.client.joinOrCreate(LOBBY_ROOM_NAME, joinOptions)) as ColyseusRoom;
+      this.lobbyRoom = room;
+      this.lobbyScene.bindToRoom(room);
+      this.lobbyScene.setDisplayName(this.displayName);
+      await this.showLobby(notice);
+      console.log(`[playgrid] Joined lobby room: ${this.getRoomLabel(room)}`);
 
-      this.lobbyRoom.onLeave((code) => {
-        void this.handleLobbyRoomLeave(code);
+      room.onLeave((code) => {
+        if (this.lobbyRoom?.id !== room.id) {
+          return;
+        }
+
+        void this.handleLobbyRoomLeave(room, code);
       });
 
-      this.lobbyRoom.onError((code, message) => {
+      room.onError((code, message) => {
+        if (this.lobbyRoom?.id !== room.id) {
+          return;
+        }
+
         console.error(`[playgrid] Lobby error ${code}: ${message}`);
         this.setStatus(`Lobby error: ${message}`, { tone: "error", persistent: true });
         this.lobbyScene.showNotice(message, "error");
@@ -182,6 +199,7 @@ export class PlaygridApp {
       console.error("[playgrid] Lobby connection failed:", error);
       const message = error instanceof Error ? error.message : "Connection failed — is the server running?";
       await this.transitionTo(this.lobbyScene.name);
+      this.lobbyScene.setDisplayName(this.displayName);
       this.setStatus(message, { tone: "error", persistent: true });
       this.lobbyScene.showConnectionError(message);
     }
@@ -190,6 +208,11 @@ export class PlaygridApp {
   private async handleLobbyEvent(event: LobbyEvent): Promise<void> {
     if (event.type === "error") {
       this.setStatus(event.message, { tone: "error", persistent: true });
+      return;
+    }
+
+    if (event.type === "set_display_name") {
+      await this.handleDisplayNameUpdate(event.displayName);
       return;
     }
 
@@ -255,7 +278,11 @@ export class PlaygridApp {
     });
   }
 
-  private async handleLobbyRoomLeave(code: number): Promise<void> {
+  private async handleLobbyRoomLeave(room: ColyseusRoom, code: number): Promise<void> {
+    if (this.lobbyRoom?.id !== room.id) {
+      return;
+    }
+
     console.log(`[playgrid] Left lobby room (code: ${code})`);
     this.lobbyRoom = null;
     this.waitingRoomScene.hideOverlay();
@@ -266,6 +293,7 @@ export class PlaygridApp {
   private async showLobby(notice?: Notice): Promise<void> {
     const data: LobbySceneEnterData | undefined = notice ? { notice } : undefined;
     await this.transitionTo(this.lobbyScene.name, data);
+    this.lobbyScene.setDisplayName(this.displayName);
 
     if (this.lobbyRoom) {
       this.setStatus("Lobby connected — create or join a game.");
@@ -336,6 +364,60 @@ export class PlaygridApp {
 
     const roomWithOptionalId = room as RoomWithOptionalId;
     return roomWithOptionalId.roomId ?? roomWithOptionalId.id ?? room.name ?? "unknown";
+  }
+
+  private async handleDisplayNameUpdate(displayName: string): Promise<void> {
+    if (this.isDisplayNameUpdatePending) {
+      return;
+    }
+
+    this.isDisplayNameUpdatePending = true;
+
+    try {
+      if (displayName === this.displayName && this.lobbyRoom) {
+        this.lobbyScene.showNotice("Player name saved.", "info");
+        return;
+      }
+
+      this.displayName = displayName;
+      this.saveDisplayName(displayName);
+      this.lobbyScene.setDisplayName(displayName);
+
+      const room = this.lobbyRoom;
+      this.lobbyRoom = null;
+      if (room) {
+        try {
+          await room.leave();
+        } catch (error) {
+          console.error("[playgrid] Failed to refresh lobby connection:", error);
+        }
+      }
+
+      await this.connectToLobby({ message: "Player name saved.", tone: "info" });
+    } finally {
+      this.isDisplayNameUpdatePending = false;
+    }
+  }
+
+  private loadDisplayName(): string {
+    try {
+      return window.localStorage.getItem(DISPLAY_NAME_STORAGE_KEY)?.trim() ?? "";
+    } catch {
+      return "";
+    }
+  }
+
+  private saveDisplayName(displayName: string): void {
+    try {
+      if (displayName) {
+        window.localStorage.setItem(DISPLAY_NAME_STORAGE_KEY, displayName);
+        return;
+      }
+
+      window.localStorage.removeItem(DISPLAY_NAME_STORAGE_KEY);
+    } catch {
+      // Ignore storage failures and keep the in-memory name for the session.
+    }
   }
 
   private layoutStatusText(): void {
