@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { config } from "./config.js";
+import { connectDb } from "./db.js";
 import { GameRoom } from "./rooms/GameRoom.js";
 import { LobbyRoom } from "./rooms/LobbyRoom.js";
 
@@ -44,6 +45,15 @@ const server = new Server({
 server.define("game", GameRoom);
 server.define("lobby", LobbyRoom);
 
-server.listen(config.port).then(() => {
-  console.log(`[playgrid] Server listening on http://localhost:${config.port} and ws://localhost:${config.port}`);
-});
+const startServer = async () => {
+  try {
+    await connectDb();
+    await server.listen(config.port);
+    console.log(`[playgrid] Server listening on http://localhost:${config.port} and ws://localhost:${config.port}`);
+  } catch (error) {
+    console.error("[playgrid] Server startup failed.", error);
+    process.exit(1);
+  }
+};
+
+void startServer();
