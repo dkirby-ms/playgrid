@@ -123,6 +123,7 @@ export class LobbyScreen {
   private pendingTransition: "create" | "join" | null = null;
   private createTimeout: ReturnType<typeof window.setTimeout> | null = null;
   private noticeTimeout: ReturnType<typeof window.setTimeout> | null = null;
+  private isCreatePending = false;
 
   constructor() {
     const overlay = document.getElementById("lobby-overlay");
@@ -166,6 +167,9 @@ export class LobbyScreen {
       option.textContent = optionConfig.label;
       this.gameTypeInput.append(option);
     }
+    this.gameTypeInput.addEventListener("change", () => {
+      this.syncGameTypeConstraints();
+    });
 
     const maxPlayersField = createElement("label", "field-group");
     const maxPlayersLabel = createElement("span", "field-label", "Max players");
@@ -176,7 +180,7 @@ export class LobbyScreen {
       const option = createElement("option") as HTMLOptionElement;
       option.value = String(count);
       option.textContent = `${count} players`;
-      if (count === 4) {
+      if (count === 2) {
         option.selected = true;
       }
       this.maxPlayersInput.append(option);
@@ -193,6 +197,7 @@ export class LobbyScreen {
       event.preventDefault();
       this.handleCreateGame();
     });
+    this.syncGameTypeConstraints();
 
     createSection.append(createHeading, createForm);
 
@@ -353,8 +358,8 @@ export class LobbyScreen {
 
     const payload: CreateGamePayload = {
       name: this.gameNameInput.value.trim() || this.gameNameInput.placeholder || "New game",
-      gameType: this.gameTypeInput.value || GAME_TYPE_OPTIONS[0].value,
-      maxPlayers: Number(this.maxPlayersInput.value) || 4,
+      gameType: this.getSelectedGameType(),
+      maxPlayers: this.getSelectedMaxPlayers(),
     };
 
     this.pendingTransition = "create";
@@ -363,10 +368,11 @@ export class LobbyScreen {
   }
 
   private setCreatePending(isPending: boolean): void {
+    this.isCreatePending = isPending;
     this.createButton.disabled = isPending;
     this.gameNameInput.disabled = isPending;
     this.gameTypeInput.disabled = isPending;
-    this.maxPlayersInput.disabled = isPending;
+    this.syncGameTypeConstraints();
     this.createButton.textContent = isPending ? "Creating…" : "Create Game";
 
     if (this.createTimeout) {
@@ -383,6 +389,27 @@ export class LobbyScreen {
       this.setCreatePending(false);
       this.showNotice("Game creation timed out. Try again.", "error");
     }, 30000);
+  }
+
+  private getSelectedGameType(): string {
+    return this.gameTypeInput.value || GAME_TYPE_OPTIONS[0].value;
+  }
+
+  private getSelectedMaxPlayers(): number {
+    if (this.getSelectedGameType() === "checkers") {
+      return 2;
+    }
+
+    return Number(this.maxPlayersInput.value) || 2;
+  }
+
+  private syncGameTypeConstraints(): void {
+    const isTwoPlayerGame = this.getSelectedGameType() === "checkers";
+    if (isTwoPlayerGame) {
+      this.maxPlayersInput.value = "2";
+    }
+
+    this.maxPlayersInput.disabled = this.isCreatePending || isTwoPlayerGame;
   }
 
   private setActiveFilter(filter: LobbyFilter): void {
