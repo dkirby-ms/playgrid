@@ -1,5 +1,5 @@
 import { Application, Text } from "pixi.js";
-import { Client, type Room } from "colyseus.js";
+import { Client, type Room } from "@colyseus/sdk";
 import { LobbyScreen } from "./ui/LobbyScreen";
 import { WaitingRoom } from "./ui/WaitingRoom";
 

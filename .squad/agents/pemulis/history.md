@@ -99,6 +99,14 @@
 - Updated `server/src/index.ts` to consume `config.port` instead of reading `process.env.PORT` inline.
 - Pattern used: centralize env parsing in one typed module, default invalid or missing values to development-safe settings, and import config from runtime entrypoints.
 
+### Colyseus 0.17 workspace migration (2026-03-14)
+
+- Upgraded dependencies in `server/package.json`, `shared/package.json`, and `client/package.json` to Colyseus 0.17 / Schema v4 / SDK packages, and refreshed the root `package-lock.json` with `npm install`.
+- Added explicit `@colyseus/core` to the server workspace because `colyseus` 0.17 re-exports core types but requires the peer dependency to be installed for `Server`, `Room`, `Client`, and `matchMaker` typings to resolve.
+- Updated room classes in `server/src/rooms/GameRoom.ts` and `server/src/rooms/LobbyRoom.ts` to the 0.17 room shape: remove the `Room<State>` generic, assign `state = new GameState()` directly, and accept `onLeave(client, code)` even when the close code is not used.
+- Swapped client imports in `client/src/index.ts`, `client/src/ui/LobbyScreen.ts`, and `client/src/ui/WaitingRoom.ts` from `colyseus.js` to `@colyseus/sdk`; existing `Client` / `Room` usage continued to work after the package rename.
+- Validation outcome: `npm run build` and `npm run test` both passed after the migration. One gotcha is that Vitest currently discovers both `server/src/__tests__` and built `server/dist/src/__tests__`, so the same suite runs twice during root tests.
+
 ## Cross-Agent Update — Issue #1 Closed, PR #47 Open (2026-03-14)
 
 **From:** Joelle (Community/DevRel)  

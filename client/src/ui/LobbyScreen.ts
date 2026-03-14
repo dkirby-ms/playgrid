@@ -1,4 +1,4 @@
-import type { Room } from "colyseus.js";
+import type { Room } from "@colyseus/sdk";
 
 export const CREATE_GAME = "create_game" as const;
 export const JOIN_GAME = "join_game" as const;

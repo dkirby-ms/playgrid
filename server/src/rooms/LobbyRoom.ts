@@ -81,7 +81,7 @@ export class LobbyRoom extends Room {
     console.log(`[LobbyRoom] ${displayName} joined the lobby`);
   }
 
-  override onLeave(client: Client) {
+  override onLeave(client: Client, _code: number) {
     this.handleLeaveGame(client);
     this.sessions.delete(client.sessionId);
   }
