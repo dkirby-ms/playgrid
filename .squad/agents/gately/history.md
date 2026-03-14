@@ -286,3 +286,30 @@
 - Styling follows project patterns: rgba backgrounds, cyan accent colors, responsive with media queries for mobile
 - All elements use pointer-events to enable interaction while overlay itself remains non-blocking
 - PR #76 created (draft) — completes the last P2 issue! 🎉
+
+## Session: E2E Test Suite Fix & ConnectionManager Import (2026-03-14)
+
+**Agents:** Steeply (E2E fix), Gately (support), Hal (review + merge)
+
+### What Happened
+
+During full E2E suite run, lobby tests failed because earlier checkers E2E tests left sessions visible in the lobby. Steeply fixed by making assertions row-scoped. While reviewing PR, Gately noticed missing ConnectionManager import in Application.ts.
+
+**Gately's Contribution:**
+- Added: `import ConnectionManager from './services/ConnectionManager';`
+- Added: `connectionManager: ConnectionManager;` property declaration
+- Removed dead duplicate Client property
+- Committed 413aa35 on dev
+- Build/lint/tests pass
+
+**Result:**
+- ConnectionManager now properly initialized in Application.ts
+- Unblocked Hal's review and merge of PR #78
+- E2E tests now order-independent
+- Issue #77 closed
+- 189 tests passing
+
+**Impact on Gately:**
+- ConnectionManager (PR #74) now fully integrated
+- State machine is properly hooked into application lifecycle
+- Ready for further enhancements (e.g., reconnection UX improvements)

@@ -1342,3 +1342,40 @@ User request — captured for team memory and future upgrade planning.
 - Track action-level events for popular moves
 - Implement sampling for high-volume events
 - Add user-id tracking post-authentication
+
+---
+
+### Steeply: Lobby E2E Order-Independence
+
+**Status:** Approved  
+**Date:** 2026-03-14  
+**Issue:** #77  
+**PR:** #78
+
+**Decision:** Lobby E2E tests must be order-independent within the shared Playwright suite by using row-scoped assertions rather than lobby-wide assertions.
+
+**Problem:**
+- Full E2E suite runs checkers E2E before lobby E2E against one shared server instance
+- Checkers tests legitimately leave in-progress sessions visible in the lobby
+- Lobby tests using `.lobby-empty-row` assertion fail when not run in isolation
+
+**Solution:**
+- Use unique game names: `Test Game ${timestamp}`
+- Assert only on the specific game row created and removed by the test
+- Remove only the game created by the test, not the entire lobby state
+
+**Implementation:**
+- Update `e2e/lobby.spec.ts` with unique game naming
+- Change assertions from `expect(emptyRow).toBeVisible()` to row-scoped checks
+- Ensure each test is independent of test execution order
+
+**Rationale:**
+- Test isolation: No brittle dependencies on global state or execution order
+- Maintainability: New tests can be added/removed/reordered without side effects
+- Robustness: Reflects real-world usage where multiple games exist in lobby simultaneously
+
+**Impact:**
+- E2E suite now runs reliably in any order
+- Tests can run in parallel without flaky failures
+- Team can add new E2E tests with confidence
+- Clear pattern for future browser/UI E2E work

@@ -215,3 +215,41 @@
 - Shared Playwright server requires order-independent test assertions
 - Row-scoped E2E assertions > global state checks for robustness
 - Skill pattern docs help standardize testing practices across game plugins
+
+## Session: E2E Test Suite Fix & ConnectionManager Import (2026-03-14)
+
+**Agents:** Steeply (E2E fix), Gately (support), Hal (lead review + merge)
+
+### What Happened
+
+Steeply fixed order-dependent E2E test assertions by making them row-scoped. During the process, Gately fixed missing ConnectionManager import. Hal reviewed both changes, rebased on dev (auto-resolved conflict with Gately's fix), squash-merged, and closed issue #77.
+
+**Hal's Leadership:**
+1. **Code Review:** Approved PR #78
+   - Validated lobby E2E pattern (row-scoped, order-independent)
+   - Validated ConnectionManager import fix
+   - Assessed testing approach and best practices
+
+2. **Git Rebase:**
+   - Rebased PR #78 on dev
+   - Auto-resolved merge conflict with Gately's earlier commit (413aa35)
+   - No manual intervention needed
+
+3. **Verification:**
+   - Full test suite: 189 tests passing ✓
+   - No regressions ✓
+
+4. **Merge & Issue Closure:**
+   - Squash-merged PR #78 as c740333
+   - Closed issue #77
+   - Branch deleted automatically
+
+**Decisions Made:**
+- Lobby E2E tests must use unique names + row-scoped assertions
+- E2E suite should be order-independent and runnable in any order
+- Recorded in decisions.md for team reference
+
+**Cross-Team Impact:**
+- E2E infrastructure is now stable
+- Future game E2E tests should follow this pattern
+- No more flaky test failures due to test ordering

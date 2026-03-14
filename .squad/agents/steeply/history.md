@@ -80,6 +80,37 @@
 - **Pemulis:** Plugin system design should reference Grey Box pattern; each plugin must expose `window.__PLAYGRID_E2E__.app.gameRoom`
 - **Future Game Authors:** Refer to PR #58 (Checkers E2E) as template for all game plugin E2E
 
+## Session: E2E Test Suite Fix & ConnectionManager Import (2026-03-14)
+
+**Agents:** Steeply (lead), Gately (support), Hal (review + merge)
+
+### What Happened
+
+Full E2E suite was failing because lobby tests made order-dependent assertions. When checkers E2E ran first, it left sessions in the lobby. Lobby E2E then failed because it expected an empty lobby.
+
+**Steeply's Fix:**
+1. Made lobby assertions row-scoped: assert only on game row created by the test, not entire lobby
+2. Used unique game names (`Test Game ${timestamp}`) to avoid collisions
+3. Tests now pass in any order
+
+**Side Discovery (Gately):**
+- ConnectionManager was missing its import in Application.ts
+- ConnectionManager property was never initialized
+- Without it, connection lifecycle wasn't managed
+- Fixed in same PR
+
+**Review & Merge (Hal):**
+- Approved PR #78
+- Rebased on dev: one automatic conflict resolution (Gately's earlier fix)
+- Squash-merged as c740333
+- Closed issue #77
+- 189 tests passing
+
+**Decision Recorded:**
+- Lobby E2E best practice: use unique names + row-scoped assertions
+- Prevents test coupling and enables order-independent suites
+- Recorded in decisions.md
+
 ## Work Complete — Issue #46: Backgammon Logic and Plugin Tests (2026-03-14)
 
 - Created comprehensive test suite for Backgammon plugin with 83 tests covering:
