@@ -17,7 +17,6 @@ import type { LobbyEvent } from "./ui/LobbyScreen";
 
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
-const LOBBY_ROOM_NAME = "lobby";
 const STATUS_MARGIN = 12;
 const STATUS_HIDE_DELAY_MS = 2500;
 const DISPLAY_NAME_STORAGE_KEY = "playgrid.display-name";
@@ -30,12 +29,6 @@ type StatusOptions = {
   visibleInGame?: boolean;
 };
 type RoomWithOptionalId = ColyseusRoom & { id?: string; roomId?: string };
-
-function getServerUrl(): string {
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const host = window.location.hostname || "localhost";
-  return `${protocol}://${host}:2567`;
-}
 
 function createStatusText(app: PixiApplication): Text {
   const statusText = new Text({
@@ -100,7 +93,9 @@ export class PlaygridApp {
 
     gameContainer.appendChild(this.pixiApp.canvas);
 
-    this.client = new Client(getServerUrl());
+    this.connectionManager = new ConnectionManager();
+    this.setupConnectionListeners();
+
     this.sceneManager = new SceneManager(this.pixiApp.stage);
     this.sceneManager.register(this.lobbyScene);
     this.sceneManager.register(this.waitingRoomScene);
@@ -125,8 +120,7 @@ export class PlaygridApp {
     this.setStatus("Joining game room…", { persistent: true, visibleInGame: true });
 
     try {
-      const joinOptions = spectator ? { spectator: true } : {};
-      const room = (await this.client.joinById(roomId, joinOptions)) as ColyseusRoom;
+      const room = await this.connectionManager.joinGame(roomId, { spectator });
       const roomLabel = this.getRoomLabel(room);
       this.gameRoom = room;
       this.bindGameRoom(room);
@@ -149,19 +143,12 @@ export class PlaygridApp {
 
   async leaveGame(): Promise<void> {
     const room = this.gameRoom;
-    if (!room) {
-      await this.showLobby();
-      return;
-    }
+    const roomLabel = this.getRoomLabel(room);
 
     this.gameRoom = null;
 
-    try {
-      await room.leave();
-      console.log(`[playgrid] Left game room ${this.getRoomLabel(room)}`);
-    } catch (error) {
-      console.error("[playgrid] Failed to leave game room:", error);
-    }
+    await this.connectionManager.leaveGame(room);
+    console.log(`[playgrid] Left game room ${roomLabel}`);
 
     await this.showLobby({ message: "Game room closed. Back in the lobby.", tone: "info" });
   }
@@ -175,7 +162,7 @@ export class PlaygridApp {
 
     try {
       const joinOptions = this.displayName ? { displayName: this.displayName } : undefined;
-      const room = (await this.client.joinOrCreate(LOBBY_ROOM_NAME, joinOptions)) as ColyseusRoom;
+      const room = await this.connectionManager.joinLobby(joinOptions);
       this.lobbyRoom = room;
       this.lobbyScene.bindToRoom(room);
       this.lobbyScene.setDisplayName(this.displayName);
@@ -189,19 +176,10 @@ export class PlaygridApp {
 
         void this.handleLobbyRoomLeave(room, code);
       });
-
-      room.onError((code, message) => {
-        if (this.lobbyRoom?.id !== room.id) {
-          return;
-        }
-
-        console.error(`[playgrid] Lobby error ${code}: ${message}`);
-        this.setStatus(`Lobby error: ${message}`, { tone: "error", persistent: true });
-        this.lobbyScene.showNotice(message, "error");
-      });
     } catch (error) {
       console.error("[playgrid] Lobby connection failed:", error);
-      const message = error instanceof Error ? error.message : "Connection failed — is the server running?";
+      const message =
+        error instanceof Error ? error.message : "Connection failed — is the server running?";
       await this.transitionTo(this.lobbyScene.name);
       this.lobbyScene.setDisplayName(this.displayName);
       this.setStatus(message, { tone: "error", persistent: true });
@@ -266,20 +244,6 @@ export class PlaygridApp {
       this.gameRoom = null;
       void this.showLobby({ message: "Game room closed. Back in the lobby.", tone: "info" });
     });
-
-    room.onError((code, message) => {
-      if (this.gameRoom !== room) {
-        return;
-      }
-
-      console.error(`[playgrid] Game room error ${code}: ${message}`);
-      this.setStatus(`Game error: ${message}`, {
-        tone: "error",
-        persistent: true,
-        visibleInGame: true,
-      });
-      this.lobbyScene.showNotice(message, "error");
-    });
   }
 
   private async handleLobbyRoomLeave(room: ColyseusRoom, code: number): Promise<void> {
@@ -292,6 +256,8 @@ export class PlaygridApp {
     this.waitingRoomScene.hideOverlay();
     this.lobbyScene.showConnectionError("Lost connection to the lobby room.");
     this.setStatus("Lobby disconnected.", { tone: "error", persistent: true });
+
+    this.connectionManager.attemptReconnect(() => this.connectToLobby());
   }
 
   private async showLobby(notice?: Notice): Promise<void> {
@@ -390,11 +356,7 @@ export class PlaygridApp {
       const room = this.lobbyRoom;
       this.lobbyRoom = null;
       if (room) {
-        try {
-          await room.leave();
-        } catch (error) {
-          console.error("[playgrid] Failed to refresh lobby connection:", error);
-        }
+        await this.connectionManager.leaveGame(room);
       }
 
       await this.connectToLobby({ message: "Player name saved.", tone: "info" });
@@ -445,8 +407,41 @@ export class PlaygridApp {
   }
 
   private ensureInitialized(): void {
-    if (!this.client || !this.sceneManager || !this.pixiApp) {
+    if (!this.connectionManager || !this.sceneManager || !this.pixiApp) {
       throw new Error("PlaygridApp is not initialized.");
     }
+  }
+
+  private setupConnectionListeners(): void {
+    this.connectionManager.on((event) => {
+      if ("state" in event) {
+        this.handleConnectionStateChange(event);
+      } else {
+        this.handleConnectionError(event);
+      }
+    });
+  }
+
+  private handleConnectionStateChange(event: ConnectionStateChangeEvent): void {
+    const { state, previousState } = event;
+
+    if (state === ConnectionState.RECONNECTING) {
+      this.setStatus("Reconnecting…", { tone: "error", persistent: true });
+    } else if (
+      state === ConnectionState.CONNECTED &&
+      previousState === ConnectionState.RECONNECTING
+    ) {
+      this.setStatus("Reconnected!", { tone: "info" });
+    }
+  }
+
+  private handleConnectionError(event: ConnectionErrorEvent): void {
+    const { message, context } = event;
+
+    if (context === "lobby" || context === "joinLobby") {
+      this.lobbyScene.showNotice(message, "error");
+    }
+
+    this.setStatus(`Error: ${message}`, { tone: "error", persistent: true });
   }
 }
