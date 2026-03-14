@@ -39,3 +39,41 @@
 - **PR #55:** Merged (squad/54-fix-room-undefined-overlay) — "Fix: room.id undefined in status text, HUD repositioning"
 - **Changes:** room.roomId fallback, top-left HUD toast with auto-hide for info states.
 - **Impact:** Connection status no longer obstructs gameplay. Room identifiers resolved safely.
+
+## Session: E2E Test Suites (Lobby & Checkers) (2026-03-14)
+
+**Status:** ✅ Complete  
+**PRs Merged:** #57 (E2E Lobby tests), #58 (E2E Checkers tests)  
+**Issues Closed:** #52, #53  
+**Session Log:** `.squad/log/2026-03-14T18-10-00Z-e2e-tests.md`
+
+**Work Completed:**
+- **PR #57:** E2E Playwright tests for Lobby (14 files, +442/-10)
+  - Dedicated `playwright.lobby.config.ts` config
+  - Tests cover game list, player join, waiting room, player limits, gameType propagation
+  - Approved by Hal, merged to dev
+  
+- **PR #58:** E2E Playwright tests for Checkers (3 files, +524)
+  - Grey Box E2E pattern: UI via DOM, moves via `window.__PLAYGRID_E2E__.app.gameRoom` harness
+  - 31-move deterministic sequence covers promotion, king movement, win detection
+  - Approved by Hal, merged to dev
+
+**Conflict Resolution:**
+- Both PRs and PR #55 modified `client/src/Application.ts`
+- Coordinator combined room status HUD (from #55) + E2E harness (from #57)
+- Both PRs rebased and merged without issues
+
+**Key Learnings (captured in history):**
+1. Lobby gameType coverage lives in `server/src/__tests__/lobby-pregame.test.ts`
+2. Useful seams: mocked `gameRegistry`, `GAME_LIST`/`GAME_UPDATED` payload assertions
+3. Browser E2E selectors: `#lobby-overlay`, `#waiting-room-overlay`, `input[name="player-name"]`, `.waiting-room-player-name`
+4. Checkers E2E stable with deterministic 31-move sequence covering promotion, king movement, no-valid-moves win
+
+**Pattern Approved (Hal):**
+- **Grey Box E2E** is canonical for all game plugins (Backgammon, Dominoes, Poker, etc.)
+- Template: Use Playwright for UI, harness for game moves, assertions on server state
+
+**Cross-Agent Impact:**
+- **Gately:** Checkers E2E now gates game rendering; PR #55 tests pass
+- **Pemulis:** Plugin system design should reference Grey Box pattern; each plugin must expose `window.__PLAYGRID_E2E__.app.gameRoom`
+- **Future Game Authors:** Refer to PR #58 (Checkers E2E) as template for all game plugin E2E

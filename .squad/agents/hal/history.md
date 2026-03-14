@@ -72,3 +72,29 @@
 - **Available to you:** Issue templates (bug-report.yml, feature-request.yml, chore.yml), CONTRIBUTING.md, updated README.md
 - **Impact:** All agents can now use structured issue templates and refer to CONTRIBUTING.md for contributor guidance.
 
+## Session: E2E Test Suites (Lobby & Checkers) (2026-03-14)
+
+**Status:** ✅ Complete  
+**PRs Merged:** #57 (E2E Lobby tests), #58 (E2E Checkers tests)  
+**Issues Closed:** #52, #53  
+**Session Log:** `.squad/log/2026-03-14T18-10-00Z-e2e-tests.md`
+
+**Work Completed:**
+- **Steeply:** Wrote comprehensive E2E test suites for Lobby (PR #57) and Checkers (PR #58)
+- **You (Hal):** Reviewed both PRs, approved both, documented testing strategy decisions
+- **Coordinator:** Resolved merge conflicts in Application.ts, merged both PRs to dev
+
+**Key Decisions Approved:**
+1. **Grey Box E2E Pattern** — All game plugins must use Playwright for UI + `window.__PLAYGRID_E2E__.app.gameRoom` harness for moves. Assertions on server state, not pixel output.
+2. **Dedicated Lobby Config** — `playwright.lobby.config.ts` isolates lobby tests from unrelated specs.
+3. **PR Review Gate** — PRs targeting `dev` must be independently reviewable; no unrelated commits from stacked branches without rebase.
+
+**Pattern Established:**
+- Checkers E2E (PR #58) is the canonical template for all future game plugins (Backgammon, Dominoes, Poker, etc.)
+- Grey Box E2E approach documented in decisions.md and session log
+
+**Cross-Agent Impact:**
+- **Gately:** Checkers E2E gates game rendering work; PR #55 (room status HUD) is tested and merged
+- **Pemulis:** Plugin system design should reference Grey Box E2E; each plugin author must expose `window.__PLAYGRID_E2E__.app.gameRoom`
+- **Future:** Template available for all game plugin E2E testing
+
