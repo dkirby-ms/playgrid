@@ -63,8 +63,18 @@ export class PlaygridApp {
     void this.handleGameSceneEvent(event);
   });
 
+  private createVersionFooter(): void {
+    const footer = document.createElement("div");
+    footer.textContent = `v${__APP_VERSION__}`;
+    footer.style.cssText =
+      "position:fixed;bottom:4px;right:8px;font-size:11px;color:rgba(255,255,255,0.3);pointer-events:none;z-index:999;font-family:monospace";
+    document.body.appendChild(footer);
+  }
+
   async init(container: HTMLElement): Promise<void> {
     const gameContainer = this.getGameContainer(container);
+
+    this.createVersionFooter();
 
     this.pixiApp = new PixiApplication();
     await this.pixiApp.init({
