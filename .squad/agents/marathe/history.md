@@ -16,6 +16,8 @@
 - 2026-03-14: Built `.github/workflows/ci.yml` for pushes and PRs on `dev` with docs-only path ignores, SHA-pinned `actions/checkout` + `actions/setup-node`, `npm ci`, `npm run build`, `npm run test`, minimal `contents: read` permissions, and PR/ref-based concurrency cancellation. Regenerated the root `package-lock.json` with npm's legacy peer-deps resolver so plain `npm ci` works for the workspace monorepo.
 - 2026-03-14: Issue #8 uses a root `eslint.config.js` flat config with `typescript-eslint`, browser globals for `client/`, Node globals for `server/` and `shared/`, and `dist/` ignored so post-build linting stays clean across the workspace monorepo.
 - 2026-03-14: Issue #6 adds a two-stage Node 22 Alpine Docker build; the runtime stage installs only `server` + `shared` production workspace dependencies, and exposes the built client bundle through `server/client/dist` via a symlink to keep the image lean while matching `server/src/index.ts`.
+- 2026-03-14: Dev stays local-only (no Azure dev deployment); local PostgreSQL now lives in root `docker-compose.yml` as `postgres:15-alpine` with a `postgres-data` volume and `pg_isready` health check for easy `docker compose up` startup.
+- 2026-03-14: Local DB wiring lives in `.env.example`, root `package.json` (`db:up`, `db:down`, `db:logs`), and `server/package.json`, which now loads repo-root `.env` during `npm run dev` via `node --env-file-if-exists=../.env --import tsx`.
 
 ### 2026-03-14: Deployment Pipeline Analysis — Recommendations for PlayGrid
 

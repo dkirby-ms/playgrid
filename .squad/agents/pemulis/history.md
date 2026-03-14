@@ -257,3 +257,25 @@
 - Use string properties for all custom dimensions (Application Insights requirement)
 - No-op pattern when telemetryClient is null (connection string missing or initialization failed)
 - Track custom events at key lifecycle moments vs relying solely on auto-collection for better business insights
+
+## Cross-Agent Update — Local PostgreSQL Dev Infrastructure (2026-03-14T21:30:36Z)
+
+**From:** Squad Scribe  
+**Event:** Marathe completed local PostgreSQL setup for dev environment
+
+**What Changed:**
+- `docker-compose.yml` — Root service: postgres:15-alpine with named volume and health check
+- `.env.example` — Template for `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/playgrid_dev`
+- Helper scripts — Database initialization and cleanup utilities
+- All tests passed; build/lint successful
+
+**Why This Matters for You:**
+- **Database Target:** Your server code now has a stable, local PostgreSQL instance to target
+- **Environment Variable:** Read `DATABASE_URL` from `.env` in your server initialization (see `.env.example` template)
+- **No Azure for Dev:** Local-only per user directive; UAT/prod remain on Azure infrastructure
+- **Production Parity:** Postgres 15 in dev matches production closely, reducing environment-specific bugs
+
+**Action Items (when ready):**
+1. Update server/src/index.ts to initialize database connection from `DATABASE_URL` env var
+2. Verify game persistence queries (gameRepository.ts) work against the local database
+3. Document connection string in dev setup guide for new team members

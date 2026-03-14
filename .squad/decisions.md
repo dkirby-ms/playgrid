@@ -1379,3 +1379,53 @@ User request — captured for team memory and future upgrade planning.
 - Tests can run in parallel without flaky failures
 - Team can add new E2E tests with confidence
 - Clear pattern for future browser/UI E2E work
+
+---
+
+## Session: Local Development Infrastructure (2026-03-14)
+
+### User Directive: Dev Environment Stays Local
+
+**Status:** Approved  
+**Date:** 2026-03-14T21:26:05Z  
+**By:** dkirby-ms  
+
+**Decision:** No Azure deployment for the dev environment — only UAT and prod need Azure infrastructure. Dev runs locally.
+
+**Rationale:**
+- Developer experience: Fast feedback cycles without cloud infrastructure setup
+- Cost efficiency: Avoid staging Azure resources for individual developers
+- Isolation: Dev work doesn't depend on shared cloud services
+- Local reproducibility: Issues in local env match production closely
+
+---
+
+### Marathe: Local PostgreSQL for Development
+
+**Status:** Approved  
+**Date:** 2026-03-14T21:38:00Z  
+
+**Decision:** Standardize local-only development on a root `docker-compose.yml` PostgreSQL service (`postgres:15-alpine`) with a named data volume, health check, and repo-root `.env.example` for `DATABASE_URL`.
+
+**Implementation:**
+- Service: `postgres:15-alpine` (matches production version)
+- Volume: Named volume for persistence across restart
+- Health Check: Ensures postgres is ready before dependent services
+- Environment Template: `.env.example` with `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/playgrid_dev`
+- Helper Scripts: Database initialization and cleanup utilities
+
+**Rationale:**
+- Alignment: Postgres 15 in dev matches production, reducing environment surprises
+- Reliability: Health checks prevent race conditions
+- Persistence: Data survives `docker-compose down/up` cycles
+- Discoverability: `.env.example` makes setup clear for new team members
+
+**Impact:**
+- Server team (Pemulis, Gately) has a stable database target for local development
+- No Azure credentials needed for dev work
+- Consistent foundation for database schema migrations and seed data
+- Clear upgrade path: Change postgres version in one place for team-wide update
+
+**Follow-up:**
+- Server code must read `DATABASE_URL` from environment
+- Test/UAT/prod deployment pipelines remain independent
