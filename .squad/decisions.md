@@ -1105,3 +1105,240 @@ User request — captured for team memory and future upgrade planning.
 - Client-side "Reconnecting..." UI (Issue #50)
 - Lobby reconnection support
 - Per-game timeout configuration
+
+---
+
+## Session: Phase 2 Wave 4 (2026-03-14)
+
+### Gately: Backgammon Renderer Implementation Pattern
+
+**Status:** Approved  
+**Date:** 2026-03-14  
+**PR:** #70  
+**Issue:** #45
+
+**Decision:** Established pattern for rendering complex board games with stacked pieces, multiple zones (bar, borne-off), and dynamic dice state.
+
+**Key Choices:**
+- 24 triangular points in 4 quadrants, point numbering matches backgammon convention
+- Piece stacking: Max 5 visible pieces per point, count labels above 5th piece
+- Dice rendering: Standard die face patterns, dimmed for used dice, doubles support
+- Interactive zones: Transparent clickable polygons, green/yellow highlighting for valid targets
+- State: Signed integers for piece positions (positive=Black, negative=Red), synced from server
+
+**Rationale:**
+- Visual clarity: Stacking limit prevents overcrowding while showing exact counts
+- Usability: Large interactive zones and clear highlighting improve click accuracy
+- Server-authority: All move validation defers to server
+- Consistent pattern: Follows CheckersRenderer for maintainability
+- Responsive: Dynamic layout calculation scales to all screen sizes
+
+**Impact on Future:**
+- Template for games with multiple zones (Dominoes, Poker chips)
+- Dice rendering reusable for Yahtzee, Monopoly
+- Stacking display applicable to chip-based games
+- Interactive zone pattern scales to Risk, other complex boards
+
+---
+
+### Hal: Wave 4 Review & Merge Strategy
+
+**Status:** Approved  
+**Date:** 2026-03-14  
+**PRs:** #68 (Marathe), #69 (Steeply), #70 (Gately), #71 (Pemulis)  
+**Issues:** #32, #36, #45, #46
+
+**Decision:** Backgammon game (logic + tests + renderer), spectator mode, and production infrastructure complete.
+
+**Wave 4 Merge Sequence:**
+1. PR #68 (Bicep) — Clean merge, infrastructure independent
+2. PR #69 (Tests) — Clean merge, test files independent
+3. PR #70 (Renderer) — Resolved conflicts with #68 & #69, CI passed
+4. PR #71 (Spectator) — Fixed test expectation (maxClients legitimate change), resolved conflict with #70, CI passed
+
+**Key Learnings:**
+- Conflict resolution: `git fetch origin dev && git merge origin/dev` pattern effective
+- Test discipline: New failures must be fixed before merge, not pushed through
+- Architecture coherence: Backgammon fits plugin pattern, spectator leverages Colyseus broadcast
+
+**Security Review (Bicep):**
+- ✅ Managed identity over admin credentials
+- ✅ RBAC with minimum privilege scoping
+- ✅ OIDC for CI/CD, no long-lived PATs
+- ✅ Secrets in Key Vault, not environment variables
+- ✅ Environment-specific sizing (Burstable for dev/uat, GeneralPurpose for prod)
+
+**Outcome:** All 4 PRs merged cleanly. Backgammon fully playable with tests, renderer, and spectator support. Infrastructure production-ready.
+
+---
+
+## Session: Phase 2 Wave 5 (2026-03-14)
+
+### Steeply: Game Persistence Testing Pattern
+
+**Status:** Approved  
+**Date:** 2026-03-14  
+**PR:** #72  
+**Issue:** #34
+
+**Decision:** Established comprehensive test pattern for persistence layer (gameRepository).
+
+**Coverage:**
+- createGame, endGame, addParticipant functions (all covered)
+- Edge cases: Constraint violations, foreign key errors, concurrent operations, null/empty values, large inputs
+- Error paths: Database down, connection errors, constraint violations, transaction failures
+- Concurrent operations: Promise.all scenarios for realistic load
+
+**Test Quality:**
+- Mock patterns: Clean vi.fn() usage, proper TypeScript casting
+- Isolation: beforeEach resets mocks, no shared state
+- Naming: Clear test descriptions
+- Patterns: Consistent with Vitest best practices
+
+**Rationale:**
+- Database layer is critical path for game persistence
+- Comprehensive mocking enables fast, deterministic tests
+- Edge case coverage prevents production surprises
+- Concurrent operation testing validates transaction isolation
+
+**Impact:**
+- Sets benchmark for future database testing
+- Enables confident refactoring of gameRepository
+- Provides foundation for adding new persistence operations
+- Documentation via test cases for expected behavior
+
+---
+
+### Marathe: Discord Webhook Automation via Composite Action
+
+**Status:** Approved  
+**Date:** 2026-03-14  
+**PR:** #73  
+**Issue:** #43
+
+**Decision:** Refactor Discord webhook notifications into reusable composite action, eliminating duplication across 3 workflows.
+
+**Change:**
+- Extracted 180+ lines of duplicated curl logic into `.github/actions/discord-notify/action.yml`
+- Enhanced format: Added deployment URL field, shortened commit SHA to 7 chars, workflow run links
+- Simplified conditional: Replaced separate success/failure steps with `if: always()` + `${{ job.status }}`
+- Centralized secret: Uses `${{ secrets.DISCORD_WEBHOOK_URL }}` from GitHub Environments
+
+**Workflows Updated:**
+- deploy-dev.yml
+- deploy-uat.yml
+- deploy-prod.yml
+
+**Code Impact:** -183 lines +161 lines = net -22 lines with major maintainability improvement
+
+**Rationale:**
+- DRY principle: Single source of truth for webhook format
+- Maintainability: Future webhook format changes require one file edit, not three
+- Consistency: All environments use identical notification format
+- Reusability: Composite action pattern scales to other multi-environment notifications
+
+**Impact:**
+- Webhook format changes now happen in one place
+- Easier to add new fields to Discord notifications
+- Cleaner workflow files, easier to audit CI/CD logic
+
+---
+
+### Gately: Client Connection Manager State Machine
+
+**Status:** Approved  
+**Date:** 2026-03-14  
+**PR:** #74  
+**Issue:** #38
+
+**Decision:** Extract Colyseus connection logic into dedicated ConnectionManager class with clear state machine and reconnection handling.
+
+**State Machine:**
+- DISCONNECTED → CONNECTING → CONNECTED → RECONNECTING → CONNECTED
+- Clear transitions, no invalid state combinations
+- State changes trigger observer callbacks
+
+**Reconnection Logic:**
+- Exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s (capped)
+- Max 5 reconnection attempts
+- Cancellable timeouts for clean shutdown
+- Complements server-side reconnection support (PR #61)
+
+**Code Changes:**
+- Created `client/src/services/ConnectionManager.ts`
+- Application.ts: Removed 52 lines of tangled connection logic, added 47 lines of clean delegation
+- Removed duplicate onError handlers per room, consolidated in ConnectionManager
+
+**Rationale:**
+- State machine clarity: Eliminates implicit state via scattered flags
+- Robustness: Exponential backoff prevents hammering server, max attempts prevent infinite loops
+- Maintainability: Single source of truth for networking state
+- Error centralization: All connection errors flow through ConnectionManager error handler
+- Graceful degradation: Failed connections don't crash app
+
+**Impact:**
+- Application.ts significantly cleaner
+- Reconnection UX improvements now made in one place
+- Error handling consolidated and testable
+- State transitions clear and auditable
+
+---
+
+### Pemulis: Application Insights Observability Integration
+
+**Status:** Approved  
+**Date:** 2026-03-14  
+**PR:** #75  
+**Issue:** #40
+
+**Decision:** Integrate Azure Application Insights for server-side observability and custom event tracking.
+
+**Custom Events (6 tracked):**
+1. room_created — Game room instantiated (gameType, roomId, gameId)
+2. player_connected — Player joins (includes isSpectator flag)
+3. player_reconnected — Existing player reconnects
+4. player_disconnected — Player leaves (includes phase, close code)
+5. game_started — Game begins (includes playerCount)
+6. game_ended — Game completes (includes resultType, durationSeconds)
+
+**Exception Tracking:**
+- Unhandled rejections captured with source context
+- Uncaught exceptions captured with stack traces
+- Both instrumented at process level
+
+**Auto-Collection:**
+- HTTP requests
+- Performance metrics
+- Exceptions (redundant with custom tracking)
+- Dependencies
+- Console logs
+- Disk retry caching for offline resilience
+
+**Configuration:**
+- Graceful no-op: When `APPLICATIONINSIGHTS_CONNECTION_STRING` missing, telemetry disabled (local dev friendly)
+- All trackEvent/trackException calls wrapped in try/catch (telemetry failures don't crash games)
+- Environment variables configure connection string in Azure Environments (dev/uat/prod)
+
+**Rationale:**
+- Native Azure integration (server runs on Container App)
+- Custom events at lifecycle moments enable powerful analytics (game popularity, session duration, failure modes)
+- Graceful degradation: No local dev friction, production telemetry optional
+- Defensive coding: Telemetry infrastructure can't bring down game server
+- Business insights: Beyond system metrics, track what players do
+
+**Performance:**
+- <1ms per event
+- Async telemetry pipeline, non-blocking
+- Minimal memory overhead
+
+**Impact:**
+- Full visibility into game lifecycle from room creation to end
+- Debug visibility: Stack traces for unhandled errors
+- Analytics capability: Query custom events for business insights
+- Production readiness: Telemetry foundation for monitoring scaled deployments
+
+**Future Enhancements:**
+- Add custom metrics for duration percentiles, player count distribution
+- Track action-level events for popular moves
+- Implement sampling for high-volume events
+- Add user-id tracking post-authentication
