@@ -11,6 +11,7 @@ import { gameRegistry } from "./GameRegistry.js";
 import { TurnManager } from "./TurnManager.js";
 import { getPool } from "../db.js";
 import * as gameRepository from "../db/gameRepository.js";
+import { trackEvent } from "../telemetry.js";
 
 interface BaseGameRoomOptions extends GameOptions {
   gameType?: string;
@@ -76,6 +77,11 @@ export class BaseGameRoom extends Room {
         gameType,
         playerIds: [],
       });
+      trackEvent("room_created", {
+        gameType,
+        roomId: this.roomId,
+        gameId: this.gameId,
+      });
     } catch (error) {
       console.error("[BaseGameRoom] Failed to create game in DB:", error);
     }
@@ -85,6 +91,11 @@ export class BaseGameRoom extends Room {
     const existingPlayer = this.state.players.get(client.sessionId);
     if (existingPlayer) {
       existingPlayer.isConnected = true;
+      trackEvent("player_reconnected", {
+        gameType: this.plugin.name,
+        roomId: this.roomId,
+        sessionId: client.sessionId,
+      });
       return;
     }
 
@@ -102,6 +113,12 @@ export class BaseGameRoom extends Room {
 
     this.state.players.set(client.sessionId, player);
     this.plugin.lifecycle.onPlayerJoin?.(this.state, client, playerIndex);
+    trackEvent("player_connected", {
+      gameType: this.plugin.name,
+      roomId: this.roomId,
+      sessionId: client.sessionId,
+      isSpectator: String(isSpectator),
+    });
 
     if (this.gameId) {
       try {
@@ -128,6 +145,13 @@ export class BaseGameRoom extends Room {
     }
 
     player.isConnected = false;
+    trackEvent("player_disconnected", {
+      gameType: this.plugin.name,
+      roomId: this.roomId,
+      sessionId: client.sessionId,
+      phase: this.state.phase,
+      code: String(code),
+    });
 
     if (
       this.state.phase === "playing" &&
@@ -259,6 +283,12 @@ export class BaseGameRoom extends Room {
     this.turnManager.startTurns();
     this.state.currentTurn = this.turnManager.getCurrentPlayer();
     this.state.turnNumber = this.turnManager.getTurnNumber();
+    trackEvent("game_started", {
+      gameType: this.plugin.name,
+      roomId: this.roomId,
+      gameId: this.gameId ?? "",
+      playerCount: String(playerIds.length),
+    });
   }
 
   private advanceTurn() {
@@ -341,6 +371,13 @@ export class BaseGameRoom extends Room {
           gameId: this.gameId,
           outcome: result as unknown as Record<string, unknown>,
           durationSeconds,
+        });
+        trackEvent("game_ended", {
+          gameType: this.plugin.name,
+          roomId: this.roomId,
+          gameId: this.gameId,
+          resultType: result.type,
+          durationSeconds: String(durationSeconds),
         });
       } catch (error) {
         console.error("[BaseGameRoom] Failed to end game in DB:", error);

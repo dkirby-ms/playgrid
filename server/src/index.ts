@@ -7,6 +7,7 @@ import { WebSocketTransport } from "@colyseus/ws-transport";
 import { config } from "./config.js";
 import { connectDb } from "./db.js";
 import { BaseGameRoom } from "./game/BaseGameRoom.js";
+import { initializeTelemetry, trackException } from "./telemetry.js";
 import { gameRegistry } from "./game/GameRegistry.js";
 import { checkersPlugin } from "./games/checkers/index.js";
 import { backgammonPlugin } from "./games/backgammon/index.js";
@@ -55,6 +56,7 @@ server.define("lobby", LobbyRoom);
 
 const startServer = async () => {
   try {
+    initializeTelemetry();
     await connectDb();
     await server.listen(config.port);
     console.log(`[playgrid] Server listening on http://localhost:${config.port} and ws://localhost:${config.port}`);
@@ -63,5 +65,18 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
+process.on("unhandledRejection", (reason: unknown) => {
+  console.error("[playgrid] Unhandled rejection:", reason);
+  if (reason instanceof Error) {
+    trackException(reason, { source: "unhandledRejection" });
+  }
+});
+
+process.on("uncaughtException", (error: Error) => {
+  console.error("[playgrid] Uncaught exception:", error);
+  trackException(error, { source: "uncaughtException" });
+  process.exit(1);
+});
 
 void startServer();
