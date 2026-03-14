@@ -174,3 +174,10 @@
 - Extended the renderer init context so `GameScene` passes the active Colyseus room into renderers, letting checkers compare `room.sessionId` against `state.currentTurn` and send `move` messages directly.
 - Added focused client-side tests for the new move helper and re-verified the workspace with `npm run build && npm run lint && npm run test`.
 
+### 2026-03-14: Checkers Status HUD + Endgame Overlay (Issue #27)
+
+- Expanded `client/src/renderers/CheckersRenderer.ts` with a centered turn indicator, a persistent local-color label, and live black/red piece counters that recalculate from board state on every sync.
+- Reserved HUD space in the renderer layout so the new Pixi text elements stay readable above and below the board while continuing to resize responsively with the checkers scene.
+- Subscribed the renderer to the Colyseus `game-end` room message so it can show a semi-transparent board overlay with win/lose/draw messaging when the shared state reaches `phase === "ended"`.
+- Re-verified the workspace with `npm run build && npm run lint && npm run test` after the polish pass.
+

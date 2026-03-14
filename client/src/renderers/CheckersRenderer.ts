@@ -3,8 +3,10 @@ import {
   BLACK,
   BLACK_KING,
   EMPTY,
+  RED,
   RED_KING,
   type CheckersState,
+  type GameResult,
 } from "@eschaton/playgrid-shared";
 import { Container, Graphics, Text } from "pixi.js";
 import {
@@ -28,6 +30,16 @@ const PIECE_OUTLINE_COLOR = 0x111111;
 const SELECTED_SQUARE_COLOR = 0xf7e36a;
 const VALID_TARGET_COLOR = 0x53d769;
 const VALID_TARGET_ALPHA = 0.8;
+const HUD_TEXT_COLOR = 0xffffff;
+const SUBTLE_TEXT_COLOR = 0xd7d9df;
+const TURN_READY_COLOR = 0x53d769;
+const TURN_WAITING_COLOR = 0xc0c4cf;
+const OVERLAY_BACKDROP_COLOR = 0x000000;
+const OVERLAY_BACKDROP_ALPHA = 0.66;
+const VIEW_PADDING = 24;
+const TOP_HUD_SPACE = 104;
+const BOTTOM_HUD_SPACE = 60;
+const GAME_ENDED_MESSAGE = "game-end";
 const NO_FORCED_CAPTURE = -1;
 
 type PlayerSnapshot = {
@@ -41,23 +53,102 @@ export class CheckersRenderer implements GameRenderer {
 
   private readonly boardLayer = new Container();
   private readonly piecesLayer = new Container();
+  private readonly overlayLayer = new Container();
+  private readonly overlayBackground = new Graphics();
+  private readonly statusText = new Text({
+    text: "",
+    style: {
+      fontFamily: "sans-serif",
+      fontSize: 28,
+      fontWeight: "700",
+      fill: TURN_WAITING_COLOR,
+      align: "center",
+    },
+  });
+  private readonly playerColorText = new Text({
+    text: "",
+    style: {
+      fontFamily: "sans-serif",
+      fontSize: 18,
+      fontWeight: "600",
+      fill: SUBTLE_TEXT_COLOR,
+      align: "center",
+    },
+  });
+  private readonly blackCountText = new Text({
+    text: "",
+    style: {
+      fontFamily: "sans-serif",
+      fontSize: 20,
+      fontWeight: "600",
+      fill: HUD_TEXT_COLOR,
+    },
+  });
+  private readonly redCountText = new Text({
+    text: "",
+    style: {
+      fontFamily: "sans-serif",
+      fontSize: 20,
+      fontWeight: "600",
+      fill: RED_PIECE_COLOR,
+    },
+  });
+  private readonly overlayTitleText = new Text({
+    text: "",
+    style: {
+      fontFamily: "sans-serif",
+      fontSize: 40,
+      fontWeight: "800",
+      fill: HUD_TEXT_COLOR,
+      align: "center",
+      wordWrap: true,
+      wordWrapWidth: DEFAULT_WIDTH * 0.7,
+    },
+  });
+  private readonly overlaySubtitleText = new Text({
+    text: "",
+    style: {
+      fontFamily: "sans-serif",
+      fontSize: 20,
+      fontWeight: "500",
+      fill: SUBTLE_TEXT_COLOR,
+      align: "center",
+      wordWrap: true,
+      wordWrapWidth: DEFAULT_WIDTH * 0.7,
+    },
+  });
   private readonly squareGraphics: Graphics[] = [];
   private room: Room | null = null;
+  private unsubscribeGameEnded: (() => void) | null = null;
   private board: number[] = Array.from({ length: BOARD_CELL_COUNT }, () => EMPTY);
+  private phase = "waiting";
   private currentTurn = "";
   private mustCaptureFrom = NO_FORCED_CAPTURE;
   private players = new Map<string, PlayerSnapshot>();
+  private gameResult: GameResult | null = null;
   private selectedIndex: number | null = null;
   private validTargetIndexes = new Set<number>();
   private width = DEFAULT_WIDTH;
   private height = DEFAULT_HEIGHT;
-  private squareSize = Math.min(DEFAULT_WIDTH, DEFAULT_HEIGHT) / BOARD_DIMENSION;
+  private squareSize = Math.min(DEFAULT_WIDTH, DEFAULT_HEIGHT - TOP_HUD_SPACE - BOTTOM_HUD_SPACE)
+    / BOARD_DIMENSION;
   private boardSize = this.squareSize * BOARD_DIMENSION;
   private boardOffsetX = (DEFAULT_WIDTH - this.boardSize) / 2;
-  private boardOffsetY = (DEFAULT_HEIGHT - this.boardSize) / 2;
+  private boardOffsetY = TOP_HUD_SPACE
+    + ((DEFAULT_HEIGHT - TOP_HUD_SPACE - BOTTOM_HUD_SPACE - this.boardSize) / 2);
 
   constructor() {
     this.piecesLayer.eventMode = "none";
+    this.overlayLayer.eventMode = "none";
+    this.overlayLayer.visible = false;
+    this.statusText.anchor.set(0.5);
+    this.playerColorText.anchor.set(0.5);
+    this.blackCountText.anchor.set(0, 0.5);
+    this.redCountText.anchor.set(1, 0.5);
+    this.overlayTitleText.anchor.set(0.5);
+    this.overlaySubtitleText.anchor.set(0.5);
+
+    this.overlayLayer.addChild(this.overlayBackground, this.overlayTitleText, this.overlaySubtitleText);
 
     for (let index = 0; index < BOARD_CELL_COUNT; index += 1) {
       const square = new Graphics();
@@ -69,16 +160,30 @@ export class CheckersRenderer implements GameRenderer {
       this.boardLayer.addChild(square);
     }
 
-    this.container.addChild(this.boardLayer, this.piecesLayer);
+    this.container.addChild(
+      this.statusText,
+      this.playerColorText,
+      this.boardLayer,
+      this.piecesLayer,
+      this.blackCountText,
+      this.redCountText,
+      this.overlayLayer,
+    );
   }
 
   init(state: unknown, context?: GameRendererContext): void {
+    this.unsubscribeFromRoomEvents();
     this.room = context?.room ?? null;
+    this.gameResult = null;
     this.selectedIndex = null;
     this.validTargetIndexes.clear();
+    this.subscribeToRoomEvents();
     this.applyState(state);
+    this.layout();
     this.redrawBoard();
     this.redrawPieces();
+    this.updateHud();
+    this.updateGameOverOverlay();
   }
 
   onStateChange(state: unknown): void {
@@ -86,6 +191,8 @@ export class CheckersRenderer implements GameRenderer {
     this.syncSelectionWithState();
     this.redrawBoard();
     this.redrawPieces();
+    this.updateHud();
+    this.updateGameOverOverlay();
   }
 
   update(_deltaTime: number): void {}
@@ -93,23 +200,40 @@ export class CheckersRenderer implements GameRenderer {
   resize(width: number, height: number): void {
     this.width = width;
     this.height = height;
-    this.squareSize = Math.min(width, height) / BOARD_DIMENSION;
-    this.boardSize = this.squareSize * BOARD_DIMENSION;
-    this.boardOffsetX = (width - this.boardSize) / 2;
-    this.boardOffsetY = (height - this.boardSize) / 2;
+    this.layout();
     this.redrawBoard();
     this.redrawPieces();
+    this.updateHud();
+    this.updateGameOverOverlay();
   }
 
   handleInput(_event: RendererInputEvent): void {}
 
   destroy(): void {
+    this.unsubscribeFromRoomEvents();
     this.room = null;
     this.players.clear();
     this.validTargetIndexes.clear();
     this.clearPieces();
     this.squareGraphics.length = 0;
     this.container.destroy({ children: true });
+  }
+
+  private layout(): void {
+    const availableWidth = Math.max(BOARD_DIMENSION, this.width - (VIEW_PADDING * 2));
+    const availableHeight = Math.max(BOARD_DIMENSION, this.height - TOP_HUD_SPACE - BOTTOM_HUD_SPACE);
+    this.boardSize = Math.min(availableWidth, availableHeight);
+    this.squareSize = this.boardSize / BOARD_DIMENSION;
+    this.boardOffsetX = (this.width - this.boardSize) / 2;
+    this.boardOffsetY = TOP_HUD_SPACE + ((availableHeight - this.boardSize) / 2);
+
+    const statusCenterY = Math.max(34, this.boardOffsetY * 0.36);
+    this.statusText.position.set(this.width / 2, statusCenterY);
+    this.playerColorText.position.set(this.width / 2, statusCenterY + 30);
+    this.blackCountText.position.set(this.boardOffsetX, this.boardOffsetY + this.boardSize + 28);
+    this.redCountText.position.set(this.boardOffsetX + this.boardSize, this.boardOffsetY + this.boardSize + 28);
+    this.overlayTitleText.style.wordWrapWidth = this.boardSize * 0.75;
+    this.overlaySubtitleText.style.wordWrapWidth = this.boardSize * 0.75;
   }
 
   private redrawBoard(): void {
@@ -188,6 +312,58 @@ export class CheckersRenderer implements GameRenderer {
     this.piecesLayer.addChildAt(pieceGraphics, 0);
   }
 
+  private updateHud(): void {
+    const { text: statusLabel, color: statusColor } = this.getStatusLabel();
+    const { blackCount, redCount } = this.countPieces();
+
+    this.statusText.text = statusLabel;
+    this.statusText.style.fill = statusColor;
+    this.statusText.style.fontSize = Math.max(22, this.squareSize * 0.5);
+    this.playerColorText.text = this.getPlayerColorLabel();
+    this.playerColorText.visible = this.playerColorText.text.length > 0;
+    this.playerColorText.style.fontSize = Math.max(16, this.squareSize * 0.32);
+    this.blackCountText.text = `⚫ Black: ${blackCount}`;
+    this.blackCountText.style.fontSize = Math.max(16, this.squareSize * 0.32);
+    this.blackCountText.style.fill = HUD_TEXT_COLOR;
+    this.redCountText.text = `🔴 Red: ${redCount}`;
+    this.redCountText.style.fontSize = Math.max(16, this.squareSize * 0.32);
+    this.redCountText.style.fill = RED_PIECE_COLOR;
+  }
+
+  private updateGameOverOverlay(): void {
+    const isVisible = this.phase === "ended";
+    this.overlayLayer.visible = isVisible;
+
+    if (!isVisible) {
+      this.overlayTitleText.text = "";
+      this.overlaySubtitleText.text = "";
+      return;
+    }
+
+    this.overlayBackground.clear();
+    this.overlayBackground.rect(
+      this.boardOffsetX,
+      this.boardOffsetY,
+      this.boardSize,
+      this.boardSize,
+    ).fill({ color: OVERLAY_BACKDROP_COLOR, alpha: OVERLAY_BACKDROP_ALPHA });
+
+    this.overlayTitleText.text = this.getGameOverTitle();
+    this.overlayTitleText.style.fontSize = Math.max(28, this.squareSize * 0.68);
+    this.overlayTitleText.position.set(
+      this.boardOffsetX + (this.boardSize / 2),
+      this.boardOffsetY + (this.boardSize / 2) - (this.squareSize * 0.28),
+    );
+
+    this.overlaySubtitleText.text = this.getGameOverSubtitle();
+    this.overlaySubtitleText.visible = this.overlaySubtitleText.text.length > 0;
+    this.overlaySubtitleText.style.fontSize = Math.max(18, this.squareSize * 0.34);
+    this.overlaySubtitleText.position.set(
+      this.boardOffsetX + (this.boardSize / 2),
+      this.boardOffsetY + (this.boardSize / 2) + (this.squareSize * 0.4),
+    );
+  }
+
   private clearPieces(): void {
     for (const child of this.piecesLayer.removeChildren()) {
       child.destroy();
@@ -222,9 +398,27 @@ export class CheckersRenderer implements GameRenderer {
     this.clearSelection();
   }
 
+  private subscribeToRoomEvents(): void {
+    if (!this.room) {
+      return;
+    }
+
+    this.unsubscribeGameEnded = this.room.onMessage<GameResult>(GAME_ENDED_MESSAGE, (result) => {
+      this.gameResult = result;
+      this.updateHud();
+      this.updateGameOverOverlay();
+    });
+  }
+
+  private unsubscribeFromRoomEvents(): void {
+    this.unsubscribeGameEnded?.();
+    this.unsubscribeGameEnded = null;
+  }
+
   private applyState(state: unknown): void {
     const nextState = state as Partial<CheckersState> | null;
     this.board = this.parseBoard(nextState);
+    this.phase = typeof nextState?.phase === "string" ? nextState.phase : "waiting";
     this.currentTurn = typeof nextState?.currentTurn === "string" ? nextState.currentTurn : "";
     this.mustCaptureFrom = Number.isInteger(nextState?.mustCaptureFrom)
       ? Number(nextState.mustCaptureFrom)
@@ -265,6 +459,106 @@ export class CheckersRenderer implements GameRenderer {
     this.validTargetIndexes = new Set(this.getMovesForSquare(index).map((move) => move.to));
   }
 
+  private countPieces(): { blackCount: number; redCount: number } {
+    let blackCount = 0;
+    let redCount = 0;
+
+    for (const piece of this.board) {
+      if (piece === BLACK || piece === BLACK_KING) {
+        blackCount += 1;
+      } else if (piece === RED || piece === RED_KING) {
+        redCount += 1;
+      }
+    }
+
+    return { blackCount, redCount };
+  }
+
+  private getStatusLabel(): { text: string; color: number } {
+    if (this.phase === "waiting") {
+      return { text: "Waiting for players", color: TURN_WAITING_COLOR };
+    }
+
+    if (this.phase === "ended") {
+      return { text: "Game over", color: TURN_WAITING_COLOR };
+    }
+
+    const localPlayer = this.getLocalPlayer();
+    if (!localPlayer || localPlayer.isSpectator) {
+      return { text: "Spectating", color: TURN_WAITING_COLOR };
+    }
+
+    if (this.isLocalPlayersTurn()) {
+      return { text: "Your turn", color: TURN_READY_COLOR };
+    }
+
+    return { text: "Opponent's turn", color: TURN_WAITING_COLOR };
+  }
+
+  private getPlayerColorLabel(): string {
+    const localPlayer = this.getLocalPlayer();
+    if (!localPlayer) {
+      return "";
+    }
+
+    if (localPlayer.isSpectator) {
+      return "You are spectating";
+    }
+
+    const localPlayerColor = getPlayerColorFromPlayerIndex(localPlayer.playerIndex);
+    if (localPlayerColor === BLACK) {
+      return "You are playing as ⚫ Black";
+    }
+
+    if (localPlayerColor === RED) {
+      return "You are playing as 🔴 Red";
+    }
+
+    return "";
+  }
+
+  private getGameOverTitle(): string {
+    if (this.gameResult?.type === "draw") {
+      return "Draw";
+    }
+
+    const localSessionId = this.room?.sessionId;
+    if (localSessionId && this.gameResult?.winnerId === localSessionId) {
+      return "You win! 🎉";
+    }
+
+    if (this.gameResult?.winnerId) {
+      return "You lose";
+    }
+
+    return "Game over";
+  }
+
+  private getGameOverSubtitle(): string {
+    const winnerColor = this.gameResult?.metadata?.winnerColor;
+    if (winnerColor === BLACK) {
+      return "Black wins the match.";
+    }
+
+    if (winnerColor === RED) {
+      return "Red wins the match.";
+    }
+
+    if (this.gameResult?.type === "draw") {
+      return "No winner this round.";
+    }
+
+    if (this.gameResult?.type === "timeout") {
+      return "The game ended on time.";
+    }
+
+    if (this.gameResult?.type === "forfeit") {
+      return "The game ended by forfeit.";
+    }
+
+    return "";
+  }
+
   private isSquareActionable(index: number): boolean {
     if (!this.isLocalPlayersTurn()) {
       return false;
@@ -296,13 +590,17 @@ export class CheckersRenderer implements GameRenderer {
     return Boolean(localPlayer && !localPlayer.isSpectator);
   }
 
-  private getLocalPlayerColor(): number | null {
+  private getLocalPlayer(): PlayerSnapshot | null {
     const localSessionId = this.room?.sessionId;
     if (!localSessionId) {
       return null;
     }
 
-    const localPlayer = this.players.get(localSessionId);
+    return this.players.get(localSessionId) ?? null;
+  }
+
+  private getLocalPlayerColor(): number | null {
+    const localPlayer = this.getLocalPlayer();
     if (!localPlayer || localPlayer.isSpectator) {
       return null;
     }
