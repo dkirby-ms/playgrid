@@ -44,13 +44,14 @@ export class BaseGameRoom extends Room {
     this.plugin = gameRegistry.get(gameType) as unknown as GamePlugin<BaseGameState>;
 
     const [minPlayers, maxPlayers] = this.plugin.metadata.playerCount;
-    this.maxClients = Math.min(
+    const maxPlayersConfig = Math.min(
       maxPlayers,
       Math.max(minPlayers, this.normalizePlayerCount(options.maxPlayers) ?? maxPlayers),
     );
+    this.maxClients = maxPlayersConfig + 100;
     this.expectedPlayers = Math.min(
-      this.maxClients,
-      Math.max(minPlayers, this.normalizePlayerCount(options.expectedPlayers) ?? this.maxClients),
+      maxPlayersConfig,
+      Math.max(minPlayers, this.normalizePlayerCount(options.expectedPlayers) ?? maxPlayersConfig),
     );
 
     if (typeof options.reconnectionTimeout === "number" && options.reconnectionTimeout > 0) {
@@ -197,6 +198,12 @@ export class BaseGameRoom extends Room {
     payload: unknown,
     handler: ActionHandler<BaseGameState>,
   ) {
+    const player = this.state.players.get(client.sessionId);
+    if (player?.isSpectator) {
+      client.send(ROOM_ERROR_MESSAGE, { message: "Spectators cannot perform actions." });
+      return;
+    }
+
     const isValid = this.plugin.conditions.validateAction(
       this.state,
       client,

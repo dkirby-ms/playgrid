@@ -120,22 +120,26 @@ export class PlaygridApp {
     await this.connectToLobby();
   }
 
-  async joinGame(roomId: string, gameType?: string): Promise<void> {
+  async joinGame(roomId: string, gameType?: string, spectator = false): Promise<void> {
     this.ensureInitialized();
     this.setStatus("Joining game room…", { persistent: true, visibleInGame: true });
 
     try {
-      const room = (await this.client.joinById(roomId)) as ColyseusRoom;
+      const joinOptions = spectator ? { spectator: true } : {};
+      const room = (await this.client.joinById(roomId, joinOptions)) as ColyseusRoom;
       const roomLabel = this.getRoomLabel(room);
       this.gameRoom = room;
       this.bindGameRoom(room);
-      this.setStatus(`Connected — Room: ${roomLabel}`, { visibleInGame: true });
+      const statusMessage = spectator
+        ? `Spectating — Room: ${roomLabel}`
+        : `Connected — Room: ${roomLabel}`;
+      this.setStatus(statusMessage, { visibleInGame: true });
       const enterData: GameSceneEnterData = {
         room,
         gameType: gameType ?? room.name,
       };
       await this.transitionTo(this.gameScene.name, enterData);
-      console.log(`[playgrid] Joined game room: ${roomLabel}`);
+      console.log(`[playgrid] Joined game room: ${roomLabel}${spectator ? " (spectator)" : ""}`);
     } catch (error) {
       console.error("[playgrid] Failed to join game room:", error);
       this.gameRoom = null;
@@ -234,7 +238,7 @@ export class PlaygridApp {
       return;
     }
 
-    await this.joinGame(event.roomId, event.gameType);
+    await this.joinGame(event.roomId, event.gameType, event.spectator);
   }
 
   private async handleWaitingRoomEvent(event: WaitingRoomSceneEvent): Promise<void> {

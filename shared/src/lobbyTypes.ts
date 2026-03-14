@@ -24,6 +24,7 @@ export interface GameSessionInfo {
   playerCount: number;
   maxPlayers: number;
   createdAt: number;
+  canSpectate?: boolean;
 }
 
 export interface CreateGamePayload {
@@ -34,6 +35,7 @@ export interface CreateGamePayload {
 
 export interface JoinGamePayload {
   gameId: string;
+  spectator?: boolean;
 }
 
 export interface GameJoinedPayload {
