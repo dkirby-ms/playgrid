@@ -9,7 +9,11 @@
     "outDir": "dist",
     "composite": true,
     "declaration": true,
-    "declarationMap": true
+    "declarationMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@eschaton/shared": ["../shared/src/index.ts"]
+    }
   },
   "include": ["src"],
   "exclude": ["src/__tests__"],
