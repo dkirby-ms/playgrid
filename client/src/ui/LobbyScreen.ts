@@ -18,6 +18,7 @@ export type GameStatus = "waiting" | "in_progress" | "ended";
 export interface GameSessionInfo {
   id: string;
   name: string;
+  gameType: string;
   hostId: string;
   hostName: string;
   status: GameStatus;
@@ -31,6 +32,7 @@ export interface GameSessionInfo {
 
 export interface CreateGamePayload {
   name: string;
+  gameType: string;
   maxPlayers?: number;
   mapSize?: number;
   mapSeed?: number;
@@ -71,6 +73,10 @@ type LobbyFilter = "all" | "waiting" | "in_progress";
 type NoticeTone = "info" | "error";
 type LobbyEventCallback = (event: LobbyEvent) => void;
 
+const GAME_TYPE_OPTIONS = [
+  { value: "checkers", label: "Checkers" },
+] as const;
+
 function createElement<K extends keyof HTMLElementTagNameMap>(
   tagName: K,
   className?: string,
@@ -86,12 +92,22 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
+function getGameTypeLabel(gameType: string): string {
+  return GAME_TYPE_OPTIONS.find((option) => option.value === gameType)?.label
+    ?? gameType
+      .split(/[-_]/)
+      .filter(Boolean)
+      .map((segment) => `${segment.charAt(0).toUpperCase()}${segment.slice(1)}`)
+      .join(" ");
+}
+
 export class LobbyScreen {
   private readonly overlay: HTMLElement;
   private readonly subtitleEl: HTMLParagraphElement;
   private readonly notificationEl: HTMLDivElement;
   private readonly gameListBody: HTMLTableSectionElement;
   private readonly gameNameInput: HTMLInputElement;
+  private readonly gameTypeInput: HTMLSelectElement;
   private readonly maxPlayersInput: HTMLSelectElement;
   private readonly createButton: HTMLButtonElement;
   private readonly filterButtons = new Map<LobbyFilter, HTMLButtonElement>();
@@ -139,6 +155,18 @@ export class LobbyScreen {
     this.gameNameInput.maxLength = 32;
     nameField.append(nameLabel, this.gameNameInput);
 
+    const gameTypeField = createElement("label", "field-group");
+    const gameTypeLabel = createElement("span", "field-label", "Game type");
+    this.gameTypeInput = createElement("select", "lobby-select") as HTMLSelectElement;
+    this.gameTypeInput.name = "game-type";
+
+    for (const optionConfig of GAME_TYPE_OPTIONS) {
+      const option = createElement("option") as HTMLOptionElement;
+      option.value = optionConfig.value;
+      option.textContent = optionConfig.label;
+      this.gameTypeInput.append(option);
+    }
+
     const maxPlayersField = createElement("label", "field-group");
     const maxPlayersLabel = createElement("span", "field-label", "Max players");
     this.maxPlayersInput = createElement("select", "lobby-select") as HTMLSelectElement;
@@ -154,12 +182,13 @@ export class LobbyScreen {
       this.maxPlayersInput.append(option);
     }
 
+    gameTypeField.append(gameTypeLabel, this.gameTypeInput);
     maxPlayersField.append(maxPlayersLabel, this.maxPlayersInput);
 
     this.createButton = createElement("button", "lobby-button lobby-button-primary", "Create Game") as HTMLButtonElement;
     this.createButton.type = "submit";
 
-    createForm.append(nameField, maxPlayersField, this.createButton);
+    createForm.append(nameField, gameTypeField, maxPlayersField, this.createButton);
     createForm.addEventListener("submit", (event) => {
       event.preventDefault();
       this.handleCreateGame();
@@ -195,7 +224,7 @@ export class LobbyScreen {
     const tableHead = createElement("thead");
     const headRow = createElement("tr");
 
-    for (const label of ["Game", "Host", "Players", "Status", "Action"]) {
+    for (const label of ["Game", "Type", "Host", "Players", "Status", "Action"]) {
       headRow.append(createElement("th", undefined, label));
     }
 
@@ -323,6 +352,7 @@ export class LobbyScreen {
 
     const payload: CreateGamePayload = {
       name: this.gameNameInput.value.trim() || this.gameNameInput.placeholder || "New game",
+      gameType: this.gameTypeInput.value || GAME_TYPE_OPTIONS[0].value,
       maxPlayers: Number(this.maxPlayersInput.value) || 4,
     };
 
@@ -334,6 +364,7 @@ export class LobbyScreen {
   private setCreatePending(isPending: boolean): void {
     this.createButton.disabled = isPending;
     this.gameNameInput.disabled = isPending;
+    this.gameTypeInput.disabled = isPending;
     this.maxPlayersInput.disabled = isPending;
     this.createButton.textContent = isPending ? "Creating…" : "Create Game";
 
@@ -371,7 +402,7 @@ export class LobbyScreen {
     if (filteredGames.length === 0) {
       const emptyRow = createElement("tr", "lobby-empty-row");
       const emptyCell = createElement("td", undefined, this.emptyMessageForFilter()) as HTMLTableCellElement;
-      emptyCell.colSpan = 5;
+      emptyCell.colSpan = 6;
       emptyRow.append(emptyCell);
       this.gameListBody.append(emptyRow);
       return;
@@ -381,6 +412,7 @@ export class LobbyScreen {
       const row = createElement("tr");
       row.append(
         this.buildTextCell(game.name || "Untitled game"),
+        this.buildTextCell(getGameTypeLabel(game.gameType || GAME_TYPE_OPTIONS[0].value)),
         this.buildTextCell(game.hostName || "Unknown"),
         this.buildTextCell(`${game.playerCount}/${game.maxPlayers}`),
         this.buildStatusCell(game.status),
