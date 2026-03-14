@@ -11,6 +11,7 @@
   "dependencies": {
     "@colyseus/core": "^0.17.32",
     "@colyseus/ws-transport": "^0.17.9",
+    "applicationinsights": "^3.14.0",
     "colyseus": "^0.17.8",
     "express": "^5.2.1",
     "pg": "^8.20.0"

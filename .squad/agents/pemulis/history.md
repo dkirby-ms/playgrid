@@ -232,3 +232,28 @@
 - Session log created: `.squad/log/2026-03-14T18-55-06Z-p2-wave1-3.md`
 
 **Next:** Wave 2 assignments ready when you are.
+
+### Application Insights Telemetry Integration (2026-03-14)
+
+- Implemented Application Insights telemetry integration for server-side observability (Issue #40, PR #75)
+- Created `server/src/telemetry.ts` module that initializes Application Insights SDK from `APPLICATIONINSIGHTS_CONNECTION_STRING` env var
+- Graceful degradation: telemetry no-ops when connection string not configured (local dev friendly)
+- Integrated telemetry into server startup in `server/src/index.ts`:
+  - Initialize telemetry before database connection
+  - Track unhandled rejections and uncaught exceptions with source context
+- Integrated lifecycle telemetry tracking in `BaseGameRoom`:
+  - `room_created`: When game room is created (includes gameType, roomId, gameId)
+  - `player_connected`: When player joins (includes isSpectator flag)
+  - `player_reconnected`: When existing player reconnects
+  - `player_disconnected`: When player leaves (includes phase, close code)
+  - `game_started`: When game begins (includes playerCount)
+  - `game_ended`: When game completes (includes resultType, durationSeconds)
+- All telemetry calls wrapped in try/catch to prevent failures from disrupting game flow
+- SDK configuration: enabled auto-collection for requests, performance metrics, exceptions, dependencies, and console logs
+- Note: Daily ingestion cap configuration attempted but API doesn't support `maxBytesPerInterval` in config - cap should be set via Azure Portal instead
+
+**Technical decisions:**
+- Export `trackEvent`, `trackException`, `trackMetric`, and `flushTelemetry` wrappers for consistent API
+- Use string properties for all custom dimensions (Application Insights requirement)
+- No-op pattern when telemetryClient is null (connection string missing or initialization failed)
+- Track custom events at key lifecycle moments vs relying solely on auto-collection for better business insights
