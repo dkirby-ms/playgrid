@@ -19,3 +19,21 @@
 - **Available to you:** Issue templates (bug-report.yml, feature-request.yml, chore.yml), CONTRIBUTING.md, updated README.md
 - **Impact:** All agents can now use structured issue templates and refer to CONTRIBUTING.md for contributor guidance.
 
+
+## Work Complete — Issue #37: Lobby GameType Test Coverage (2026-03-14)
+
+- Added comprehensive test cases for `gameType` field validation in `server/src/__tests__/lobby-pregame.test.ts`.
+- Test cases cover: default validation, invalid gameType handling, passthrough behavior, clamping logic, and broadcast coverage.
+- All 82/82 tests passing.
+- PR #56 merged (squad/37-lobby-tests-gametype).
+- **Cross-Agent Impact:** Gately can now rely on stable gameType behavior in client-side implementation. TestNet fully exercised.
+
+## Cross-Agent Update — Issue #54 Complete, PR #55 Merged (2026-03-14)
+
+**From:** Gately (Game Dev)  
+**Event:** Room status HUD cleanup complete
+
+- **Issue #54:** Complete. Room undefined status overlay fixed.
+- **PR #55:** Merged (squad/54-fix-room-undefined-overlay) — "Fix: room.id undefined in status text, HUD repositioning"
+- **Changes:** room.roomId fallback, top-left HUD toast with auto-hide for info states.
+- **Impact:** Connection status no longer obstructs gameplay. Room identifiers resolved safely.
