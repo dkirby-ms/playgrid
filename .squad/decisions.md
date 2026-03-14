@@ -820,3 +820,32 @@ Explicitly deferred to P2: deployment pipelines (UAT/prod), Bicep infrastructure
 - P2 is lower priority than shipping MVP
 - Can be tackled after P1 stabilizes
 
+
+---
+
+## Session: GitHub Backlog Issue Setup (2026-03-14T13:22:34Z)
+
+### Marathe: GitHub Issues + Milestones Created
+
+**Status:** ✅ Complete (partial — project board blocked)
+**Date:** 2026-03-14T13:22:34Z
+
+Created 3 GitHub milestones and 45 issues from `docs/backlog.md`:
+
+| Phase | Range | Count |
+|-------|-------|-------|
+| P0 | #2–#8 | 7 |
+| P1 | #9–#28 | 20 |
+| P2 | #29–#46 | 18 |
+
+**Project Board Status:** Creation failed (token missing `project` and `read:project` scopes). Follow-up: re-authenticate and create board, then bulk-add all issues.
+
+**Full issue mapping:** See `.squad/orchestration-log/2026-03-14T13-24-01Z-marathe.md` (issue table)
+
+**Cross-Agent Sync:**
+- **Hal:** Backlog now available for sprint planning
+- **Pemulis:** P0 infrastructure issues ready to claim
+- **Gately:** P1 client issues ready to claim
+- **Steeply:** Test issues (#17, #19, #28, #34, #37, #46) ready when code lands
+
+---

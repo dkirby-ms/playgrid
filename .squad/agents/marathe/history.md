@@ -12,6 +12,7 @@
 - 2026-03-14: PlayGrid is an npm workspace monorepo (`client/`, `server/`, `shared/`) and the canonical build order is `shared -> server -> client` from the root `package.json`.
 - 2026-03-14: PlayGrid server runtime is currently WebSocket-only at `server/src/index.ts` on port `2567`; it does not yet serve the built Vite client bundle.
 - 2026-03-14: Respect the approved scaling decision in `.squad/decisions.md` — keep the Colyseus deployment single-process / single-replica until distributed scaling support exists.
+- 2026-03-14: `docs/backlog.md` currently parses into 45 actionable work items; GitHub issues `#2`–`#46` were created under three phase milestones, and GitHub Projects v2 needs `project` + `read:project` token scopes before Marathe can create the board.
 
 ### 2026-03-14: Deployment Pipeline Analysis — Recommendations for PlayGrid
 
