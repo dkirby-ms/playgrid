@@ -107,6 +107,13 @@
 - Swapped client imports in `client/src/index.ts`, `client/src/ui/LobbyScreen.ts`, and `client/src/ui/WaitingRoom.ts` from `colyseus.js` to `@colyseus/sdk`; existing `Client` / `Room` usage continued to work after the package rename.
 - Validation outcome: `npm run build` and `npm run test` both passed after the migration. One gotcha is that Vitest currently discovers both `server/src/__tests__` and built `server/dist/src/__tests__`, so the same suite runs twice during root tests.
 
+### Shared game plugin contract module (2026-03-14)
+
+- Added `shared/src/gamePlugin.ts` as the canonical type-only contract for the plugin system, covering plugin metadata, lifecycle hooks, turn configuration, action handlers, win-condition checks, and hidden-information state filtering.
+- Used `import type` for Colyseus `Schema` and `Client` so the shared package can expose the server/client plugin contract without introducing runtime code.
+- Added `colyseus` to `shared/package.json` because TypeScript still needs the package installed to resolve the `Client` type, even though the shared module emits no runtime plugin code.
+- Re-exported the plugin types from `shared/src/index.ts` so future game plugins and rooms can import the same shared definitions from one package entrypoint.
+
 ## Cross-Agent Update — Issue #1 Closed, PR #47 Open (2026-03-14)
 
 **From:** Joelle (Community/DevRel)  

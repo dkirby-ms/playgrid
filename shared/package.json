@@ -8,6 +8,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@colyseus/schema": "^4.0.8"
+    "@colyseus/schema": "^4.0.8",
+    "colyseus": "^0.17.8"
   }
 }

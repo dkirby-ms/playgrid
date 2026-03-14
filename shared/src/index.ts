@@ -39,3 +39,19 @@ export const GAME_HEIGHT = 600;
 export const TICK_RATE = 4;
 
 export * from "./lobbyTypes.js";
+export type {
+  ActionHandler,
+  ActionResult,
+  GameActionHandlers,
+  GameConditions,
+  GameLifecycle,
+  GameMetadata,
+  GameOptions,
+  GamePlugin,
+  GameResult,
+  StateFilter,
+  TurnConfiguration,
+  TurnMode,
+  TurnOrderStrategy,
+  TurnPhase,
+} from "./gamePlugin.js";
