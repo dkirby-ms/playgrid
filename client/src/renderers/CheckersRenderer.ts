@@ -128,6 +128,7 @@ export class CheckersRenderer implements GameRenderer {
   private gameResult: GameResult | null = null;
   private selectedIndex: number | null = null;
   private validTargetIndexes = new Set<number>();
+  private isFlipped = false;
   private width = DEFAULT_WIDTH;
   private height = DEFAULT_HEIGHT;
   private squareSize = Math.min(DEFAULT_WIDTH, DEFAULT_HEIGHT - TOP_HUD_SPACE - BOTTOM_HUD_SPACE)
@@ -237,15 +238,16 @@ export class CheckersRenderer implements GameRenderer {
   }
 
   private redrawBoard(): void {
-    for (let index = 0; index < BOARD_CELL_COUNT; index += 1) {
-      const row = Math.floor(index / BOARD_DIMENSION);
-      const column = index % BOARD_DIMENSION;
-      const square = this.squareGraphics[index];
+    for (let displayIndex = 0; displayIndex < BOARD_CELL_COUNT; displayIndex += 1) {
+      const boardIndex = this.toBoardIndex(displayIndex);
+      const row = Math.floor(displayIndex / BOARD_DIMENSION);
+      const column = displayIndex % BOARD_DIMENSION;
+      const square = this.squareGraphics[displayIndex];
       const squareColor = (row + column) % 2 === 0 ? LIGHT_SQUARE_COLOR : DARK_SQUARE_COLOR;
       const x = this.boardOffsetX + (column * this.squareSize);
       const y = this.boardOffsetY + (row * this.squareSize);
-      const isSelected = this.selectedIndex === index;
-      const isValidTarget = this.validTargetIndexes.has(index);
+      const isSelected = this.selectedIndex === boardIndex;
+      const isValidTarget = this.validTargetIndexes.has(boardIndex);
 
       square.clear();
       square.rect(x, y, this.squareSize, this.squareSize).fill(squareColor);
@@ -265,7 +267,7 @@ export class CheckersRenderer implements GameRenderer {
         ).fill({ color: VALID_TARGET_COLOR, alpha: VALID_TARGET_ALPHA });
       }
 
-      square.cursor = this.isSquareActionable(index) ? "pointer" : "default";
+      square.cursor = this.isSquareActionable(boardIndex) ? "pointer" : "default";
     }
   }
 
@@ -281,8 +283,9 @@ export class CheckersRenderer implements GameRenderer {
         continue;
       }
 
-      const row = Math.floor(index / BOARD_DIMENSION);
-      const column = index % BOARD_DIMENSION;
+      const displayIndex = this.toDisplayIndex(index);
+      const row = Math.floor(displayIndex / BOARD_DIMENSION);
+      const column = displayIndex % BOARD_DIMENSION;
       const centerX = this.boardOffsetX + (column * this.squareSize) + (this.squareSize / 2);
       const centerY = this.boardOffsetY + (row * this.squareSize) + (this.squareSize / 2);
       const pieceColor = piece === BLACK || piece === BLACK_KING ? BLACK_PIECE_COLOR : RED_PIECE_COLOR;
@@ -370,7 +373,9 @@ export class CheckersRenderer implements GameRenderer {
     }
   }
 
-  private handleSquareClick(index: number): void {
+  private handleSquareClick(displayIndex: number): void {
+    const boardIndex = this.toBoardIndex(displayIndex);
+
     if (!this.isLocalPlayersTurn()) {
       if (this.selectedIndex !== null) {
         this.clearSelection();
@@ -378,20 +383,20 @@ export class CheckersRenderer implements GameRenderer {
       return;
     }
 
-    if (this.selectedIndex !== null && this.validTargetIndexes.has(index)) {
+    if (this.selectedIndex !== null && this.validTargetIndexes.has(boardIndex)) {
       const selectedIndex = this.selectedIndex;
-      this.room?.send("move", { from: selectedIndex, to: index });
+      this.room?.send("move", { from: selectedIndex, to: boardIndex });
       this.clearSelection();
       return;
     }
 
-    if (this.selectedIndex === index) {
+    if (this.selectedIndex === boardIndex) {
       this.clearSelection();
       return;
     }
 
-    if (this.isSelectableSquare(index)) {
-      this.setSelection(index);
+    if (this.isSelectableSquare(boardIndex)) {
+      this.setSelection(boardIndex);
       return;
     }
 
@@ -424,6 +429,7 @@ export class CheckersRenderer implements GameRenderer {
       ? Number(nextState.mustCaptureFrom)
       : NO_FORCED_CAPTURE;
     this.players = this.parsePlayers(nextState);
+    this.isFlipped = this.getLocalPlayerColor() === RED;
   }
 
   private syncSelectionWithState(): void {
@@ -606,6 +612,14 @@ export class CheckersRenderer implements GameRenderer {
     }
 
     return getPlayerColorFromPlayerIndex(localPlayer.playerIndex);
+  }
+
+  private toDisplayIndex(boardIndex: number): number {
+    return this.isFlipped ? (BOARD_CELL_COUNT - 1) - boardIndex : boardIndex;
+  }
+
+  private toBoardIndex(displayIndex: number): number {
+    return this.isFlipped ? (BOARD_CELL_COUNT - 1) - displayIndex : displayIndex;
   }
 
   private getMovesForSquare(index: number): CheckersMove[] {
