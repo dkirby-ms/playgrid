@@ -12,11 +12,13 @@
     "dev": "concurrently \"npm run dev -w client\" \"npm run dev -w server\"",
     "build": "npm run build -w shared && npm run build -w server && npm run build -w client",
     "test": "vitest run",
+    "test:e2e": "playwright test --config playwright.lobby.config.ts",
     "lint": "eslint ."
   },
   "devDependencies": {
     "@bradygaster/squad-cli": "^0.8.20",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.58.2",
     "concurrently": "^9.0.0",
     "eslint": "^10.0.3",
     "globals": "^17.4.0",
