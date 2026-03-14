@@ -41,6 +41,8 @@ app.use(express.static(clientDistDir));
 const server = new Server({
   transport: new WebSocketTransport({
     server: createServer(app),
+    pingInterval: 10000,
+    pingMaxRetries: 3,
   }),
 });
 

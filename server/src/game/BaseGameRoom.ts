@@ -14,9 +14,11 @@ interface BaseGameRoomOptions extends GameOptions {
   gameType?: string;
   maxPlayers?: number;
   expectedPlayers?: number;
+  reconnectionTimeout?: number;
 }
 
 const DEFAULT_ACTION_ERROR = "Action failed.";
+const DEFAULT_RECONNECTION_TIMEOUT = 30;
 const GAME_ENDED_MESSAGE = "game-end";
 const INVALID_ACTION_ERROR = "Invalid action.";
 const ROOM_ERROR_MESSAGE = "error";
@@ -27,6 +29,7 @@ export class BaseGameRoom extends Room {
   private plugin!: GamePlugin<BaseGameState>;
   private turnManager?: TurnManager;
   private expectedPlayers = 0;
+  private reconnectionTimeout = DEFAULT_RECONNECTION_TIMEOUT;
 
   override onCreate(options: BaseGameRoomOptions = {}) {
     const gameType = typeof options.gameType === "string" ? options.gameType.trim() : "";
@@ -46,6 +49,10 @@ export class BaseGameRoom extends Room {
       Math.max(minPlayers, this.normalizePlayerCount(options.expectedPlayers) ?? this.maxClients),
     );
 
+    if (typeof options.reconnectionTimeout === "number" && options.reconnectionTimeout > 0) {
+      this.reconnectionTimeout = options.reconnectionTimeout;
+    }
+
     const state = this.plugin.createState() as BaseGameState;
     this.setState(state);
     this.plugin.lifecycle.onCreate?.(state, options);
@@ -60,6 +67,12 @@ export class BaseGameRoom extends Room {
   }
 
   override onJoin(client: Client, options: Record<string, unknown> = {}) {
+    const existingPlayer = this.state.players.get(client.sessionId);
+    if (existingPlayer) {
+      existingPlayer.isConnected = true;
+      return;
+    }
+
     const isSpectator = options.isSpectator === true || options.spectator === true;
     const playerIndex = isSpectator
       ? this.state.players.size
@@ -87,6 +100,22 @@ export class BaseGameRoom extends Room {
     }
 
     player.isConnected = false;
+
+    if (
+      this.state.phase === "playing" &&
+      !player.isSpectator &&
+      code !== CloseCode.CONSENTED
+    ) {
+      try {
+        await this.allowReconnection(client, this.reconnectionTimeout);
+        player.isConnected = true;
+        return;
+      } catch {
+        await this.handleReconnectionTimeout(client.sessionId);
+        return;
+      }
+    }
+
     this.plugin.lifecycle.onPlayerLeave?.(this.state, client.sessionId);
     this.turnManager?.removePlayer(client.sessionId);
 
@@ -224,6 +253,37 @@ export class BaseGameRoom extends Room {
         timedOutPlayerId: sessionId,
       },
     });
+  }
+
+  private async handleReconnectionTimeout(sessionId: string) {
+    if (this.state.phase === "ended") {
+      return;
+    }
+
+    this.turnManager?.removePlayer(sessionId);
+
+    const remainingPlayers = this.getConnectedParticipants();
+    if (remainingPlayers.length === 1) {
+      const winner = remainingPlayers[0];
+      await this.endGame({
+        type: "forfeit",
+        winnerId: winner.sessionId,
+        scores: { [winner.sessionId]: 1 },
+        metadata: {
+          reconnectionTimeout: true,
+          disconnectedPlayerId: sessionId,
+        },
+      });
+    } else if (remainingPlayers.length === 0) {
+      await this.endGame({
+        type: "draw",
+        scores: {},
+        metadata: {
+          reconnectionTimeout: true,
+          reason: "all-players-disconnected",
+        },
+      });
+    }
   }
 
   private async endGame(result: GameResult) {
