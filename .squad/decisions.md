@@ -871,3 +871,62 @@ Created GitHub Projects v2 board for PlayGrid and added all 46 open issues.
 **Cross-Agent Impact:**
 - Hal: Project board now available for sprint planning and issue tracking
 - Pemulis, Gately, Steeply: Can organize work by project labels and milestones
+
+---
+
+## Session: Repo Hygiene & Issue Templates (2026-03-14)
+
+### Joelle: Repo Hygiene & Issue Templates
+
+**Status:** ✅ Complete  
+**Date:** 2026-03-14  
+**PR:** #47 (dev→prod)  
+**Issue:** #1 (Closed)
+
+Created three GitHub issue templates (bug report, feature request, chore), improved README.md, and wrote CONTRIBUTING.md guide.
+
+**What We Did:**
+- **Issue Templates** (`.github/ISSUE_TEMPLATE/`):
+  - `bug-report.yml` — Environment, reproduction steps, expected behavior, logs
+  - `feature-request.yml` — Description, use case, implementation ideas, priority
+  - `chore.yml` — Task description, scope, acceptance criteria
+  - Used YAML form format (structured input, auto-labeling)
+
+- **README.md** refresh:
+  - Tagline: "Multiplayer classic board games, real-time"
+  - Features section (real-time, Canvas, framework, testing)
+  - Getting Started with prerequisites and server URL
+  - Project Structure overview
+  - Contributing section linking to CONTRIBUTING.md
+
+- **CONTRIBUTING.md** (new):
+  - Development setup (prerequisites, clone, install, dev server)
+  - Branch strategy: dev → uat → prod
+  - Issue and PR guidelines with template links
+  - Code style (TypeScript best practices with examples)
+  - Testing (Vitest setup, example test)
+  - Project structure reference
+
+**Why:**
+- Developer experience — Templates guide consistent issue reporting with context
+- Project visibility — Refreshed README shows features and approachable tagline
+- Contribution flow — CONTRIBUTING lowers barrier to entry
+- Early-stage guidance — Brief but complete, not prescriptive
+
+**Style:**
+- Warm, enabling tone (not technical jargon in README)
+- Issue templates use emojis (🐛, ✨, 🛠️) for visual identity
+
+**Result:** 5 files changed, 334 insertions. Commit c3dcb84 (co-authored by Copilot).
+
+**Cross-Agent Impact:**
+- All agents: Issue templates now available for reporting
+- Gately, Pemulis, Steeply: CONTRIBUTING guide available for new development
+- Hal: README reflects project vision and structure
+
+**Next Steps:**
+- Share README and CONTRIBUTING links in Discord #announcements once merged to prod
+- Monitor template usage in upcoming contributions
+- Gather feedback for template refinement
+
+---
