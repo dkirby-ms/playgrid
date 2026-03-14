@@ -1,5 +1,6 @@
 import { Pool, type QueryResult, type QueryResultRow } from "pg";
 import { config } from "./config.js";
+import { runMigrations } from "./db/migrate.js";
 
 const CONNECTION_TEST_QUERY = "SELECT 1";
 
@@ -43,6 +44,7 @@ export const connectDb = async (): Promise<boolean> => {
 
     try {
       await client.query(CONNECTION_TEST_QUERY);
+      await runMigrations(client);
     } finally {
       client.release();
     }
