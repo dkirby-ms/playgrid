@@ -124,3 +124,10 @@
 - **Available to you:** Issue templates (bug-report.yml, feature-request.yml, chore.yml), CONTRIBUTING.md, updated README.md
 - **Impact:** All agents can now use structured issue templates and refer to CONTRIBUTING.md for contributor guidance.
 
+### 2026-03-14: Scene Manager Infrastructure (Issue #20)
+
+- Added `client/src/scenes/Scene.ts` with the shared scene lifecycle contract: `name`, PixiJS `container`, `onEnter`, `onExit`, `update`, and `resize`.
+- Added `client/src/SceneManager.ts` to register scenes, transition between them, and mount/unmount scene containers on the Pixi stage.
+- Re-exported the `Scene` type for future client architecture work without creating any concrete scenes yet.
+- Verified the workspace with `npm run build && npm run lint && npm run test` after landing the infrastructure.
+
