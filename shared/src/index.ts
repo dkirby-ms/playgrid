@@ -57,3 +57,4 @@ export type {
   TurnOrderStrategy,
   TurnPhase,
 } from "./gamePlugin.js";
+export * from "./games/checkers/index.js";
