@@ -1,208 +1,63 @@
 # hal — History
 
-## Project Context
-- **Project:** playgrid
-- **Description:** Play classic games with friends
-- **Studio:** eschaton-studio
-- **Created:** 2026-03-14T01:09:23Z
+## Core Context
 
-## Learnings
+**Project:** playgrid — Play classic games with friends (Studio: eschaton-studio, Created: 2026-03-14)
 
-### 2025-03-14: Architecture Plan for Playgrid Platform
+**Architecture (Approved):**
+- Plugin-based games (each game implements IGamePlugin interface)
+- Integrated spectators (same GameRoom, isSpectator flag)
+- Single LobbyRoom for all game types
+- PostgreSQL from day one (not SQLite migration)
+- 3-phase scaling: Phase 1 (single process), Phase 2 (multi-process 50+ concurrent), Phase 3 (multi-server)
+- Colyseus 0.16, PixiJS 8, strict TypeScript
+- Game implementation order: Checkers → Backgammon → Dominoes → Poker → Hearts/Spades → Chess → Risk
 
-**Key Architectural Decisions:**
+**Cloud Infrastructure (Approved):**
+- Azure Container Apps (Consumption plan, Phase 1: single replica)
+- PostgreSQL Flexible Server from day one
+- GitHub Actions CI/CD (adapted from primal-grid reference)
+- Phase 2: Redis for Colyseus RedisPresence, Static Web Apps for CDN
+- Cost: Phase 1 ~$20-30/mo, Phase 2 ~$90-140/mo
 
-1. **Plugin-Based Game System**
-   - Each game implements `IGamePlugin` interface for isolation and testability
-   - `BaseGameRoom<T>` provides common lifecycle, persistence hooks
-   - Pure function game logic separated from Colyseus (e.g., `checkersLogic.ts`)
-   - Dynamic room registration via `GameRegistry`
-   - Per-game state schemas (no shared game state shape)
+**Current Codebase:**
+- Server: Working LobbyRoom + skeleton GameRoom (tick-based, no game logic)
+- Client: Monolithic index.ts (PixiJS app + HTML lobby/waiting overlays)
+- Shared: Player/GameState schemas + lobby message types
+- Monorepo with npm workspaces, vitest, TypeScript strict mode
+- Lobby test suite: 431 lines (quality baseline)
+- No Dockerfile, no CI/CD, no game plugin system yet
 
-2. **Integrated Spectator Model**
-   - Spectators join same GameRoom as players with `isSpectator` flag
-   - Reuses existing state sync (simpler than separate rooms)
-   - State filtering for games with hidden info (poker hole cards)
-   - Only create separate spectator infrastructure if spectators outnumber players 10:1
+**Backlog (Approved - 38 items):**
+- P0 (7): Env config, static serving, PostgreSQL connection, DB schema, Dockerfile, CI, lint
+- P1 (16): Plugin system (4), Checkers logic (4), Client architecture (5), Renderer (3)
+- P2 (15): Deployment pipelines, persistence, reconnection, spectators, second game, docs, monitoring
 
-3. **Scaling Strategy: Defer Until Needed**
-   - Phase 1 (0-100 games): Single process, LocalPresence, SQLite
-   - Phase 2 (100-1000 games): Multi-process, RedisPresence, PostgreSQL, @colyseus/proxy
-   - Phase 3 (1000+ games): Multi-server, Redis Cluster, load balancer
-   - Design-in: gameType as first-class, spectator flags, outcome logging
-   - Don't build: cross-room comms, auto-scaling, geographic sharding (until proven need)
+**Critical Path:** env-config → static-serving → shared-game-types → base-game-state → base-game-room → checkers-plugin → e2e-checkers
 
-4. **Lobby Architecture**
-   - Single LobbyRoom for all game types (not per-game lobbies)
-   - GameSessionInfo includes `gameType` field
-   - GameRegistry queryable for available games
-   - Lobby tracks waiting games, coordinates matchMaker.createRoom
-
-5. **Persistence: Start Simple**
-   - Phase 1: Log games table (outcome, duration) + participants table
-   - Phase 2: Add user_stats (wins/losses by game type), leaderboards
-   - Phase 3: Advanced analytics (move history, replays, Elo)
-   - SQLite → PostgreSQL migration path when scaling
-
-6. **Game Implementation Order**
-   - Checkers (1st): Prove plugin pattern, simple rules
-   - Backgammon (2nd): Validate dice/RNG, server authority
-   - Dominoes (3rd): Test multi-player (2-4), turn ordering
-   - Poker (4th): Validate hidden state, betting mechanics, complexity
-   - Defer Chess (complex move validation) and Risk (massive state) until after fundamentals proven
-
-7. **Client-Side Pattern**
-   - Each game gets dedicated renderer module (e.g., `CheckersRenderer.ts`)
-   - Dynamic import based on game type
-   - State/rendering separation via PixiJS scene graph
-   - Renderer binds to room.onStateChange, updates display objects
-
-**Technologies Validated:**
-- Colyseus 0.16: RedisPresence for scaling, PM2 fork mode (not cluster), seat reservations for reconnection
-- PixiJS 8: Component/ECS-style separation of state and rendering
-- Spectator pattern: Observer pattern with read-only enforcement
-
-**Risks Identified:**
-- Poker state filtering complexity (side pots, all-in scenarios)
-- Risk game state size (~2KB, may need optimization)
-- Spectator scaling (assume 1:1 player:spectator ratio initially)
-- Chess move validation edge cases (en passant, castling, check detection)
-
-**Key Principle:**
-Start simple, scale deliberately. Build what we need now, design for what we'll need next. Every decision includes a "defer until" condition.
+**Team Assignments:**
+- Pemulis: 10 items (P0 + P1A server infra) — start with env-config
+- Gately: 11 items (P1B–D game logic + client + renderers) — start with scene-manager
+- Marathe: 5 items (CI/CD + Docker + Bicep) — start with ci-pipeline
+- Steeply: 6 items (tests, blocked until code lands)
+- Joelle: 2 items (docs, blocked on P1 stability)
 
 ---
 
-### Cross-Agent Research Summary (2026-03-14)
+## Session Logs
 
-**Pemulis (Systems Dev)** produced `docs/game-systems-design.md` with:
-- Detailed TypeScript plugin interfaces (GamePlugin, StateFilter, TurnManager)
-- Per-game technical analysis for all 7 games with state size estimates
-- Hidden information architecture for card games (Poker, Hearts, Spades, Dominoes)
-- Turn management system with phased turns for Risk
-- Complete Checkers plugin skeleton
-- Turn time limits configuration (default 60s, fast mode 30s)
+### 2026-03-14: Cross-Agent Architecture Alignment
+- Pemulis: game-systems-design.md (TypeScript interfaces, per-game analysis, hidden-info architecture)
+- Gately: client-architecture.md (scene management, renderer plugin system, asset requirements)
+- Hal: Validated alignment across all three agents on plugin architecture, scaling strategy, game order
+- User answer: PostgreSQL from day one (not SQLite migration), primal-grid as CI/CD reference
 
-**Gately (Game Dev)** produced `docs/client-architecture.md` with:
-- Scene management system (Lobby, Waiting Room, Game scenes)
-- Game renderer plugin system (GameRenderer interface, RendererRegistry)
-- Hybrid HTML/PixiJS architecture (menus in HTML, games in PixiJS)
-- Per-game rendering analysis and asset requirements
-- Spectator mode with perspective selector for hidden-info games
-- Lazy asset loading strategy, mobile-first design
-- Risk map pan/zoom viewport, touch input support
+### 2026-03-14: Architecture Documents Updated
+- Updated docs/architecture-plan.md with PostgreSQL decision, Azure Container Apps strategy (Section 2.1)
+- game-systems-design.md and client-architecture.md validated (no updates needed)
 
-**Key Alignment:**
-- All three agents agree on plugin-based modular architecture
-- Server-authoritative state with client validation separation
-- Scaling strategy defers until needed (1→2→3 phase approach)
-- Game implementation order aligned: Checkers → Dominoes → Card games → Risk
-- Asset dependencies identified: Risk SVG map (CRITICAL), card sprite sheet
-
----
-
-### 2026-03-14: Azure Cloud Architecture Proposal
-
-**Key Decisions Proposed:**
-
-1. **Azure Container Apps (Consumption plan)** — Single container serves Colyseus + static client, same pattern as primal-grid. Port 2567, WebSocket through ACA Envoy ingress natively.
-
-2. **Scaling: Phase 1 = 1 replica, Phase 2 = sticky sessions + auto-scale on concurrent connections.** HTTP concurrent request scaling (not CPU) is the right metric for WebSocket workloads.
-
-3. **SQLite ephemeral in Phase 1** — accepted trade-off: data lost on redeploy, acceptable during dev. PostgreSQL Flex Server for Phase 2 (aligned with approved SQLite→PostgreSQL decision).
-
-4. **GitHub Actions CI/CD adapted from primal-grid** (`dkirby-ms/primal-grid`). Key improvement: `az acr build` instead of local `docker build + push` for faster CI. Reusable workflow pattern proposed for DRY deploy logic across dev/uat/prod.
-
-5. **Phase 2 additions when triggered:** Redis (for Colyseus RedisPresence across replicas), PostgreSQL, Static Web Apps for client CDN. Defer until 50+ concurrent games.
-
-6. **Cost estimate:** Phase 1 ~$20-30/mo, Phase 2 ~$90-140/mo, Phase 3 ~$360-700/mo.
-
-**User Preferences Noted:**
-- Azure is the provider (no AWS/GCP)
-- ACA chosen explicitly for scaling flexibility
-- GitHub Actions for CI/CD (not Azure DevOps)
-- Primal-grid pipeline as reference/starting point
-- "Plan with the end in mind" — phased architecture with clear upgrade triggers
-
-**Key File Paths:**
-- Proposal: `.squad/decisions.md` (merged from inbox)
-- Primal-grid Dockerfile: `dkirby-ms/primal-grid/Dockerfile` (multi-stage build, identical workspace structure)
-- Primal-grid deploy: `dkirby-ms/primal-grid/.github/workflows/deploy.yml` (OIDC + ACR + ACA pattern)
-- Primal-grid UAT: `dkirby-ms/primal-grid/.github/workflows/deploy-uat.yml` (branch-aware tagging, concurrency groups)
-- PlayGrid server entry: `server/src/index.ts` (Colyseus on port 2567)
-
-**Cross-Agent Sync (2026-03-14):**
-
-**From Marathe (DevOps):**
-- Primal-grid currently allows 3 UAT replicas, but Colyseus/WebSocket rooms require careful cross-replica coordination that single sticky sessions don't fully solve. Hal's Phase 1 (1 replica only) is the right constraint until distributed presence/state infrastructure ready.
-- Primal-grid's Dockerfile pattern copies `client/dist` to `public/` in runtime image. PlayGrid's current server doesn't serve static assets yet — recommend validating this architecture before copying pattern. Consider: add HTTP/static serving to server runtime, OR deploy client separately.
-- Session affinity configuration for Phase 2+ is critical; Marathe has documented this in reusable skill (`.squad/skills/azure-container-apps-monorepo-pipeline/SKILL.md`).
-- Security improvements identified: GitHub Environments for scoped secrets/approvals, ACA managed identity for ACR, Key Vault references, pinned action SHAs, minimal workflow permissions.
-- Build performance improvements available: Docker BuildKit caching with `docker/setup-buildx-action` + `docker/build-push-action` with `type=gha` cache.
-
-**Implications for Architecture Proposal:**
-- Confirms single-replica Phase 1 constraint is operationally sound.
-- Suggests Phase 2 readiness timeline depends on distributed Colyseus infrastructure (RedisPresence, PostgreSQL shared state), not just replica count.
-- Pipeline design should include post-deploy health checks and smoke tests before marking success.
-
----
-
-### 2026-03-14T13:01:17Z: User answers — Cloud architecture proposal
-
-**Directive received:** User (dkirby-ms) answered 5 open questions from the architecture proposal:
-
-1. **Database:** PostgreSQL from day one (not SQLite → PostgreSQL phased migration)
-2. **Branch strategy:** main → uat → prod (matches primal-grid)
-3. **Custom domain:** playgrid.kirbytoso.xyz (already owned, no DNS work needed)
-4. **Phase 2 timeline:** ~6 months out (no rush on 50+ concurrent game scaling)
-5. **Discord:** #play-grid channel in existing Discord server (separate from other comms)
-
-**Implications for Architecture:**
-- Phase 1 now uses PostgreSQL instead of SQLite — simplifies one less migration, but requires connection pooling / multi-process coordination from day one (validate this aligns with single-replica Phase 1 constraint)
-- Domain is pre-registered, cert/DNS setup is straightforward
-- Scaling timeline is realistic and matches Colyseus distributed infrastructure readiness
-
-**Canonical record:** `.squad/decisions.md` (merged from inbox, old decision marked superseded)
-
----
-
-### 2026-03-14T: Architecture Documents Updated for Cloud Decisions
-
-**Status:** Complete
-
-**What was updated:**
-
-1. **docs/architecture-plan.md:**
-   - **Scaling Strategy (Phase 1):** Changed deployment from "Single VPS/container" to "Azure Container Apps (single replica, Consumption plan)", SQLite → PostgreSQL (Azure Database for PostgreSQL Flexible Server)
-   - **Scaling Strategy (Phase 2):** Removed "Switch SQLite to PostgreSQL" (now from day one)
-   - **Persistence section:** Updated to reference PostgreSQL instead of SQLite, with Azure-specific infrastructure
-   - **Persistence Phase 4 (add logging):** Changed "Set up SQLite database" to "Set up PostgreSQL database connection"
-   - **Technical Decisions Summary:** 
-     - Changed "SQLite → PostgreSQL migration path" to "PostgreSQL from day one"
-     - Updated tech table: Persistence now shows "PostgreSQL (Azure)" with rationale "Relational fits game data, scalable from day one"
-     - Added cloud platform row: "Azure Container Apps" with "User preference, primal-grid reference"
-     - Added CI/CD row: "GitHub Actions" with "User preference, primal-grid reference"
-   - **NEW SECTION: 2.1 Cloud Infrastructure (Azure Container Apps):**
-     - Deployment model for Phase 1 (single replica, ACA Consumption plan)
-     - PostgreSQL database strategy and schema
-     - Scaling roadmap for Phase 2 and 3 with cost estimates
-     - Supporting infrastructure: ACR, App Insights, Key Vault
-     - GitHub Actions CI/CD pipeline overview
-     - Security/compliance: OIDC, Managed Identity, Key Vault, Environment protection
-     - Colyseus-specific considerations: WebSocket affinity, state sync, message passing
-     - Database strategy with SQL schema examples
-
-2. **docs/game-systems-design.md:** No updates needed (no outdated references found)
-
-3. **docs/client-architecture.md:** No updates needed (no outdated references found)
-
-**Why these changes matter:**
-- Brings formal design documents into alignment with approved cloud architecture decisions from .squad/decisions.md
-- Reflects PostgreSQL-from-day-one decision (eliminates migration complexity mentioned in cancelled old decision)
-- Documents Azure infrastructure choices (Container Apps, PostgreSQL Flexible Server) with clear rationale
-- Provides comprehensive cloud strategy spanning all three scaling phases
-- Clarifies deployment patterns, supporting services, and operational considerations for the team
-- Ensures all stakeholders can reference a single source of truth in architecture-plan.md
-
-**Files modified:** 1 file (docs/architecture-plan.md)
-**Files checked:** 3 files (game-systems-design.md, client-architecture.md also reviewed, no changes needed)
+### 2026-03-14T13:08:51Z: Backlog Decomposition
+- Decomposed full project into 38 work items across P0/P1/P2
+- Created docs/backlog.md with all items, dependencies, role assignments
+- Key decisions: P0 infrastructure-only, GameRoom preservation, 3 parallel work streams
+- All agents can now pick up work from backlog (no blockers identified)
