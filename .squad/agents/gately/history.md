@@ -167,3 +167,10 @@
 - Added a shared `rendererRegistry` singleton and registered the `checkers` renderer through `client/src/renderers/index.ts`, then wired `Application.ts` to use that registry so renderer registration happens on the normal client startup path.
 - Re-verified the workspace with `npm run build && npm run lint && npm run test` after landing the renderer.
 
+### 2026-03-14: Checkers Click-to-Move Interaction (Issue #26)
+
+- Updated `CheckersRenderer` so each square is a PixiJS interactive target, local players can select their own movable piece, and valid destinations are highlighted before a move is sent to the room.
+- Added lightweight client-side checkers move generation in `client/src/games/checkers/checkersClientLogic.ts`, mirroring the server’s forced-capture rules closely enough to show accurate move targets without shifting authority away from the server.
+- Extended the renderer init context so `GameScene` passes the active Colyseus room into renderers, letting checkers compare `room.sessionId` against `state.currentTurn` and send `move` messages directly.
+- Added focused client-side tests for the new move helper and re-verified the workspace with `npm run build && npm run lint && npm run test`.
+

@@ -59,7 +59,7 @@ export class GameScene implements Scene {
     }
 
     this.renderer = this.rendererRegistry.create(enterData.gameType);
-    this.renderer.init(this.room.state);
+    this.renderer.init(this.room.state, { room: this.room });
     this.container.addChild(this.renderer.container);
 
     this.stateChangeHandler = (state) => {
