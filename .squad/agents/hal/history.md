@@ -98,3 +98,49 @@ Start simple, scale deliberately. Build what we need now, design for what we'll 
 - Scaling strategy defers until needed (1→2→3 phase approach)
 - Game implementation order aligned: Checkers → Dominoes → Card games → Risk
 - Asset dependencies identified: Risk SVG map (CRITICAL), card sprite sheet
+
+---
+
+### 2026-03-14: Azure Cloud Architecture Proposal
+
+**Key Decisions Proposed:**
+
+1. **Azure Container Apps (Consumption plan)** — Single container serves Colyseus + static client, same pattern as primal-grid. Port 2567, WebSocket through ACA Envoy ingress natively.
+
+2. **Scaling: Phase 1 = 1 replica, Phase 2 = sticky sessions + auto-scale on concurrent connections.** HTTP concurrent request scaling (not CPU) is the right metric for WebSocket workloads.
+
+3. **SQLite ephemeral in Phase 1** — accepted trade-off: data lost on redeploy, acceptable during dev. PostgreSQL Flex Server for Phase 2 (aligned with approved SQLite→PostgreSQL decision).
+
+4. **GitHub Actions CI/CD adapted from primal-grid** (`dkirby-ms/primal-grid`). Key improvement: `az acr build` instead of local `docker build + push` for faster CI. Reusable workflow pattern proposed for DRY deploy logic across dev/uat/prod.
+
+5. **Phase 2 additions when triggered:** Redis (for Colyseus RedisPresence across replicas), PostgreSQL, Static Web Apps for client CDN. Defer until 50+ concurrent games.
+
+6. **Cost estimate:** Phase 1 ~$20-30/mo, Phase 2 ~$90-140/mo, Phase 3 ~$360-700/mo.
+
+**User Preferences Noted:**
+- Azure is the provider (no AWS/GCP)
+- ACA chosen explicitly for scaling flexibility
+- GitHub Actions for CI/CD (not Azure DevOps)
+- Primal-grid pipeline as reference/starting point
+- "Plan with the end in mind" — phased architecture with clear upgrade triggers
+
+**Key File Paths:**
+- Proposal: `.squad/decisions.md` (merged from inbox)
+- Primal-grid Dockerfile: `dkirby-ms/primal-grid/Dockerfile` (multi-stage build, identical workspace structure)
+- Primal-grid deploy: `dkirby-ms/primal-grid/.github/workflows/deploy.yml` (OIDC + ACR + ACA pattern)
+- Primal-grid UAT: `dkirby-ms/primal-grid/.github/workflows/deploy-uat.yml` (branch-aware tagging, concurrency groups)
+- PlayGrid server entry: `server/src/index.ts` (Colyseus on port 2567)
+
+**Cross-Agent Sync (2026-03-14):**
+
+**From Marathe (DevOps):**
+- Primal-grid currently allows 3 UAT replicas, but Colyseus/WebSocket rooms require careful cross-replica coordination that single sticky sessions don't fully solve. Hal's Phase 1 (1 replica only) is the right constraint until distributed presence/state infrastructure ready.
+- Primal-grid's Dockerfile pattern copies `client/dist` to `public/` in runtime image. PlayGrid's current server doesn't serve static assets yet — recommend validating this architecture before copying pattern. Consider: add HTTP/static serving to server runtime, OR deploy client separately.
+- Session affinity configuration for Phase 2+ is critical; Marathe has documented this in reusable skill (`.squad/skills/azure-container-apps-monorepo-pipeline/SKILL.md`).
+- Security improvements identified: GitHub Environments for scoped secrets/approvals, ACA managed identity for ACR, Key Vault references, pinned action SHAs, minimal workflow permissions.
+- Build performance improvements available: Docker BuildKit caching with `docker/setup-buildx-action` + `docker/build-push-action` with `type=gha` cache.
+
+**Implications for Architecture Proposal:**
+- Confirms single-replica Phase 1 constraint is operationally sound.
+- Suggests Phase 2 readiness timeline depends on distributed Colyseus infrastructure (RedisPresence, PostgreSQL shared state), not just replica count.
+- Pipeline design should include post-deploy health checks and smoke tests before marking success.
