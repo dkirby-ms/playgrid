@@ -194,6 +194,11 @@
 - Added auto-hide behavior for informational connection states while keeping errors persistent and visible when they matter.
 - Re-verified the workspace with `npm run build && npm run lint && npm run test` after landing the fix.
 
+### 2026-03-14: Application ConnectionManager Startup Fix
+
+- Fixed `client/src/Application.ts` to import `ConnectionManager` from `client/src/networking`, along with the related connection state/event types it already uses.
+- Added the missing `private connectionManager!: ConnectionManager;` field and removed the dead direct `Client` property, keeping application networking routed through the connection wrapper.
+- Re-verified the client path with `npm run lint`, `npm run build`, `npm run test`, and a live browser load against the dev client to confirm startup no longer throws `ReferenceError: ConnectionManager is not defined`.
 
 ## Cross-Agent Update — Issue #37 Complete, PR #56 Merged (2026-03-14)
 

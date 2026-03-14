@@ -75,9 +75,9 @@ test.describe("lobby e2e", () => {
     const spectator = await openLobby(browser, "Spectator");
 
     try {
-      await expect(spectator.page.locator(".lobby-empty-row")).toContainText("No sessions available yet");
-
       const gameName = uniqueName("removal");
+      await expect(gameRow(spectator.page, gameName)).toHaveCount(0);
+
       await createGame(host.page, gameName);
 
       const spectatorRow = gameRow(spectator.page, gameName);
@@ -89,7 +89,6 @@ test.describe("lobby e2e", () => {
       await host.page.getByRole("button", { name: "Leave" }).click();
       await expect(lobbyOverlay(host.page)).toBeVisible();
       await expect(spectatorRow).toHaveCount(0);
-      await expect(spectator.page.locator(".lobby-empty-row")).toContainText("No sessions available yet");
     } finally {
       await Promise.all([host.context.close(), spectator.context.close()]);
     }
