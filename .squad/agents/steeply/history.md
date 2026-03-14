@@ -77,3 +77,17 @@
 - **Gately:** Checkers E2E now gates game rendering; PR #55 tests pass
 - **Pemulis:** Plugin system design should reference Grey Box pattern; each plugin must expose `window.__PLAYGRID_E2E__.app.gameRoom`
 - **Future Game Authors:** Refer to PR #58 (Checkers E2E) as template for all game plugin E2E
+
+## Work Complete — Issue #46: Backgammon Logic and Plugin Tests (2026-03-14)
+
+- Created comprehensive test suite for Backgammon plugin with 83 tests covering:
+  - **Pure logic functions**: board initialization, dice management, move validation
+  - **Movement rules**: valid/invalid moves, direction, distance, blocked points, capturing
+  - **Bar re-entry**: forced re-entry, entry point validation, blocked entry
+  - **Bearing off**: home board requirement, exact dice, higher dice usage, piece placement rules
+  - **Integration**: game initialization, turn progression, action validation, win detection
+  - **Edge cases**: forced pass (no valid moves), initial board correctness, player disconnection
+- Test file: `server/src/__tests__/backgammon.test.ts`
+- All 83 backgammon tests passing
+- Follows existing test patterns from Checkers E2E tests
+- PR #69 created (draft) — squad/46-backgammon-tests
