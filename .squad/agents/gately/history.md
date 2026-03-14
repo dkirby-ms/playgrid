@@ -261,3 +261,23 @@
 - Registered in RendererRegistry and added Backgammon to lobby game type options
 - PR #70 created (draft) for review
 - Build, lint, and test suite passed (6 pre-existing server-side backgammon test failures unrelated to renderer)
+
+### 2026-03-14: In-Game HUD Overlay (Issue #39)
+
+- Created `client/src/ui/HUD.ts` as an HTML-based overlay component following existing UI patterns from LobbyScreen and WaitingRoom
+- HUD displays during gameplay with:
+  - **Player Info Panel** (top-left): Player names, scores, and current turn highlighting with responsive styling
+  - **Turn Indicator** (top-center): Shows "Your turn" or "{Player}'s turn" with color coding (green for local, blue for opponent)
+  - **Game Timer** (optional, below turn): Countdown with warning styling (red) when under 30 seconds
+  - **Leave Game Button** (top-right): Styled consistently with other lobby buttons, triggers leave event
+  - **Chat Toggle Button** (bottom-right): Floating circular button with "coming soon" placeholder panel
+- Integrated with GameScene lifecycle:
+  - HUD initialized and shown in `onEnter()` with room state data
+  - Updates dynamically via `onStateChange()` handler
+  - Hidden and cleaned up in `onExit()` via `cleanup()`
+  - Leave button wired through HUD event callback → GameScene event → Application.leaveGame()
+- Replaced GameScene's old standalone leave button with integrated HUD system
+- HUD extracts player data and current turn from generic state object (works across all game types)
+- Styling follows project patterns: rgba backgrounds, cyan accent colors, responsive with media queries for mobile
+- All elements use pointer-events to enable interaction while overlay itself remains non-blocking
+- PR #76 created (draft) — completes the last P2 issue! 🎉

@@ -158,3 +158,24 @@
 - Pre-existing failures (mentioned by team) are acceptable to merge through
 - New failures introduced by PR changes must be fixed before merge
 - PR #71 introduced a new test failure due to legitimate implementation change — fixed by updating test expectation to match new behavior
+
+### Wave 5 PR Reviews (2026-03-14)
+
+**Session:** Reviewed and merged 4 P2 draft PRs targeting dev branch — all clean merges, no conflicts
+
+**PRs Merged:**
+1. **PR #72 (Steeply) — Game persistence layer tests:** 453 lines of comprehensive unit tests for gameRepository (createGame, endGame, addParticipant). Key review points: proper mock patterns, extensive edge case coverage (concurrent operations, constraint violations, null handling, database failures), clean separation of concerns. All tests use vi.fn() mocks for database isolation. ✅ Approved, merged cleanly.
+
+2. **PR #73 (Marathe) — Discord webhook composite action:** DRY refactor extracting 180+ lines of duplicated curl logic into reusable `.github/actions/discord-notify/action.yml`. Review highlights: proper composite action pattern, enhanced notification fields (deployment URL, shortened SHA, workflow links), uses `if: always()` with `${{ job.status }}` for cleaner conditional logic, consistent Discord embed format across all envs. Net -22 lines, significant maintainability win. ✅ Approved, merged cleanly.
+
+3. **PR #74 (Gately) — Client connection manager:** Clean extraction of Colyseus connection logic from Application.ts into dedicated ConnectionManager class. Review highlights: state machine (DISCONNECTED → CONNECTING → CONNECTED → RECONNECTING), exponential backoff reconnection (max 5 attempts, 1s-30s delays), event-driven architecture for state changes and errors, proper cleanup in Application.ts (removed duplicate onError handlers). Complements server-side reconnection (PR #61). ✅ Approved, merged cleanly.
+
+4. **PR #75 (Pemulis) — Application Insights integration:** Azure Application Insights telemetry for server observability. Review highlights: graceful no-op when APPLICATIONINSIGHTS_CONNECTION_STRING not configured (local dev friendly), tracks 6 custom lifecycle events (room_created, player_connected/reconnected/disconnected, game_started/ended), process-level exception tracking (unhandledRejection, uncaughtException), all tracking wrapped in try/catch to prevent game disruption. Added `applicationinsights@3.14.0` dependency. ✅ Approved, merged cleanly.
+
+**Review Standards Applied:**
+- Tests (PR #72): Verified comprehensive mock patterns, concurrent operation handling, error path coverage, test isolation
+- Discord webhook (PR #73): Verified composite action best practices, webhook format consistency, secret handling, proper use of `${{ job.status }}`
+- Connection manager (PR #74): Verified state machine correctness, exponential backoff algorithm, clean extraction from Application.ts, event listener patterns
+- App Insights (PR #75): Verified graceful degradation, custom event selection, no performance impact (async telemetry), proper exception context tracking
+
+**All merges successful, no conflicts, no test failures.** Clean Wave 5 completion.
