@@ -33,6 +33,8 @@ defineTypes(GameState, {
   tick: "number",
 });
 
+export { BaseGameState, PlayerInfo } from "./BaseGameState.js";
+
 // Shared constants
 export const GAME_WIDTH = 800;
 export const GAME_HEIGHT = 600;
