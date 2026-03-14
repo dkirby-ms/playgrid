@@ -92,6 +92,13 @@
 - Game order aligned: Checkers → Dominoes → Card games → Complex games
 - Asset dependencies identified and risk mitigation planned
 
+### Environment Config Module (2026-03-14)
+
+- Built `server/src/config.ts` as the server-side environment config module for P0 infrastructure.
+- Exported a typed `config` object with `port`, `databaseUrl`, and `nodeEnv`, using `process.env` directly and local-safe defaults.
+- Updated `server/src/index.ts` to consume `config.port` instead of reading `process.env.PORT` inline.
+- Pattern used: centralize env parsing in one typed module, default invalid or missing values to development-safe settings, and import config from runtime entrypoints.
+
 ## Cross-Agent Update — Issue #1 Closed, PR #47 Open (2026-03-14)
 
 **From:** Joelle (Community/DevRel)  
