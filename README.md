@@ -23,26 +23,111 @@ PlayGrid brings timeless games like chess, checkers, and cards to life with real
 ## Getting Started
 
 ### Prerequisites
-- Node.js 18+
-- npm or yarn
+- **Node.js 22+** (with npm)
+- **PostgreSQL 14+** (for game state and player data)
+- Git
 
-### Development Setup
+### Development Setup (< 10 minutes)
 
-```bash
-npm install
-npm run dev
-```
+1. **Clone and install:**
+   ```bash
+   git clone https://github.com/dkirby-ms/playgrid.git
+   cd playgrid
+   npm ci
+   ```
 
-The dev server runs on `http://localhost:5173`. Connect to your local game server and start playing.
+2. **Set up the database:**
+   ```bash
+   createdb playgrid
+   # The server will initialize tables on first run
+   ```
+
+3. **Start the dev environment:**
+   ```bash
+   npm run dev
+   ```
+
+   This runs both the client (PixiJS at `http://localhost:5173`) and server (Colyseus at `localhost:3000`) concurrently.
+
+4. **Verify it's working:**
+   - Open `http://localhost:5173` in your browser
+   - Create a lobby and invite a friend (or open another browser tab)
+   - Play!
 
 ## Project Structure
 
-- **`client/`** — Web UI and game rendering (PixiJS, Vite)
-- **`server/`** — Game server and match logic (Colyseus, Node.js)
-- **`shared/`** — Shared types, constants, and utilities (TypeScript)
-- **`docs/`** — Architecture, design decisions, and guides
+```
+playgrid/
+├── client/              # PixiJS game client (Vite)
+│   ├── src/
+│   │   ├── components/  # Game rendering components
+│   │   ├── pages/       # Lobby, game, and settings pages
+│   │   └── game/        # Game-specific logic
+│   └── dist/            # Built output
+├── server/              # Colyseus multiplayer server
+│   ├── src/
+│   │   ├── rooms/       # Game room types (Chess, Checkers, etc.)
+│   │   ├── database/    # PostgreSQL connection and queries
+│   │   └── index.ts     # Server entry point
+│   └── dist/            # Built output
+├── shared/              # Shared TypeScript types
+│   └── src/
+│       ├── types/       # Game and room interfaces
+│       ├── constants/   # Game rules and configuration
+│       └── utils/       # Shared utility functions
+├── e2e/                 # Playwright end-to-end tests
+├── docs/                # Architecture and design guides
+├── .squad/              # Team docs and decisions
+└── package.json         # Monorepo workspace configuration
+```
 
-For detailed architecture and design notes, see [`docs/`](./docs).
+### Understanding the Plugin Pattern
+
+Games in PlayGrid follow a plugin architecture. Each game implements the **`IGamePlugin`** interface:
+
+```typescript
+interface IGamePlugin {
+  name: string;              // "Chess", "Checkers", etc.
+  rules: GameRules;          // Move validation, board state
+  stateShape: Schema;        // Serializable game state
+  onMessage(action: string, payload: unknown): void;
+}
+```
+
+**Adding a new game:**
+1. Create a room class in `server/src/rooms/` (e.g., `ConnectFourRoom.ts`)
+2. Implement `IGamePlugin` with your game rules and state
+3. Register it in the server's room dispatcher
+4. Add client-side rendering in `client/src/game/` 
+5. Write E2E tests in `e2e/`
+
+See [`docs/game-systems-design.md`](./docs/game-systems-design.md) for the complete plugin pattern spec.
+
+## Development Workflow
+
+### Running Tests
+
+```bash
+npm run test              # Unit and integration tests (Vitest)
+npm run test:watch       # Watch mode for development
+npm run test:e2e         # End-to-end tests (Playwright)
+```
+
+### Building for Production
+
+```bash
+npm run build            # Build all workspaces
+npm run lint             # Lint TypeScript and JavaScript
+```
+
+## Deployment
+
+PlayGrid is built for cloud deployment on Node.js with PostgreSQL. The server and client are independent:
+
+- **Client:** Static HTML/JS/CSS bundle, served by any CDN or static host
+- **Server:** Node.js Express + Colyseus, with PostgreSQL for persistence
+
+See [`docs/`](./docs) for deployment architecture and environment configuration.
 
 ## Contributing
 
@@ -51,6 +136,8 @@ We welcome contributions! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for g
 - Branch strategy and workflow
 - Code style and testing practices
 - How to submit issues and pull requests
+
+For a deep dive into the architecture, see [`docs/architecture.md`](./docs/architecture.md).
 
 ## Squad Team
 

@@ -171,3 +171,31 @@
 - Reset `client/src/Application.ts` transient game/waiting-room state before joining the lobby so a fresh lobby connection never carries stale room UI or auto-rejoin behavior.
 - Re-verified the workspace with `npm run build && npm run lint && npm run test` after adding the new disconnect regression tests.
 
+### Player reconnection support and connection stability (2026-03-14)
+
+**Issue #35 (Player Reconnection) & Issue #59 (Connection Drop Bug):**
+- Added `allowReconnection()` support in `BaseGameRoom.onLeave()` with configurable timeout (default 30s, configurable via `reconnectionTimeout` option)
+- Modified `onJoin()` to detect returning players and restore their `isConnected` state instead of creating duplicate `PlayerInfo` entries
+- Added `handleReconnectionTimeout()` private method to handle forfeit/draw logic when reconnection expires
+- CONSENTED disconnects skip reconnection entirely and trigger immediate forfeit (preserves existing test behavior)
+- Configured WebSocket transport with `pingInterval: 10000` (10s) and `pingMaxRetries: 3` to fix connection drop bug after 1-2 minutes of idle
+- Pattern: Reconnection only applies during `phase === "playing"` and for non-spectators; waiting-phase leaves and spectator leaves use immediate cleanup path
+
+**Technical details:**
+- `allowReconnection()` is an async Colyseus method that throws when timeout expires, caught to trigger `handleReconnectionTimeout()`
+- Reconnection restores full game state automatically via Colyseus state sync; no manual re-sync needed beyond flipping `isConnected` flag
+- `PlayerInfo.isConnected` already existed in schema; this work adds proper lifecycle management around it
+- Heartbeat configuration prevents server-side idle timeout that was causing #59 connection drops
+- All existing BaseGameRoom tests pass; reconnection behavior is compatible with Checkers plugin
+
+**Key decisions:**
+- 30s reconnection timeout balances user experience (enough time to reload page) with game flow (not too long for opponents to wait)
+- Skip reconnection for CONSENTED closes to preserve forfeit semantics (player intentionally leaving)
+- Reconnection timeout triggers same forfeit logic as regular disconnect to maintain consistent game-end behavior
+
+**File paths:**
+- `server/src/game/BaseGameRoom.ts` — reconnection logic
+- `server/src/index.ts` — WebSocket heartbeat config
+- `shared/src/BaseGameState.ts` — PlayerInfo schema (isConnected field already present)
+
+
