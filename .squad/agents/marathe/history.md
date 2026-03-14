@@ -14,6 +14,7 @@
 - 2026-03-14: Respect the approved scaling decision in `.squad/decisions.md` — keep the Colyseus deployment single-process / single-replica until distributed scaling support exists.
 - 2026-03-14: `docs/backlog.md` currently parses into 45 actionable work items; GitHub issues `#2`–`#46` were created under three phase milestones, and GitHub Projects v2 needs `project` + `read:project` token scopes before Marathe can create the board.
 - 2026-03-14: Built `.github/workflows/ci.yml` for pushes and PRs on `dev` with docs-only path ignores, SHA-pinned `actions/checkout` + `actions/setup-node`, `npm ci`, `npm run build`, `npm run test`, minimal `contents: read` permissions, and PR/ref-based concurrency cancellation. Regenerated the root `package-lock.json` with npm's legacy peer-deps resolver so plain `npm ci` works for the workspace monorepo.
+- 2026-03-14: Issue #8 uses a root `eslint.config.js` flat config with `typescript-eslint`, browser globals for `client/`, Node globals for `server/` and `shared/`, and `dist/` ignored so post-build linting stays clean across the workspace monorepo.
 
 ### 2026-03-14: Deployment Pipeline Analysis — Recommendations for PlayGrid
 
