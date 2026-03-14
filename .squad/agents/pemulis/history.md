@@ -206,3 +206,29 @@
 - All database calls are wrapped in try/catch blocks that log errors but never crash the game room, ensuring DB failures degrade gracefully without impacting gameplay.
 - Functions accept the `pool` parameter for testability and use parameterized queries to prevent SQL injection; existing migrations already define the `games` and `game_participants` tables.
 - Verified integration with `npm run build && npm run lint && npm run test`; DB connection errors in test environment are caught and logged as expected without test failures.
+
+## Cross-Agent Update — Wave 1 Complete (2026-03-14T18:55:06Z)
+
+**From:** Squad Scribe  
+**Event:** Wave 1 orchestration completed (8 PRs merged, 0 blockers, 1 conflict resolved)
+
+**PRs Merged to dev:**
+- PR #61: Player Reconnection (#35, #59) — **Your work, merged successfully**
+- PR #67: Game Persistence (#33) — rebased on top of #61, conflict resolved, merged
+
+**Key Achievements:**
+- Connection stability: WebSocket heartbeat (10s ping, 3 retries) prevents idle timeouts
+- Reconnection: 30s grace period with CONSENTED disconnect skip logic
+- All existing tests pass; backward compatible with plugin system
+
+**Cross-Agent Notes:**
+- Hal approved your reconnection design; flagged #67 conflict which you resolved
+- Gately's Backgammon plugin successfully uses your reconnection infrastructure
+- Marathe's deployments enable you to ship reconnection to prod
+- Joelle's plugin dev guide references your reconnection pattern
+
+**Documentation Updated:**
+- Pemulis reconnection decision now in .squad/decisions.md (canonical record)
+- Session log created: `.squad/log/2026-03-14T18-55-06Z-p2-wave1-3.md`
+
+**Next:** Wave 2 assignments ready when you are.
