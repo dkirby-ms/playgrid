@@ -1054,3 +1054,54 @@ User request — captured for team memory and future upgrade planning.
 - The suite can assert win/loss messaging, promotion, king movement, invalid-action errors, and synchronized state changes deterministically
 - Environment-agnostic (no coordinate-based clicks, no timing issues)
 
+
+---
+
+## Session: Player Reconnection Support (2026-03-14)
+
+### Pemulis: Player Reconnection Support
+
+**Status:** Implemented  
+**Date:** 2026-03-14  
+**PR:** #61  
+**Issues:** #35, #59
+
+**Decision:** Implemented two-part solution for connection stability and graceful reconnection.
+
+#### 1. Connection Stability (Issue #59)
+- Configure WebSocket transport with heartbeat: `pingInterval: 10000` (10s), `pingMaxRetries: 3`
+- Prevents server-side idle timeout causing premature disconnects
+- Keeps connections alive during low-activity periods
+
+#### 2. Reconnection Support (Issue #35)
+- Call `allowReconnection(client, timeout)` in `BaseGameRoom.onLeave()` during active games
+- Default 30s timeout, configurable via room options
+- On reconnect, `onJoin()` detects existing player and restores `isConnected` flag
+- Timeout triggers forfeit (1 player remains) or draw (all disconnected)
+- CONSENTED disconnects skip reconnection (immediate forfeit)
+
+**Rationale:**
+- 30-second timeout: Long enough for page reload/network recovery, short enough to avoid frustrating waiting opponents
+- CONSENTED skip: Preserves intentional forfeit semantics and prevents reconnection loops
+- Heartbeat configuration: 10s interval balances responsiveness with network overhead; 3 retries = 30s grace period
+- Aligns with existing `PlayerInfo.isConnected` field design
+- Compatible with plugin lifecycle hooks
+
+**Alternatives Considered:**
+- Client-side reconnection UI (deferred to future work)
+- No timeout differentiation (rejected; CONSENTED closes should be immediate)
+- Longer timeout (rejected; too long for 2-player games)
+- Cross-page session tokens (out of scope; requires authentication system)
+
+**Impact:**
+- ✅ No more 1-2 minute connection timeouts
+- ✅ Players can reload page mid-game
+- ✅ All existing tests pass
+- ✅ Works with plugin system
+- ⚠️ Client-side rejoin UI still needed (future work)
+- ⚠️ Lobby reconnection still unsupported
+
+**Follow-up Work:**
+- Client-side "Reconnecting..." UI (Issue #50)
+- Lobby reconnection support
+- Per-game timeout configuration

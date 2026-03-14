@@ -98,3 +98,32 @@
 - **Pemulis:** Plugin system design should reference Grey Box E2E; each plugin author must expose `window.__PLAYGRID_E2E__.app.gameRoom`
 - **Future:** Template available for all game plugin E2E testing
 
+
+## Cross-Agent Update — Wave 1 Complete (2026-03-14T18:55:06Z)
+
+**From:** Squad Scribe  
+**Event:** Wave 1 orchestration completed (8 PRs merged, 0 blockers, 1 conflict resolved)
+
+**PRs Merged to dev:**
+- PR #60: Deploy Dev (Marathe)
+- PR #61: Player Reconnection (Pemulis) — **Issue #35, #59 closed**
+- PR #62: Developer Docs (Joelle)
+- PR #63: Deploy UAT (Marathe)
+- PR #64: Plugin Dev Guide (Joelle)
+- PR #65: Deploy Prod (Marathe)
+- PR #66: Backgammon Plugin (Gately)
+- PR #67: Game Persistence (Pemulis) — rebased & merged after conflict with #61
+
+**Key Achievements:**
+- Reconnection infrastructure now live (WebSocket heartbeat + 30s grace period)
+- All 3 deployment pipelines implemented
+- Backgammon plugin successfully integrates with reconnection system
+- Developer onboarding docs complete
+
+**Cross-Agent Notes for You:**
+- Pemulis's reconnection solution is now the foundation for all game plugins
+- Gately's Backgammon seamlessly integrated with reconnection
+- Marathe's deployment pipelines are ready for prod rollout
+- Joelle's plugin dev guide should help future game authors
+
+**No blockers going forward.** All agents ready for Wave 2 assignments.
