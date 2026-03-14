@@ -65,7 +65,7 @@ export interface LobbyErrorPayload {
 }
 
 export type LobbyEvent =
-  | { type: "join_game"; gameId: string; roomId: string }
+  | { type: "join_game"; gameId: string; roomId: string; gameType: string }
   | { type: "waiting"; gameId: string; gameInfo: GameSessionInfo | null; isHost: boolean }
   | { type: "error"; message: string };
 
@@ -285,6 +285,7 @@ export class LobbyScreen {
           type: "join_game",
           gameId: payload.gameId,
           roomId: payload.roomId,
+          gameType: this.games.get(payload.gameId)?.gameType ?? "checkers",
         });
         return;
       }

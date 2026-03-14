@@ -6,7 +6,7 @@ import type { Scene } from "./Scene";
 
 export type WaitingRoomSceneEvent =
   | { type: "leave" }
-  | { type: "game_started"; gameId: string; roomId: string };
+  | { type: "game_started"; gameId: string; roomId: string; gameType: string };
 
 export interface WaitingRoomSceneEnterData {
   room: Room;

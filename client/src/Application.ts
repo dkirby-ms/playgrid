@@ -186,7 +186,7 @@ export class PlaygridApp {
       return;
     }
 
-    await this.joinGame(event.roomId);
+    await this.joinGame(event.roomId, event.gameType);
   }
 
   private async handleWaitingRoomEvent(event: WaitingRoomSceneEvent): Promise<void> {
@@ -195,7 +195,7 @@ export class PlaygridApp {
       return;
     }
 
-    await this.joinGame(event.roomId);
+    await this.joinGame(event.roomId, event.gameType);
   }
 
   private async handleGameSceneEvent(event: GameSceneEvent): Promise<void> {

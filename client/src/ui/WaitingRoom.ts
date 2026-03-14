@@ -31,7 +31,7 @@ export interface SetReadyPayload {
 
 type WaitingRoomEvent =
   | { type: "leave" }
-  | { type: "game_started"; gameId: string; roomId: string };
+  | { type: "game_started"; gameId: string; roomId: string; gameType: string };
 
 type WaitingRoomEventCallback = (event: WaitingRoomEvent) => void;
 
@@ -141,6 +141,7 @@ export class WaitingRoom {
           type: "game_started",
           gameId: payload.gameId,
           roomId: payload.roomId,
+          gameType: this.gameInfo?.gameType ?? "checkers",
         });
       });
     }
