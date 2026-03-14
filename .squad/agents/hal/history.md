@@ -127,3 +127,34 @@
 - Joelle's plugin dev guide should help future game authors
 
 **No blockers going forward.** All agents ready for Wave 2 assignments.
+
+
+## Learnings
+
+### Wave 4 PR Reviews (2026-03-14)
+
+**Session:** Reviewed and merged 4 draft PRs targeting dev branch in dependency-safe order
+
+**PRs Merged:**
+1. **PR #68 (Marathe) — Azure Bicep infrastructure-as-code:** Comprehensive IaC for dev/uat/prod environments. Key review points: proper RBAC (AcrPull, Key Vault Secrets User), managed identity instead of admin credentials, OIDC for GitHub Actions, environment-specific resource sizing, health probes configured. Security posture solid. ✅ Approved, merged cleanly.
+
+2. **PR #69 (Steeply) — Backgammon logic and plugin tests:** 83 comprehensive tests covering pure logic functions, movement rules, bar re-entry, bearing off, edge cases. Test patterns follow Checkers E2E template. Excellent coverage of backgammon-specific rules (forced re-entry, exact dice vs. higher dice for bearing off). ✅ Approved, merged cleanly.
+
+3. **PR #70 (Gately) — Backgammon renderer (client):** 1400+ line procedural renderer following GameRenderer pattern. Review highlights: proper RendererRegistry integration, procedural graphics (no assets), spectator-safe (read-only state observation), LobbyScreen integration for game type selection. Merge conflict with #68 (infra) and #69 (tests) — resolved via git merge, all tests passed. ✅ Approved, merged after conflict resolution.
+
+4. **PR #71 (Pemulis) — Spectator mode:** Server + client spectator support. Key changes: `maxClients = maxPlayersConfig + 100` (100 spectator slots), `isSpectator` flag prevents actions, LobbyRoom validates spectator joins (only in_progress games), client "Watch" button. **Test failure identified:** BaseGameRoom.test.ts expected `maxClients = 3` but got `103`. Fixed by updating test expectation and adding explanatory comment. Merge conflict with #70 (renderer) — resolved via git merge, all tests passed. ✅ Approved, merged after test fix and conflict resolution.
+
+**Review Standards Applied:**
+- Bicep: Verified secure resource definitions, proper parameterization, RBAC over credentials
+- Tests: Verified edge case coverage, test isolation, Vitest patterns
+- Renderer: Verified GameRenderer interface compliance, procedural rendering, RendererRegistry integration
+- Spectator: Verified isSpectator action rejection, maxClients handling, lobby integration
+
+**Conflict Resolution Pattern:**
+- When gh pr merge fails with "not mergeable", use: `gh pr checkout {N} && git fetch origin dev && GIT_EDITOR=true git merge origin/dev && git push`
+- Always verify CI passes after conflict resolution before final merge
+
+**Test Failure Handling:**
+- Pre-existing failures (mentioned by team) are acceptable to merge through
+- New failures introduced by PR changes must be fixed before merge
+- PR #71 introduced a new test failure due to legitimate implementation change — fixed by updating test expectation to match new behavior
