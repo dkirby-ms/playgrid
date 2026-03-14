@@ -22,3 +22,5 @@ export class RendererRegistry {
     return this.factories.has(gameType);
   }
 }
+
+export const rendererRegistry = new RendererRegistry();

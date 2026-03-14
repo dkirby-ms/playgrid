@@ -131,3 +131,32 @@
 - Re-exported the `Scene` type for future client architecture work without creating any concrete scenes yet.
 - Verified the workspace with `npm run build && npm run lint && npm run test` after landing the infrastructure.
 
+### 2026-03-14: Application + Scene Refactor (Issues #21 and #22)
+
+- Added `client/src/renderers/GameRenderer.ts` and `RendererRegistry.ts` to establish the client-side renderer plugin contract before any concrete game renderers exist.
+- Refactored the client bootstrap into `client/src/Application.ts`, which now owns the PixiJS app, Colyseus client, `SceneManager`, lobby room, and active game room.
+- Wrapped the existing HTML overlays in `LobbyScene` and `WaitingRoomScene`, keeping `LobbyScreen.ts` and `WaitingRoom.ts` unchanged while moving flow control into scene transitions.
+- Added a placeholder `GameScene` so lobby → waiting room → game transitions now run through the shared scene system instead of monolithic logic in `client/src/index.ts`.
+
+### 2026-03-14: Checkers State + Live Game Scene (Issues #15 and #23)
+
+- Added `shared/src/games/checkers/CheckersState.ts` as a `BaseGameState` subclass with a 64-cell `ArraySchema<number>` board, checkers piece constants, and `mustCaptureFrom` tracking for forced multi-jump chains.
+- Re-exported the new checkers schema through `shared/src/games/checkers/index.ts` and `shared/src/index.ts` so future server plugins and client code can import it from the shared package entrypoint.
+- Upgraded `client/src/scenes/GameScene.ts` from a placeholder into a real renderer host that looks up renderers by game type, initializes them from Colyseus room state, forwards updates/resizes, and degrades to an on-screen error message when a renderer is not registered.
+- Added a lightweight HTML "Leave Game" overlay button wired back into `Application.ts`, so the scene can request a lobby return without owning connection teardown itself.
+- Verified the workspace with `npm run build && npm run lint && npm run test` after landing the two requested feature commits.
+
+### 2026-03-14: Checkers Logic + Lobby Game Type (Issues #16 and #24)
+
+- Added `server/src/games/checkers/checkersLogic.ts` with pure TypeScript helpers for board setup, forced captures, multi-jump chains, king promotion, per-player move generation, and win detection with no Colyseus room logic mixed in.
+- Added `server/src/__tests__/checkersLogic.test.ts` to cover opening setup, forced captures, chained jumps, promotion, king movement, and win-condition handling.
+- Updated `client/src/ui/LobbyScreen.ts` so the create-game form now includes a game type dropdown, create payloads send `gameType`, and the lobby table shows a new Type column with a friendly label.
+- Verified the workspace again with `npm run build && npm run lint && npm run test` after the two requested feature commits.
+
+### 2026-03-14: Checkers Renderer (Issue #25)
+
+- Added `client/src/renderers/CheckersRenderer.ts` as the first concrete PixiJS game renderer, drawing an 8×8 centered board plus circular checkers pieces directly from shared Colyseus state.
+- Kept board layout responsive by recalculating square size from `min(width, height) / 8` on resize, redrawing the board layer, and only refreshing the piece layer on state changes.
+- Added a shared `rendererRegistry` singleton and registered the `checkers` renderer through `client/src/renderers/index.ts`, then wired `Application.ts` to use that registry so renderer registration happens on the normal client startup path.
+- Re-verified the workspace with `npm run build && npm run lint && npm run test` after landing the renderer.
+

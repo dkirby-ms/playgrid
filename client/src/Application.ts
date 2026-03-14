@@ -1,6 +1,6 @@
 import { Client, type Room } from "@colyseus/sdk";
 import { Application as PixiApplication, Text } from "pixi.js";
-import { RendererRegistry } from "./renderers";
+import { rendererRegistry } from "./renderers";
 import { SceneManager } from "./SceneManager";
 import {
   GameScene,
@@ -52,7 +52,7 @@ export class PlaygridApp {
   gameRoom: ColyseusRoom | null = null;
 
   private statusText!: Text;
-  private readonly rendererRegistry = new RendererRegistry();
+  private readonly rendererRegistry = rendererRegistry;
   private readonly lobbyScene = new LobbyScene((event) => {
     void this.handleLobbyEvent(event);
   });
