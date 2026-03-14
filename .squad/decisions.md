@@ -1429,3 +1429,67 @@ User request — captured for team memory and future upgrade planning.
 **Follow-up:**
 - Server code must read `DATABASE_URL` from environment
 - Test/UAT/prod deployment pipelines remain independent
+
+---
+
+## Session: Client UI Modernization (2026-03-14)
+
+### Gately: Lobby Dashboard UI Pattern
+
+**Status:** Approved  
+**Date:** 2026-03-14T22:15:01Z  
+
+**Decision:** The Lobby UI has been refactored from a table-based list into a modern dashboard layout with visual game tiles, sidebar panels, and modal dialogs.
+
+**Context:**
+The original lobby used an HTML table to display game sessions with inline forms. While functional, it lacked visual appeal and didn't scale well for multiple game types. A Figma dashboard design was provided showing game tiles, active games sidebar, online players panel, and modal-based creation.
+
+**Implementation:**
+- **Layout:** 2/3 main content (game library) + 1/3 sidebar (active games + online players) on desktop, single column on mobile
+- **Game Tiles:** Visual cards representing game types (not sessions), showing active session count, with gradient backgrounds
+- **Active Sessions Panel:** Card-based display of current games with real-time Colyseus sync
+- **Modal Creation:** Centered overlay for new game form with type pre-selection from tiles
+- **Header Controls:** Sticky header with player name input, create button, action controls
+- **Theme:** Dark violet with accent colors, responsive grid layout
+
+**Technical Details:**
+- **Files:** `client/index.html` (CSS) and `client/src/ui/LobbyScreen.ts` (DOM)
+- **Approach:** Vanilla TypeScript + CSS (no framework dependencies)
+- **Styling:** CSS Grid/Flexbox with CSS Variables, inline SVG icons, gradient overlays
+- **State:** `Map<string, GameSessionInfo>` with Colyseus message handling
+
+**Rationale:**
+- Visual Appeal: Modern design more engaging than table layout
+- Scalability: Easy to add new game types as tiles
+- Information Density: Sidebar shows context without additional views
+- Mobile-Friendly: Responsive design collapses to single column
+- Discoverability: Game tiles make available types immediately visible
+- No Dependencies: Retains vanilla TypeScript pattern established in codebase
+
+**Alternatives Considered:**
+- Keep table: Functional but lacks visual polish
+- Use framework (React/Vue): Would require dependency shift, rejected per constraints
+- External images: Requires asset pipeline, using gradients instead
+
+**Impact:**
+- **Client:** New dashboard pattern for game selection/session browsing
+- **WaitingRoom:** Could adopt similar card-based pattern for consistency
+- **Server:** No changes needed (Colyseus protocol unchanged)
+- **Testing:** All 189 tests passing, build and lint clean
+
+**Benefits:**
+- Establishes reusable UI pattern for list-based views
+- Improved user experience and platform aesthetics
+- Foundation for future enhancements (filters, search, images)
+- No technical debt or breaking changes
+
+**Future Enhancements:**
+- Online Players panel (requires server-side presence tracking)
+- Game tile images (when asset pipeline ready)
+- Advanced filtering (by player count, game state, etc.)
+- Search/sort functionality for sessions
+
+**Risks:**
+- Learning curve for new developers
+- Additional CSS maintenance vs. table approach
+- Accessibility testing needed (keyboard navigation, screen readers)

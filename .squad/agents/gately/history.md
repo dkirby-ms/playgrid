@@ -318,3 +318,85 @@ During full E2E suite run, lobby tests failed because earlier checkers E2E tests
 - ConnectionManager (PR #74) now fully integrated
 - State machine is properly hooked into application lifecycle
 - Ready for further enhancements (e.g., reconnection UX improvements)
+
+## Session: Lobby Dashboard Redesign (2026-03-14)
+
+**Task:** Redesign lobby screen to match modern dashboard design from Figma export
+
+### Implementation
+
+**Files Modified:**
+- `client/index.html` — Replaced lobby CSS (~lines 7-399) with new dashboard styles
+- `client/src/ui/LobbyScreen.ts` — Complete DOM rewrite while preserving all functionality
+
+**Key Changes:**
+
+1. **CSS Transformation:**
+   - Dark theme with violet/purple accents (gradient background: zinc-900 to violet-950)
+   - Card-based layout with backdrop blur effects
+   - Sticky header with logo, player name input, and action buttons
+   - Responsive grid: single column mobile → 2/3 + 1/3 split on large screens
+   - Game tiles with gradient backgrounds, hover effects (scale, shadow)
+   - Active games panel with status badges (Waiting/Playing)
+   - Online players panel (placeholder for now)
+   - Modal overlay for create game form
+
+2. **DOM Structure Rewrite:**
+   - Changed from table-based game list to dashboard layout
+   - Header: Logo + title + player name inline input + settings button
+   - Main content: Game Library (left 2/3) + Sidebar panels (right 1/3)
+   - Game Library: Game type tiles (Checkers, Backgammon) with active count
+   - Active Games panel: Card list of waiting/in-progress games with join buttons
+   - Create Game modal: Centered overlay with backdrop, replaces inline form
+   - Notification system: Fixed position toast at top-center
+
+3. **Functionality Preserved:**
+   - All Colyseus room message handlers (GAME_LIST, GAME_UPDATED, GAME_REMOVED, GAME_JOINED, LOBBY_ERROR)
+   - Game creation with validation, game type constraints (2-player for Checkers/Backgammon)
+   - Filter buttons (All, Waiting, In Progress) with badge counts
+   - Player name persistence with localStorage
+   - Join game functionality with pending states
+   - Notification system with auto-hide
+   - Connection error handling
+
+4. **New UX Patterns:**
+   - Game tiles represent game TYPES (not sessions) — clicking opens create modal with that type pre-selected
+   - Active game sessions shown in sidebar panel as cards instead of table rows
+   - Player name input moved to header (auto-saves on change)
+   - Create game button triggers modal instead of inline form
+   - Filters integrated into toolbar alongside create button
+
+**Technical Decisions:**
+- Kept vanilla TypeScript DOM manipulation (no React/Vue)
+- Used inline SVG icons instead of external library
+- CSS gradients for game tile backgrounds (no external images)
+- Changed `gameListBody` type from `HTMLTableSectionElement` to `HTMLElement` to support card layout
+- Removed old table helper methods (buildTextCell, buildStatusCell, buildActionCell)
+- Split rendering into `renderGameList()` (game tiles) + `renderActiveGamesList()` (sidebar)
+
+**Validation:**
+- ✅ Build passes: `npm run build`
+- ✅ Linter clean: `npm run lint`
+- ✅ All tests pass: 10 files, 189 tests (database connection errors expected)
+
+### Learnings
+
+**Architecture:**
+- LobbyScreen follows event-driven pattern with room message handlers
+- DOM construction in constructor, rendering in separate methods
+- State kept in `Map<string, GameSessionInfo>` with reactive updates
+- Filter system with active state tracking and badge counts
+- Modal management with backdrop click-to-close
+
+**CSS Patterns:**
+- Fixed overlays use `position: fixed; inset: 0`
+- Sticky headers with `position: sticky; top: 0`
+- Card hover effects: `transform: scale(1.05)` + shadow
+- Status badges use semantic colors (amber=waiting, green=playing)
+- Responsive breakpoints at 640px (sm), 1024px (lg)
+
+**Key Files:**
+- `client/index.html` — All CSS lives in `<style>` block (lines ~7-900 now)
+- `client/src/ui/LobbyScreen.ts` — 550 lines, all lobby UI logic
+- Game creation flow: Click tile → Modal opens with gameType pre-selected → Create → Room message → Scene transition
+
