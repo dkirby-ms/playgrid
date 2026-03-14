@@ -930,3 +930,42 @@ Created three GitHub issue templates (bug report, feature request, chore), impro
 - Gather feedback for template refinement
 
 ---
+
+---
+
+## Session: Issue Triage & Bug Fixes (2026-03-14 Round 1)
+
+### Gately: Room Status HUD Cleanup (Issue #54)
+
+**Status:** ✅ Approved  
+**Date:** 2026-03-14  
+**PR:** #55  
+
+**Context:**  
+Issue #54 exposed that the global Pixi status text was acting like a centered debug overlay during active gameplay, and Colyseus room identifiers were not reliable through `room.id` alone.
+
+**Decision:**  
+Treat the shared connection/status text as a lightweight HUD toast instead of a gameplay overlay:
+- Anchor it to the top-left corner
+- Auto-hide informational states after a short delay
+- Keep error states persistent
+- Resolve displayed room identifiers with `room.roomId` first, falling back to `room.id`
+
+**Rationale:**  
+This keeps transition/status messaging available without obstructing the board or other in-game rendering. It also matches the current Colyseus client behavior more safely than assuming `room.id` is always populated.
+
+---
+
+### User Directive: Colyseus Version Management
+
+**Status:** ✅ Captured  
+**Date:** 2026-03-14T14:06Z  
+**By:** dkirby-ms (via Copilot)
+
+**Directive:**  
+"We need to be on latest Colyseus" — always track and maintain latest stable Colyseus version.
+
+**Rationale:**  
+User request — captured for team memory and future upgrade planning.
+
+---

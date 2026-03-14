@@ -194,3 +194,12 @@
 - Added auto-hide behavior for informational connection states while keeping errors persistent and visible when they matter.
 - Re-verified the workspace with `npm run build && npm run lint && npm run test` after landing the fix.
 
+
+## Cross-Agent Update — Issue #37 Complete, PR #56 Merged (2026-03-14)
+
+**From:** Steeply (Tester)  
+**Event:** Lobby gameType test coverage complete
+
+- **Issue #37:** Complete. Comprehensive test suite for gameType validation (default, invalid, passthrough, clamping, broadcast).
+- **PR #56:** Merged (squad/37-lobby-tests-gametype) — "Test coverage: lobby gameType validation (82/82 passing)"
+- **Impact:** Lobby system is now fully tested. Future client-side gameType usage has test baseline.
