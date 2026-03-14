@@ -199,3 +199,10 @@
 - `shared/src/BaseGameState.ts` — PlayerInfo schema (isConnected field already present)
 
 
+### Game outcome persistence (2026-03-14)
+
+- Created `server/src/db/gameRepository.ts` with three persistence functions: `createGame(pool, {gameType, playerIds})` creates a new game record and returns the UUID; `addParticipant(pool, {gameId, userId, role})` records player or spectator joins; `endGame(pool, {gameId, outcome, durationSeconds})` updates the final outcome and duration on game end.
+- Integrated persistence into `BaseGameRoom` lifecycle: `onCreate()` generates a game UUID and stores it in the DB, `onJoin()` adds each participant record with their role, `startGame()` captures the start timestamp, and `endGame()` calculates duration and persists the final outcome.
+- All database calls are wrapped in try/catch blocks that log errors but never crash the game room, ensuring DB failures degrade gracefully without impacting gameplay.
+- Functions accept the `pool` parameter for testability and use parameterized queries to prevent SQL injection; existing migrations already define the `games` and `game_participants` tables.
+- Verified integration with `npm run build && npm run lint && npm run test`; DB connection errors in test environment are caught and logged as expected without test failures.

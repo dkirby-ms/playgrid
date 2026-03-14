@@ -9,6 +9,8 @@ import {
 } from "@eschaton/shared";
 import { gameRegistry } from "./GameRegistry.js";
 import { TurnManager } from "./TurnManager.js";
+import { getPool } from "../db.js";
+import * as gameRepository from "../db/gameRepository.js";
 
 interface BaseGameRoomOptions extends GameOptions {
   gameType?: string;
@@ -30,8 +32,10 @@ export class BaseGameRoom extends Room {
   private turnManager?: TurnManager;
   private expectedPlayers = 0;
   private reconnectionTimeout = DEFAULT_RECONNECTION_TIMEOUT;
+  private gameId?: string;
+  private gameStartTime?: number;
 
-  override onCreate(options: BaseGameRoomOptions = {}) {
+  override async onCreate(options: BaseGameRoomOptions = {}) {
     const gameType = typeof options.gameType === "string" ? options.gameType.trim() : "";
     if (!gameType) {
       throw new Error('BaseGameRoom requires a "gameType" option.');
@@ -64,6 +68,16 @@ export class BaseGameRoom extends Room {
         this.plugin.lifecycle.onTick?.(this.state, deltaTime);
       });
     }
+
+    try {
+      const pool = getPool();
+      this.gameId = await gameRepository.createGame(pool, {
+        gameType,
+        playerIds: [],
+      });
+    } catch (error) {
+      console.error("[BaseGameRoom] Failed to create game in DB:", error);
+    }
   }
 
   override onJoin(client: Client, options: Record<string, unknown> = {}) {
@@ -87,6 +101,19 @@ export class BaseGameRoom extends Room {
 
     this.state.players.set(client.sessionId, player);
     this.plugin.lifecycle.onPlayerJoin?.(this.state, client, playerIndex);
+
+    if (this.gameId) {
+      try {
+        const pool = getPool();
+        void gameRepository.addParticipant(pool, {
+          gameId: this.gameId,
+          userId: client.sessionId,
+          role: isSpectator ? "spectator" : "player",
+        });
+      } catch (error) {
+        console.error("[BaseGameRoom] Failed to add participant to DB:", error);
+      }
+    }
 
     if (!isSpectator && this.shouldStartGame()) {
       this.startGame();
@@ -213,6 +240,7 @@ export class BaseGameRoom extends Room {
     }
 
     this.state.phase = "playing";
+    this.gameStartTime = Date.now();
     this.turnManager = new TurnManager(this.orderTurnPlayers(playerIds), {
       turnTimeLimit: this.plugin.turnConfig.turnTimeLimit,
       onTimeout: (sessionId) => {
@@ -297,6 +325,21 @@ export class BaseGameRoom extends Room {
 
     this.plugin.lifecycle.onGameEnd?.(this.state, result);
     this.broadcast(GAME_ENDED_MESSAGE, result);
+
+    if (this.gameId && this.gameStartTime) {
+      try {
+        const pool = getPool();
+        const durationSeconds = Math.floor((Date.now() - this.gameStartTime) / 1000);
+        await gameRepository.endGame(pool, {
+          gameId: this.gameId,
+          outcome: result as unknown as Record<string, unknown>,
+          durationSeconds,
+        });
+      } catch (error) {
+        console.error("[BaseGameRoom] Failed to end game in DB:", error);
+      }
+    }
+
     await this.disconnect();
   }
 
