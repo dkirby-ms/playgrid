@@ -242,3 +242,22 @@
 - Verify future game authors follow same lifecycle hook patterns
 
 **Next:** Wave 2 assignments ready when you are.
+
+### 2026-03-14: Backgammon Renderer (Issue #45)
+
+- Created `client/src/renderers/BackgammonRenderer.ts` implementing the `GameRenderer` interface following the Checkers pattern
+- Board rendering: 24 triangular points arranged in 4 quadrants with alternating colors (dark brown/light tan)
+- Point numbering: top row 11-0 (right to left), bottom row 12-23 (left to right)
+- Center bar divider for captured pieces with separate interactive zones for Black (top) and Red (bottom)
+- Piece rendering: circular discs stacked vertically on points with piece count labels when 5+ pieces stacked
+- Bar pieces: Black displayed on top half, Red on bottom half, with count labels for 3+ pieces
+- Borne-off areas: piece counts displayed on right side of board
+- Dice display: two dice rendered at center with standard pip patterns (1-6 dots), dimmed alpha when used
+- Interactive input: click to select point or bar, click target point to move, highlights valid targets based on available dice
+- Move validation: calculates valid targets considering available dice, bar entry rules, bearing off rules, and blocked points
+- State management: parses BackgammonState with 24-point board (signed integers), bar counts, borne-off counts, dice arrays
+- Responsive layout: calculates board dimensions maintaining 1.6:1 aspect ratio, scales all elements on resize
+- HUD elements: status text (Your turn/Opponent's turn), player color label, game-over messaging
+- Registered in RendererRegistry and added Backgammon to lobby game type options
+- PR #70 created (draft) for review
+- Build, lint, and test suite passed (6 pre-existing server-side backgammon test failures unrelated to renderer)
