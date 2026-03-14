@@ -1,7 +1,12 @@
 import { Client, type Room } from "@colyseus/sdk";
 import { Application as PixiApplication, Text } from "pixi.js";
+import { RendererRegistry } from "./renderers";
 import { SceneManager } from "./SceneManager";
-import { GameScene } from "./scenes/GameScene";
+import {
+  GameScene,
+  type GameSceneEnterData,
+  type GameSceneEvent,
+} from "./scenes/GameScene";
 import { LobbyScene, type LobbySceneEnterData } from "./scenes/LobbyScene";
 import {
   WaitingRoomScene,
@@ -47,13 +52,16 @@ export class PlaygridApp {
   gameRoom: ColyseusRoom | null = null;
 
   private statusText!: Text;
+  private readonly rendererRegistry = new RendererRegistry();
   private readonly lobbyScene = new LobbyScene((event) => {
     void this.handleLobbyEvent(event);
   });
   private readonly waitingRoomScene = new WaitingRoomScene((event) => {
     void this.handleWaitingRoomEvent(event);
   });
-  private readonly gameScene = new GameScene();
+  private readonly gameScene = new GameScene(this.rendererRegistry, (event) => {
+    void this.handleGameSceneEvent(event);
+  });
 
   async init(container: HTMLElement): Promise<void> {
     const gameContainer = this.getGameContainer(container);
@@ -85,7 +93,7 @@ export class PlaygridApp {
     await this.connectToLobby();
   }
 
-  async joinGame(roomId: string): Promise<void> {
+  async joinGame(roomId: string, gameType?: string): Promise<void> {
     this.ensureInitialized();
     this.statusText.text = "Joining game room…";
 
@@ -94,7 +102,11 @@ export class PlaygridApp {
       this.gameRoom = room;
       this.bindGameRoom(room);
       this.statusText.text = `Connected — Room: ${room.id}`;
-      await this.transitionTo(this.gameScene.name, { room });
+      const enterData: GameSceneEnterData = {
+        room,
+        gameType: gameType ?? room.name,
+      };
+      await this.transitionTo(this.gameScene.name, enterData);
       console.log(`[playgrid] Joined game room: ${room.id}`);
     } catch (error) {
       console.error("[playgrid] Failed to join game room:", error);
@@ -186,11 +198,13 @@ export class PlaygridApp {
     await this.joinGame(event.roomId);
   }
 
-  private bindGameRoom(room: ColyseusRoom): void {
-    room.onStateChange((state) => {
-      console.log("[playgrid] State updated:", state);
-    });
+  private async handleGameSceneEvent(event: GameSceneEvent): Promise<void> {
+    if (event.type === "leave_game") {
+      await this.leaveGame();
+    }
+  }
 
+  private bindGameRoom(room: ColyseusRoom): void {
     room.onLeave((code) => {
       if (this.gameRoom?.id !== room.id) {
         return;
