@@ -555,15 +555,35 @@ export class LobbyScreen {
 
   private buildActionCell(game: GameSessionInfo): HTMLTableCellElement {
     const cell = createElement("td") as HTMLTableCellElement;
-    const canJoin = game.status !== "ended" && game.playerCount < game.maxPlayers;
+    const canJoin = game.status === "waiting" && game.playerCount < game.maxPlayers;
+    const canSpectate = game.canSpectate === true;
 
-    if (!canJoin) {
+    if (!canJoin && !canSpectate) {
       const label = createElement(
         "span",
         "row-state",
         game.status === "ended" ? "Closed" : "Full",
       );
       cell.append(label);
+      return cell;
+    }
+
+    if (canSpectate) {
+      const button = createElement("button", "lobby-button lobby-button-secondary", "Watch") as HTMLButtonElement;
+      button.type = "button";
+      button.addEventListener("click", () => {
+        if (!this.room) {
+          this.showNotice("Lobby is not connected yet.", "error");
+          return;
+        }
+
+        const payload: JoinGamePayload = { gameId: game.id, spectator: true };
+        this.pendingTransition = "join";
+        this.pendingSpectator = true;
+        this.room.send(JOIN_GAME, payload);
+      });
+
+      cell.append(button);
       return cell;
     }
 

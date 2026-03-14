@@ -182,3 +182,96 @@
 - No environment-specific issues identified
 
 **Next:** Wave 2 assignments ready when you are. Monitor deployment health.
+
+---
+
+### 2026-03-14T20:30:00Z: Azure Bicep Infrastructure-as-Code (Issue #32)
+
+**Accomplishment:** Created comprehensive Bicep template and deployment workflow for PlayGrid Azure infrastructure.
+
+**Files Created:**
+- `infra/main.bicep`: Complete infrastructure template defining all Phase 1 Azure resources
+- `.github/workflows/deploy-infra.yml`: Manual-trigger deployment workflow with validation and what-if preview
+
+**Resources Defined:**
+- **Log Analytics Workspace**: Environment-specific retention (30d dev/uat, 90d prod)
+- **Azure Container Registry**: Basic SKU, managed identity access (no admin credentials)
+- **Container App Environment**: Consumption profile with Log Analytics integration
+- **PostgreSQL Flexible Server**: Version 15, environment-tuned SKU (Burstable for dev/uat, General Purpose for prod)
+- **PostgreSQL Database**: UTF8/en_US.utf8 collation
+- **Key Vault**: RBAC-enabled for secrets management
+- **Container App**: System-assigned managed identity, health probes (liveness + readiness), Key Vault secret references
+- **RBAC Role Assignments**: AcrPull + Key Vault Secrets User roles for Container App identity
+- **PostgreSQL Connection String**: Stored in Key Vault, referenced by Container App
+
+**Key Design Decisions:**
+1. **Single Parameterized Template**: One Bicep file for all environments (dev/uat/prod) to avoid duplication and drift
+2. **Managed Identity + RBAC**: Zero stored credentials - Container App uses system-assigned identity for ACR and Key Vault
+3. **Key Vault First**: Connection strings in Key Vault from day one, not environment variables
+4. **Manual Workflow Trigger**: Infrastructure changes require explicit human approval and PostgreSQL password input
+5. **Phase 1 Single-Replica**: Hardcoded minReplicas=1, maxReplicas=1 across all environments (Colyseus constraint)
+
+**Resource Naming Pattern:**
+- Container App: `playgrid-{env}`
+- ACR: `playgrid{env}acr` (no hyphens)
+- PostgreSQL: `playgrid-{env}-pg`
+- Key Vault: `playgrid{env}kv` (sanitized for 24-char limit)
+- Log Analytics: `playgrid-{env}-logs`
+
+**Environment-Specific Configuration:**
+| Resource | Dev/UAT | Prod |
+|---|---|---|
+| CPU | 0.5 cores | 1.0 core |
+| Memory | 1.0 GiB | 2.0 GiB |
+| PostgreSQL Tier | Burstable (B1ms) | General Purpose (D2s_v3) |
+| Storage | 32 GB | 128 GB |
+| Backup Retention | 7 days | 30 days |
+| Geo-Redundant Backup | Disabled | Enabled |
+| Log Retention | 30 days | 90 days |
+
+**Deployment Workflow Features:**
+- Manual trigger with environment dropdown (dev/uat/prod)
+- Bicep syntax validation step
+- What-if preview before actual deployment
+- Deployment output parsing with GitHub Actions variable guidance
+- Discord notifications on success/failure
+
+**Security Posture:**
+- No admin credentials stored anywhere (ACR admin disabled)
+- Container App references Key Vault secrets via URI (not environment variables)
+- RBAC grants minimal permissions (least privilege)
+- OIDC authentication for GitHub Actions (no stored Azure credentials)
+- PostgreSQL requires SSL/TLS connections
+
+**Alignment with Deploy Workflows:**
+- Resource naming matches existing GitHub Actions variables (ACR_NAME, CONTAINER_APP_NAME, CONTAINER_APP_FQDN, RESOURCE_GROUP)
+- Health probes at `/health` endpoint on port 2567
+- Environment-based configuration pattern (dev/uat/prod GitHub Environments)
+- OIDC authentication pattern consistent with deploy-{dev,uat,prod}.yml
+
+**Template Outputs:**
+Bicep outputs all values needed for configuring GitHub Actions environment variables:
+- `acrName`, `acrLoginServer`
+- `containerAppName`, `containerAppFqdn`
+- `postgresServerFqdn`, `postgresDatabaseName`
+- `keyVaultName`, `keyVaultUri`
+- `logAnalyticsWorkspaceId`, `logAnalyticsCustomerId`
+
+**Branch/PR:**
+- Branch: `squad/32-azure-bicep`
+- PR #68: Draft PR targeting `dev` branch
+- Commit: `aa51e1b` - "infra: add Azure Bicep infrastructure-as-code"
+
+**Acceptance Criteria Met:**
+✅ Bicep template creates all Phase 1 Azure resources  
+✅ Parameterized for dev/uat/prod environments  
+✅ Includes PostgreSQL, ACR, Container App, Log Analytics  
+✅ GitHub Actions workflow for infra deployment  
+✅ Key Vault for secret management
+
+**Next Steps:**
+- Team review and approve PR #68
+- Merge to `dev`
+- Run deploy-infra workflow for each environment (dev → uat → prod)
+- Configure GitHub Actions environment variables from deployment outputs
+- Validate deploy workflows against provisioned infrastructure

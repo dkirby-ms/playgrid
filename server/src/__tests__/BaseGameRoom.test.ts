@@ -137,7 +137,7 @@ describeRoom("BaseGameRoom", () => {
 
     expect(mockGameRegistry.get).toHaveBeenCalledWith("checkers");
     expect(room.state).toBe(state);
-    expect(room.maxClients).toBe(3);
+    expect(room.maxClients).toBe(103); // maxPlayers (3) + spectator slots (100)
     expect(plugin.lifecycle.onCreate).toHaveBeenCalledWith(
       state,
       expect.objectContaining({ gameType: "checkers", maxPlayers: 3 }),

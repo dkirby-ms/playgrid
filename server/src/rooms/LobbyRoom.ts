@@ -176,9 +176,16 @@ export class LobbyRoom extends Room {
       return;
     }
 
+    const isSpectator = payload.spectator === true;
+
     if (game.status === "in_progress") {
       if (!game.roomId) {
         this.sendError(client, "Game is starting. Please try again.");
+        return;
+      }
+
+      if (!isSpectator) {
+        this.sendError(client, "Cannot join a game in progress as a player.");
         return;
       }
 
@@ -188,6 +195,11 @@ export class LobbyRoom extends Room {
         roomId: game.roomId,
       };
       client.send(GAME_JOINED, joinedPayload);
+      return;
+    }
+
+    if (isSpectator) {
+      this.sendError(client, "Cannot join a waiting game as a spectator.");
       return;
     }
 
@@ -403,6 +415,7 @@ export class LobbyRoom extends Room {
       playerCount: game.playerCount,
       maxPlayers: game.maxPlayers,
       createdAt: game.createdAt,
+      canSpectate: game.status === "in_progress" && !!game.roomId,
     };
   }
 
