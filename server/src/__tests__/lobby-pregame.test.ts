@@ -45,6 +45,7 @@ const lobbyModule = await import("../rooms/LobbyRoom")
   .catch(() => null);
 
 const {
+  GAME_LIST,
   GAME_JOINED,
   GAME_STARTED,
   GAME_PLAYERS,
@@ -366,6 +367,26 @@ describeLobby("LobbyRoom pregame flow", () => {
     });
   });
 
+  it("defaults missing gameType to checkers and includes it in GAME_LIST", async () => {
+    const plugin = createPlugin(2, 4);
+    mockGameRegistry.getAll.mockReturnValue([plugin]);
+    mockGameRegistry.has.mockImplementation((gameType: string) => gameType === "checkers");
+    mockGameRegistry.get.mockReturnValue(plugin);
+
+    const gameId = await createGame(room, host, { name: "Default Type" });
+    const spectator = createClient("spectator-session", "Spectator");
+
+    room.onJoin(spectator as never, { displayName: "Spectator" });
+
+    expect(getGame(room, gameId)).toMatchObject({
+      gameType: "checkers",
+      maxPlayers: 4,
+    });
+    expect(findPayload(spectator, GAME_LIST)).toEqual({
+      games: [expect.objectContaining({ id: gameId, gameType: "checkers" })],
+    });
+  });
+
   it("rejects unknown game types once plugins are registered", async () => {
     mockGameRegistry.getAll.mockReturnValue([createPlugin(2, 4)]);
     mockGameRegistry.has.mockReturnValue(false);
@@ -380,7 +401,7 @@ describeLobby("LobbyRoom pregame flow", () => {
     expectLobbyError(host, /game type|available/i);
   });
 
-  it("clamps maxPlayers to plugin metadata and persists gameType", async () => {
+  it("accepts registered game types and clamps player limits to plugin metadata", async () => {
     const plugin = createPlugin(2, 3);
     mockGameRegistry.getAll.mockReturnValue([plugin]);
     mockGameRegistry.has.mockImplementation((gameType: string) => gameType === "checkers");
@@ -391,14 +412,29 @@ describeLobby("LobbyRoom pregame flow", () => {
       return plugin;
     });
 
-    const gameId = await createGame(room, host, {
+    const lowGameId = await createGame(room, host, {
+      gameType: "checkers",
+      maxPlayers: 1,
+    });
+
+    const otherHost = createClient("other-host", "Other Host");
+    registerClient(room, otherHost, { userId: "other-host-user", displayName: "Other Host" });
+    const highGameId = await createGame(room, otherHost, {
+      name: "High Limit",
       gameType: "checkers",
       maxPlayers: 99,
     });
 
-    expect(getGame(room, gameId)).toMatchObject({
+    expect(getGame(room, lowGameId)).toMatchObject({
+      gameType: "checkers",
+      maxPlayers: 2,
+    });
+    expect(getGame(room, highGameId)).toMatchObject({
       gameType: "checkers",
       maxPlayers: 3,
+    });
+    expect(room.broadcast).toHaveBeenCalledWith(GAME_UPDATED, {
+      game: expect.objectContaining({ gameType: "checkers", maxPlayers: 2 }),
     });
     expect(room.broadcast).toHaveBeenCalledWith(GAME_UPDATED, {
       game: expect.objectContaining({ gameType: "checkers", maxPlayers: 3 }),
