@@ -17,6 +17,7 @@ export type GameStatus = "waiting" | "in_progress";
 export interface GameSessionInfo {
   id: string;
   name: string;
+  gameType: string;
   hostId: string;
   hostName: string;
   status: GameStatus;
@@ -27,6 +28,7 @@ export interface GameSessionInfo {
 
 export interface CreateGamePayload {
   name: string;
+  gameType: string;
   maxPlayers?: number;
 }
 

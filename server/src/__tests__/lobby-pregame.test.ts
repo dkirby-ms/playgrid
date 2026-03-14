@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCreateRoom, sharedExports } = vi.hoisted(() => ({
+const { mockCreateRoom, mockGameRegistry, sharedExports } = vi.hoisted(() => ({
   mockCreateRoom: vi.fn(),
+  mockGameRegistry: {
+    getAll: vi.fn(),
+    get: vi.fn(),
+    has: vi.fn(),
+  },
   sharedExports: {
     CREATE_GAME: "create_game",
     JOIN_GAME: "join_game",
@@ -31,6 +36,7 @@ vi.mock("colyseus", () => ({
 }));
 
 vi.mock("@eschaton/playgrid-shared", () => sharedExports);
+vi.mock("../game/GameRegistry", () => ({ gameRegistry: mockGameRegistry }));
 
 const shared = await import("@eschaton/playgrid-shared");
 const lobbyModule = await import("../rooms/LobbyRoom")
@@ -42,6 +48,7 @@ const {
   GAME_JOINED,
   GAME_STARTED,
   GAME_PLAYERS,
+  GAME_UPDATED,
   LOBBY_ERROR,
   LOBBY_DEFAULTS,
   DEFAULT_MAP_SIZE,
@@ -156,6 +163,14 @@ function findPayload(client: MockClient, messageType: string) {
   return match?.[1];
 }
 
+function createPlugin(minPlayers: number, maxPlayers: number) {
+  return {
+    metadata: {
+      playerCount: [minPlayers, maxPlayers],
+    },
+  };
+}
+
 function findLastPayload(client: MockClient, messageType: string) {
   const match = [...client.send.mock.calls].reverse().find(([type]) => type === messageType);
   return match?.[1];
@@ -198,6 +213,12 @@ describeLobby("LobbyRoom pregame flow", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGameRegistry.getAll.mockReturnValue([]);
+    mockGameRegistry.has.mockReturnValue(false);
+    mockGameRegistry.get.mockImplementation(() => {
+      throw new Error("Unexpected gameRegistry.get() call");
+    });
+
     room = createLobbyRoom();
     host = createClient("host-session", "Host");
     guest = createClient("guest-session", "Guest");
@@ -212,6 +233,7 @@ describeLobby("LobbyRoom pregame flow", () => {
     expect(gameId).toBeTruthy();
     expect(getGame(room, gameId)).toMatchObject({
       status: "waiting",
+      gameType: "checkers",
       playerCount: 1,
     });
     expect(getWaitingPlayers(room, gameId).get(host.sessionId)).toMatchObject({
@@ -277,6 +299,11 @@ describeLobby("LobbyRoom pregame flow", () => {
     await room.handleStartGame(host);
 
     expect(mockCreateRoom).toHaveBeenCalledTimes(1);
+    expect(mockCreateRoom).toHaveBeenCalledWith("game", {
+      gameId,
+      gameType: "checkers",
+      maxPlayers: 4,
+    });
     expect(getGame(room, gameId)?.status).toBe("in_progress");
     expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
     expect(findPayload(guest, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
@@ -327,6 +354,54 @@ describeLobby("LobbyRoom pregame flow", () => {
     await room.handleJoinGame(guest, { gameId });
 
     expectLobbyError(guest, "full");
+  });
+
+  it("skips game type validation when no plugins are registered", async () => {
+    const gameId = await createGame(room, host, { gameType: "go-fish" });
+
+    expect(getGame(room, gameId)?.gameType).toBe("go-fish");
+    expect(room.broadcast).toHaveBeenCalledWith(GAME_UPDATED, {
+      game: expect.objectContaining({ gameType: "go-fish" }),
+    });
+  });
+
+  it("rejects unknown game types once plugins are registered", async () => {
+    mockGameRegistry.getAll.mockReturnValue([createPlugin(2, 4)]);
+    mockGameRegistry.has.mockReturnValue(false);
+
+    await room.handleCreateGame(host, {
+      name: "Unsupported",
+      gameType: "go-fish",
+      maxPlayers: 4,
+    });
+
+    expect(getGameIds(room)).toHaveLength(0);
+    expectLobbyError(host, /game type|available/i);
+  });
+
+  it("clamps maxPlayers to plugin metadata and persists gameType", async () => {
+    const plugin = createPlugin(2, 3);
+    mockGameRegistry.getAll.mockReturnValue([plugin]);
+    mockGameRegistry.has.mockImplementation((gameType: string) => gameType === "checkers");
+    mockGameRegistry.get.mockImplementation((gameType: string) => {
+      if (gameType !== "checkers") {
+        throw new Error(`Unexpected game type ${gameType}`);
+      }
+      return plugin;
+    });
+
+    const gameId = await createGame(room, host, {
+      gameType: "checkers",
+      maxPlayers: 99,
+    });
+
+    expect(getGame(room, gameId)).toMatchObject({
+      gameType: "checkers",
+      maxPlayers: 3,
+    });
+    expect(room.broadcast).toHaveBeenCalledWith(GAME_UPDATED, {
+      game: expect.objectContaining({ gameType: "checkers", maxPlayers: 3 }),
+    });
   });
 
   it("rejects joins for missing games", async () => {
@@ -427,5 +502,6 @@ describeLobby("LobbyRoom pregame flow", () => {
 
     expect(entry?.name.length).toBeLessThanOrEqual(LOBBY_DEFAULTS.MAX_GAME_NAME_LENGTH);
     expect(entry?.maxPlayers).toBe(1);
+    expect(entry?.gameType).toBe("checkers");
   });
 });

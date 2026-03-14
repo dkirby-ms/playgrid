@@ -142,3 +142,18 @@
 - Kept migration execution safe for repeated startups by using idempotent table creation for `games` and `game_participants`, while leaving development startup behavior unchanged when PostgreSQL is unavailable.
 - Checked the integration with a focused Vitest suite for `connectDb()` plus the full root `npm run build`, `npm run lint`, and `npm run test` validation pass.
 
+### Base state and registry scaffolding (2026-03-14)
+
+- Added `shared/src/BaseGameState.ts` with `PlayerInfo` and `BaseGameState` Colyseus schemas using the repo's `defineTypes()` pattern, including shared player connection/spectator metadata and turn-tracking defaults.
+- Re-exported the new shared schemas from `shared/src/index.ts` without changing the legacy `GameState`, so existing `GameRoom` code remains compatible while new plugins can extend the shared base.
+- Added `server/src/game/GameRegistry.ts` as a singleton plugin registry with duplicate-registration and missing-plugin guards, plus `server/src/game/index.ts` for package-level re-export.
+- Mapped `@eschaton/shared` to the shared workspace source in `server/tsconfig.json` so the server can use the requested type-only shared import path while staying on the current workspace layout.
+- Verified the full workspace with `npm run build && npm run lint && npm run test` after both feature commits.
+
+### Turn management and lobby game types (2026-03-14)
+
+- Added a standalone `server/src/game/TurnManager.ts` that keeps sequential round-robin order independent of Colyseus, with optional timeout scheduling via `setTimeout`/`clearTimeout` and package-level re-exports from `server/src/game/index.ts`.
+- `TurnManager` only enables timed turns when the `turnTimeLimit` option is explicitly present; if that option is present but invalid or undefined, it falls back to the 60-second team default instead of enabling an unlimited turn accidentally.
+- Updated shared lobby contracts and `server/src/rooms/LobbyRoom.ts` so waiting-game entries now carry `gameType`, validate against `gameRegistry` only when plugins actually exist, and clamp requested player counts to plugin metadata when a matching plugin is registered.
+- Added focused Vitest coverage for both the standalone turn manager and the lobby's new `gameType` validation / passthrough behavior, including the pre-plugin empty-registry fallback.
+

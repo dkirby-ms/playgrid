@@ -22,7 +22,9 @@ import {
   type PreGamePlayerInfo,
   type SetReadyPayload,
 } from "@eschaton/playgrid-shared";
+import { gameRegistry } from "../game/GameRegistry";
 
+const DEFAULT_GAME_TYPE = "checkers";
 const DEFAULT_MAX_PLAYERS = 4;
 const MAX_GAME_NAME_LENGTH = 32;
 const MAX_DISPLAY_NAME_LENGTH = 24;
@@ -108,11 +110,24 @@ export class LobbyRoom extends Room {
       return;
     }
 
+    const gameType = this.normalizeGameType(payload.gameType);
+    const hasRegisteredGames = gameRegistry.getAll().length > 0;
+    if (hasRegisteredGames && !gameRegistry.has(gameType)) {
+      this.sendError(client, `Game type "${gameType}" is not available.`);
+      return;
+    }
+
+    let maxPlayers = this.normalizeMaxPlayers(payload.maxPlayers);
+    if (hasRegisteredGames) {
+      const [minPlayers, maxAllowedPlayers] = gameRegistry.get(gameType).metadata.playerCount;
+      maxPlayers = Math.min(Math.max(maxPlayers, minPlayers), maxAllowedPlayers);
+    }
+
     const gameId = crypto.randomUUID();
-    const maxPlayers = this.normalizeMaxPlayers(payload.maxPlayers);
     const game: LobbyGameEntry = {
       id: gameId,
       name,
+      gameType,
       hostId: session.sessionId,
       hostName: session.displayName,
       status: "waiting",
@@ -132,7 +147,7 @@ export class LobbyRoom extends Room {
     this.broadcast(GAME_UPDATED, { game: this.toGameSessionInfo(game) });
     this.broadcastGamePlayers(gameId);
 
-    console.log(`[LobbyRoom] Created game ${gameId} (${name})`);
+    console.log(`[LobbyRoom] Created game ${gameId} (${name}, ${gameType})`);
   }
 
   private async handleJoinGame(client: Client, payload: JoinGamePayload) {
@@ -269,6 +284,7 @@ export class LobbyRoom extends Room {
     try {
       const room = await matchMaker.createRoom("game", {
         gameId: game.id,
+        gameType: game.gameType,
         maxPlayers: game.maxPlayers,
       });
 
@@ -362,6 +378,7 @@ export class LobbyRoom extends Room {
     return {
       id: game.id,
       name: game.name,
+      gameType: game.gameType,
       hostId: game.hostId,
       hostName: game.hostName,
       status: game.status,
@@ -391,6 +408,15 @@ export class LobbyRoom extends Room {
 
     const trimmed = value.trim().slice(0, MAX_DISPLAY_NAME_LENGTH);
     return trimmed || `Player ${fallbackSessionId.slice(0, 6)}`;
+  }
+
+  private normalizeGameType(value: unknown) {
+    if (typeof value !== "string") {
+      return DEFAULT_GAME_TYPE;
+    }
+
+    const trimmed = value.trim();
+    return trimmed || DEFAULT_GAME_TYPE;
   }
 
   private normalizeMaxPlayers(value: number | undefined) {
