@@ -200,6 +200,11 @@
 - Added the missing `private connectionManager!: ConnectionManager;` field and removed the dead direct `Client` property, keeping application networking routed through the connection wrapper.
 - Re-verified the client path with `npm run lint`, `npm run build`, `npm run test`, and a live browser load against the dev client to confirm startup no longer throws `ReferenceError: ConnectionManager is not defined`.
 
+### 2026-03-14: WaitingRoom gameType handoff fix
+
+- Fixed `client/src/ui/WaitingRoom.ts` so the `GAME_STARTED` handler captures `gameType` before calling `hide()`, preserving the selected renderer when the waiting overlay clears its local game info.
+- This specifically prevents Backgammon starts from falling back to the default Checkers renderer during the lobby → waiting room → game transition.
+
 ## Cross-Agent Update — Issue #37 Complete, PR #56 Merged (2026-03-14)
 
 **From:** Steeply (Tester)  
