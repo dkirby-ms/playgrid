@@ -18,9 +18,17 @@ import type { LobbyEvent } from "./ui/LobbyScreen";
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
 const LOBBY_ROOM_NAME = "lobby";
+const STATUS_MARGIN = 12;
+const STATUS_HIDE_DELAY_MS = 2500;
 
 type ColyseusRoom = Room<Record<string, unknown>>;
 type Notice = { message: string; tone: "info" | "error" };
+type StatusOptions = {
+  tone?: "info" | "error";
+  persistent?: boolean;
+  visibleInGame?: boolean;
+};
+type RoomWithOptionalId = ColyseusRoom & { id?: string; roomId?: string };
 
 function getServerUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -30,16 +38,17 @@ function getServerUrl(): string {
 
 function createStatusText(app: PixiApplication): Text {
   const statusText = new Text({
-    text: "Connecting to lobby…",
+    text: "",
     style: {
       fontFamily: "monospace",
-      fontSize: 18,
-      fill: 0xffffff,
-      align: "center",
+      fontSize: 13,
+      fill: 0xd1d5db,
+      align: "left",
     },
   });
 
-  statusText.anchor.set(0.5);
+  statusText.anchor.set(0, 0);
+  statusText.visible = false;
   app.stage.addChild(statusText);
   return statusText;
 }
@@ -52,6 +61,8 @@ export class PlaygridApp {
   gameRoom: ColyseusRoom | null = null;
 
   private statusText!: Text;
+  private statusHideTimeoutId: number | null = null;
+  private statusVisibleInGame = false;
   private readonly rendererRegistry = rendererRegistry;
   private readonly lobbyScene = new LobbyScene((event) => {
     void this.handleLobbyEvent(event);
@@ -105,19 +116,20 @@ export class PlaygridApp {
 
   async joinGame(roomId: string, gameType?: string): Promise<void> {
     this.ensureInitialized();
-    this.statusText.text = "Joining game room…";
+    this.setStatus("Joining game room…", { persistent: true, visibleInGame: true });
 
     try {
       const room = (await this.client.joinById(roomId)) as ColyseusRoom;
+      const roomLabel = this.getRoomLabel(room);
       this.gameRoom = room;
       this.bindGameRoom(room);
-      this.statusText.text = `Connected — Room: ${room.id}`;
+      this.setStatus(`Connected — Room: ${roomLabel}`, { visibleInGame: true });
       const enterData: GameSceneEnterData = {
         room,
         gameType: gameType ?? room.name,
       };
       await this.transitionTo(this.gameScene.name, enterData);
-      console.log(`[playgrid] Joined game room: ${room.id}`);
+      console.log(`[playgrid] Joined game room: ${roomLabel}`);
     } catch (error) {
       console.error("[playgrid] Failed to join game room:", error);
       this.gameRoom = null;
@@ -136,7 +148,7 @@ export class PlaygridApp {
 
     try {
       await room.leave();
-      console.log(`[playgrid] Left game room ${room.id}`);
+      console.log(`[playgrid] Left game room ${this.getRoomLabel(room)}`);
     } catch (error) {
       console.error("[playgrid] Failed to leave game room:", error);
     }
@@ -149,13 +161,13 @@ export class PlaygridApp {
     this.lobbyRoom = null;
     this.gameRoom = null;
     this.waitingRoomScene.hideOverlay();
-    this.statusText.text = "Connecting to lobby…";
+    this.setStatus("Connecting to lobby…", { persistent: true });
 
     try {
       this.lobbyRoom = (await this.client.joinOrCreate(LOBBY_ROOM_NAME)) as ColyseusRoom;
       this.lobbyScene.bindToRoom(this.lobbyRoom);
       await this.showLobby();
-      console.log(`[playgrid] Joined lobby room: ${this.lobbyRoom.id}`);
+      console.log(`[playgrid] Joined lobby room: ${this.getRoomLabel(this.lobbyRoom)}`);
 
       this.lobbyRoom.onLeave((code) => {
         void this.handleLobbyRoomLeave(code);
@@ -163,21 +175,21 @@ export class PlaygridApp {
 
       this.lobbyRoom.onError((code, message) => {
         console.error(`[playgrid] Lobby error ${code}: ${message}`);
-        this.statusText.text = `Lobby error: ${message}`;
+        this.setStatus(`Lobby error: ${message}`, { tone: "error", persistent: true });
         this.lobbyScene.showNotice(message, "error");
       });
     } catch (error) {
       console.error("[playgrid] Lobby connection failed:", error);
       const message = error instanceof Error ? error.message : "Connection failed — is the server running?";
       await this.transitionTo(this.lobbyScene.name);
-      this.statusText.text = "Connection failed — is the server running?";
+      this.setStatus(message, { tone: "error", persistent: true });
       this.lobbyScene.showConnectionError(message);
     }
   }
 
   private async handleLobbyEvent(event: LobbyEvent): Promise<void> {
     if (event.type === "error") {
-      this.statusText.text = event.message;
+      this.setStatus(event.message, { tone: "error", persistent: true });
       return;
     }
 
@@ -194,7 +206,7 @@ export class PlaygridApp {
         isHost: event.isHost,
       };
 
-      this.statusText.text = `Waiting room — ${event.gameInfo?.name ?? "Game"}`;
+      this.setStatus(`Waiting room — ${event.gameInfo?.name ?? "Game"}`);
       await this.transitionTo(this.waitingRoomScene.name, data);
       return;
     }
@@ -219,22 +231,26 @@ export class PlaygridApp {
 
   private bindGameRoom(room: ColyseusRoom): void {
     room.onLeave((code) => {
-      if (this.gameRoom?.id !== room.id) {
+      if (this.gameRoom !== room) {
         return;
       }
 
-      console.log(`[playgrid] Left game room ${room.id} (code: ${code})`);
+      console.log(`[playgrid] Left game room ${this.getRoomLabel(room)} (code: ${code})`);
       this.gameRoom = null;
       void this.showLobby({ message: "Game room closed. Back in the lobby.", tone: "info" });
     });
 
     room.onError((code, message) => {
-      if (this.gameRoom?.id !== room.id) {
+      if (this.gameRoom !== room) {
         return;
       }
 
       console.error(`[playgrid] Game room error ${code}: ${message}`);
-      this.statusText.text = `Game error: ${message}`;
+      this.setStatus(`Game error: ${message}`, {
+        tone: "error",
+        persistent: true,
+        visibleInGame: true,
+      });
       this.lobbyScene.showNotice(message, "error");
     });
   }
@@ -244,15 +260,19 @@ export class PlaygridApp {
     this.lobbyRoom = null;
     this.waitingRoomScene.hideOverlay();
     this.lobbyScene.showConnectionError("Lost connection to the lobby room.");
-    this.statusText.text = "Lobby disconnected.";
+    this.setStatus("Lobby disconnected.", { tone: "error", persistent: true });
   }
 
   private async showLobby(notice?: Notice): Promise<void> {
     const data: LobbySceneEnterData | undefined = notice ? { notice } : undefined;
     await this.transitionTo(this.lobbyScene.name, data);
-    this.statusText.text = this.lobbyRoom
-      ? "Lobby connected — create or join a game."
-      : "Connecting to lobby…";
+
+    if (this.lobbyRoom) {
+      this.setStatus("Lobby connected — create or join a game.");
+      return;
+    }
+
+    this.setStatus("Connecting to lobby…", { persistent: true });
   }
 
   private async transitionTo(name: string, data?: unknown): Promise<void> {
@@ -263,13 +283,70 @@ export class PlaygridApp {
     this.layoutStatusText();
   }
 
+  private setStatus(message: string, options: StatusOptions = {}): void {
+    if (!this.statusText) {
+      return;
+    }
+
+    const {
+      tone = "info",
+      persistent = tone === "error",
+      visibleInGame = false,
+    } = options;
+
+    this.clearStatusHideTimeout();
+    this.statusVisibleInGame = visibleInGame;
+    this.statusText.text = message;
+    this.statusText.style.fill = tone === "error" ? 0xff7b72 : 0xd1d5db;
+    this.layoutStatusText();
+
+    if (!persistent && message.length > 0) {
+      this.statusHideTimeoutId = window.setTimeout(() => {
+        if (this.statusText.text === message) {
+          this.hideStatus();
+        }
+      }, STATUS_HIDE_DELAY_MS);
+    }
+  }
+
+  private hideStatus(): void {
+    if (!this.statusText) {
+      return;
+    }
+
+    this.clearStatusHideTimeout();
+    this.statusVisibleInGame = false;
+    this.statusText.text = "";
+    this.statusText.visible = false;
+  }
+
+  private clearStatusHideTimeout(): void {
+    if (this.statusHideTimeoutId === null) {
+      return;
+    }
+
+    window.clearTimeout(this.statusHideTimeoutId);
+    this.statusHideTimeoutId = null;
+  }
+
+  private getRoomLabel(room: ColyseusRoom | null): string {
+    if (!room) {
+      return "unknown";
+    }
+
+    const roomWithOptionalId = room as RoomWithOptionalId;
+    return roomWithOptionalId.roomId ?? roomWithOptionalId.id ?? room.name ?? "unknown";
+  }
+
   private layoutStatusText(): void {
     if (!this.statusText) {
       return;
     }
 
-    this.statusText.x = this.pixiApp.screen.width / 2;
-    this.statusText.y = this.gameRoom ? (this.pixiApp.screen.height / 2) + 34 : this.pixiApp.screen.height / 2;
+    this.statusText.x = STATUS_MARGIN;
+    this.statusText.y = STATUS_MARGIN;
+    this.statusText.visible =
+      this.statusText.text.length > 0 && (!this.gameRoom || this.statusVisibleInGame);
   }
 
   private getGameContainer(container: HTMLElement): HTMLElement {

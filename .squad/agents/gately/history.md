@@ -187,3 +187,10 @@
 - Updated `client/src/ui/LobbyScreen.ts` so Checkers always forces `maxPlayers` to `2` and keeps the selector disabled for that game type.
 - Re-verified the workspace with `npm run build && npm run lint && npm run test` after landing both bug-fix commits.
 
+### 2026-03-14: Room Status Overlay Cleanup (Issue #54)
+
+- Updated `client/src/Application.ts` so connection status text uses the Colyseus `room.roomId` fallback instead of showing `undefined` when `room.id` is missing.
+- Restyled the shared Pixi status text into a small top-left HUD toast, replacing the centered overlay that was covering gameplay.
+- Added auto-hide behavior for informational connection states while keeping errors persistent and visible when they matter.
+- Re-verified the workspace with `npm run build && npm run lint && npm run test` after landing the fix.
+
