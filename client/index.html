@@ -25,6 +25,7 @@
         position: relative;
       }
 
+      #app,
       #game-container {
         width: 100%;
         height: 100%;
@@ -380,9 +381,11 @@
     </style>
   </head>
   <body>
-    <div id="game-container"></div>
-    <div id="lobby-overlay"></div>
-    <div id="waiting-room-overlay"></div>
+    <div id="app">
+      <div id="game-container"></div>
+      <div id="lobby-overlay"></div>
+      <div id="waiting-room-overlay"></div>
+    </div>
     <script type="module" src="/src/index.ts"></script>
   </body>
 </html>
