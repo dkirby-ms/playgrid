@@ -179,3 +179,39 @@
 - App Insights (PR #75): Verified graceful degradation, custom event selection, no performance impact (async telemetry), proper exception context tracking
 
 **All merges successful, no conflicts, no test failures.** Clean Wave 5 completion.
+
+### PR #78 Review — E2E Test Suite Stabilization (2026-03-14)
+
+**Session:** Reviewed and merged Steeply's E2E test fixes (issue #77)
+
+**PR #78 (Steeply) — E2E test suite stabilization:** Squash merged to dev (commit c740333)
+
+**Primary Changes:**
+- **Lobby E2E order-independence:** Replaced global empty-state assertions (`.lobby-empty-row`) with row-scoped checks using `gameRow(page, uniqueName)`. Tests now only verify their own game row, not global lobby state.
+- **Test isolation rationale:** Full `npx playwright test` runs checkers E2E before lobby E2E against one shared server. Checkers legitimately leaves in-progress sessions visible, making global empty assertions brittle.
+- **Documentation:** Added reusable skill pattern (`.squad/skills/order-independent-lobby-e2e/SKILL.md`) and decision doc for future E2E authors.
+
+**Application.ts Conflict Resolution:**
+- Steeply's branch included ConnectionManager import fix, but Gately already fixed this directly on dev (commit 413aa35)
+- Rebase on dev auto-resolved cleanly — both fixes were byte-for-byte identical
+- No manual conflict resolution needed
+
+**Review Assessment:**
+- ✅ E2E pattern is sound: row-scoped assertions prevent test coupling
+- ✅ Selectors are stable: uses `gameRow(page, gameName)` helper for consistent locators
+- ✅ Timing handled properly: no flaky waits, existing patterns sufficient
+- ✅ Documentation: skill captures reusable pattern for future game E2E tests
+
+**Merge Process:**
+1. Checked out branch `squad/77-fix-e2e-tests` and rebased on dev — clean rebase (auto-resolved Application.ts)
+2. Force-pushed rebased branch: `git push --force-with-lease`
+3. Verified build + tests: 10 test files, 189 tests passed (expected PostgreSQL connection errors ignored — no DB running locally)
+4. Marked PR ready: `gh pr ready 78`
+5. Squash merged: `gh pr merge 78 --squash --delete-branch`
+6. Closed issue #77: `gh issue close 77`
+
+**Key Learnings:**
+- When two branches fix identical bugs, git rebase auto-resolves without conflicts
+- Shared Playwright server requires order-independent test assertions
+- Row-scoped E2E assertions > global state checks for robustness
+- Skill pattern docs help standardize testing practices across game plugins
