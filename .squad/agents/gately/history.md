@@ -203,3 +203,17 @@
 - **Issue #37:** Complete. Comprehensive test suite for gameType validation (default, invalid, passthrough, clamping, broadcast).
 - **PR #56:** Merged (squad/37-lobby-tests-gametype) — "Test coverage: lobby gameType validation (82/82 passing)"
 - **Impact:** Lobby system is now fully tested. Future client-side gameType usage has test baseline.
+
+### 2026-03-14: Backgammon Game Plugin (Issue #44)
+
+- Implemented `BackgammonState` with 24-point board representation using ArraySchema
+- Points store signed integers: positive = Black pieces, negative = Red pieces
+- Added bar and borne-off tracking for both players (blackBar, redBar, blackBorneOff, redBorneOff)
+- Server-authoritative dice rolling with doubles support (4 moves for same value)
+- Movement validation handles bar re-entry (must enter before other moves), bearing off (all pieces in home board), and capturing (hitting blots sends to bar)
+- Pure logic functions in `backgammonLogic.ts` separate from plugin class following Checkers pattern
+- Dice state tracked with `dice` and `usedDice` arrays to manage available moves
+- Turn ends when all dice used or no valid moves remaining
+- Win condition: first player to bear off all 15 pieces
+- Registered in GameRegistry alongside CheckersPlugin
+- PR #66 created (draft) for review

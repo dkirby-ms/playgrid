@@ -9,6 +9,7 @@ import { connectDb } from "./db.js";
 import { BaseGameRoom } from "./game/BaseGameRoom.js";
 import { gameRegistry } from "./game/GameRegistry.js";
 import { checkersPlugin } from "./games/checkers/index.js";
+import { backgammonPlugin } from "./games/backgammon/index.js";
 import { LobbyRoom } from "./rooms/LobbyRoom.js";
 
 type ExpressResponse = {
@@ -47,6 +48,7 @@ const server = new Server({
 });
 
 gameRegistry.register(checkersPlugin);
+gameRegistry.register(backgammonPlugin);
 
 server.define("game", BaseGameRoom);
 server.define("lobby", LobbyRoom);
