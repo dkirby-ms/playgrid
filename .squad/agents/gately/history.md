@@ -393,6 +393,51 @@ function getContinentBonus(continent: string): number { ... }
 
 ---
 
+## 2025-01-13: Start Game Error Display Enhancement (Issue #102)
+
+**Problem:** Error messages when trying to start a game without enough players were hard to see. The error only briefly modified the "Start Game" button text, which was easily missed by users.
+
+**Investigation:**
+- Server sends `LOBBY_ERROR` message when start-game validation fails (e.g., "At least 2 players are required")
+- Client previously handled this by temporarily changing button text in `WaitingRoom.ts` (lines 156-159)
+- Button text change was subtle and easily overlooked, especially if user wasn't looking at the button
+- Error appeared in the same location as normal button state changes
+
+**Root Cause:** No dedicated error display area in waiting room modal. Error feedback was competing with normal UI state changes.
+
+**Solution:** Added dedicated error display inside the waiting room modal:
+- **WaitingRoom.ts**:
+  - Added `errorEl: HTMLDivElement` property to store error message element
+  - Created error element in constructor with initial `display: none`
+  - Added `showError(message: string)` method to display errors
+  - Added `clearError()` method to hide errors
+  - Error automatically clears when player state updates (join/leave/ready)
+  - Error clears when modal hides
+- **index.html**:
+  - Added `.waiting-room-error` CSS class with red theme
+  - Styling: red background (rgba(248, 113, 113, 0.12)), red border, red text
+  - Positioned above control buttons for immediate visibility
+  - Center-aligned text for clear readability
+
+**Key Decisions:**
+- Display error inline within modal rather than as toast/alert (keeps context)
+- Auto-clear on player updates (avoids stale errors)
+- Used red styling to clearly indicate error state
+- Positioned above controls so it's visible near the Start Game button
+
+**Validation:**
+- ✅ Build passes (all workspaces)
+- ✅ Lint passes (0 new errors)
+- ✅ Tests pass (259 passed, 12 todo)
+
+**Files Changed:**
+- `client/src/ui/WaitingRoom.ts` — error display logic
+- `client/index.html` — error styling
+
+**PR:** #102 (created to `dev`)
+
+---
+
 ## 2026-01-13: Turn Timer Visibility Fix (Issue #100 / PR #101)
 
 **Problem:** Turn countdown timer was not visible during gameplay despite HUD component having timer display code. Players had no indication of remaining turn time.
