@@ -1342,3 +1342,659 @@ User request — captured for team memory and future upgrade planning.
 - Track action-level events for popular moves
 - Implement sampling for high-volume events
 - Add user-id tracking post-authentication
+
+---
+
+### Steeply: Lobby E2E Order-Independence
+
+**Status:** Approved  
+**Date:** 2026-03-14  
+**Issue:** #77  
+**PR:** #78
+
+**Decision:** Lobby E2E tests must be order-independent within the shared Playwright suite by using row-scoped assertions rather than lobby-wide assertions.
+
+**Problem:**
+- Full E2E suite runs checkers E2E before lobby E2E against one shared server instance
+- Checkers tests legitimately leave in-progress sessions visible in the lobby
+- Lobby tests using `.lobby-empty-row` assertion fail when not run in isolation
+
+**Solution:**
+- Use unique game names: `Test Game ${timestamp}`
+- Assert only on the specific game row created and removed by the test
+- Remove only the game created by the test, not the entire lobby state
+
+**Implementation:**
+- Update `e2e/lobby.spec.ts` with unique game naming
+- Change assertions from `expect(emptyRow).toBeVisible()` to row-scoped checks
+- Ensure each test is independent of test execution order
+
+**Rationale:**
+- Test isolation: No brittle dependencies on global state or execution order
+- Maintainability: New tests can be added/removed/reordered without side effects
+- Robustness: Reflects real-world usage where multiple games exist in lobby simultaneously
+
+**Impact:**
+- E2E suite now runs reliably in any order
+- Tests can run in parallel without flaky failures
+- Team can add new E2E tests with confidence
+- Clear pattern for future browser/UI E2E work
+
+---
+
+## Session: Local Development Infrastructure (2026-03-14)
+
+### User Directive: Dev Environment Stays Local
+
+**Status:** Approved  
+**Date:** 2026-03-14T21:26:05Z  
+**By:** dkirby-ms  
+
+**Decision:** No Azure deployment for the dev environment — only UAT and prod need Azure infrastructure. Dev runs locally.
+
+**Rationale:**
+- Developer experience: Fast feedback cycles without cloud infrastructure setup
+- Cost efficiency: Avoid staging Azure resources for individual developers
+- Isolation: Dev work doesn't depend on shared cloud services
+- Local reproducibility: Issues in local env match production closely
+
+---
+
+### Marathe: Local PostgreSQL for Development
+
+**Status:** Approved  
+**Date:** 2026-03-14T21:38:00Z  
+
+**Decision:** Standardize local-only development on a root `docker-compose.yml` PostgreSQL service (`postgres:15-alpine`) with a named data volume, health check, and repo-root `.env.example` for `DATABASE_URL`.
+
+**Implementation:**
+- Service: `postgres:15-alpine` (matches production version)
+- Volume: Named volume for persistence across restart
+- Health Check: Ensures postgres is ready before dependent services
+- Environment Template: `.env.example` with `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/playgrid_dev`
+- Helper Scripts: Database initialization and cleanup utilities
+
+**Rationale:**
+- Alignment: Postgres 15 in dev matches production, reducing environment surprises
+- Reliability: Health checks prevent race conditions
+- Persistence: Data survives `docker-compose down/up` cycles
+- Discoverability: `.env.example` makes setup clear for new team members
+
+**Impact:**
+- Server team (Pemulis, Gately) has a stable database target for local development
+- No Azure credentials needed for dev work
+- Consistent foundation for database schema migrations and seed data
+- Clear upgrade path: Change postgres version in one place for team-wide update
+
+**Follow-up:**
+- Server code must read `DATABASE_URL` from environment
+- Test/UAT/prod deployment pipelines remain independent
+
+---
+
+## Session: Client UI Modernization (2026-03-14)
+
+### Gately: Lobby Dashboard UI Pattern
+
+**Status:** Approved  
+**Date:** 2026-03-14T22:15:01Z  
+
+**Decision:** The Lobby UI has been refactored from a table-based list into a modern dashboard layout with visual game tiles, sidebar panels, and modal dialogs.
+
+**Context:**
+The original lobby used an HTML table to display game sessions with inline forms. While functional, it lacked visual appeal and didn't scale well for multiple game types. A Figma dashboard design was provided showing game tiles, active games sidebar, online players panel, and modal-based creation.
+
+**Implementation:**
+- **Layout:** 2/3 main content (game library) + 1/3 sidebar (active games + online players) on desktop, single column on mobile
+- **Game Tiles:** Visual cards representing game types (not sessions), showing active session count, with gradient backgrounds
+- **Active Sessions Panel:** Card-based display of current games with real-time Colyseus sync
+- **Modal Creation:** Centered overlay for new game form with type pre-selection from tiles
+- **Header Controls:** Sticky header with player name input, create button, action controls
+- **Theme:** Dark violet with accent colors, responsive grid layout
+
+**Technical Details:**
+- **Files:** `client/index.html` (CSS) and `client/src/ui/LobbyScreen.ts` (DOM)
+- **Approach:** Vanilla TypeScript + CSS (no framework dependencies)
+- **Styling:** CSS Grid/Flexbox with CSS Variables, inline SVG icons, gradient overlays
+- **State:** `Map<string, GameSessionInfo>` with Colyseus message handling
+
+**Rationale:**
+- Visual Appeal: Modern design more engaging than table layout
+- Scalability: Easy to add new game types as tiles
+- Information Density: Sidebar shows context without additional views
+- Mobile-Friendly: Responsive design collapses to single column
+- Discoverability: Game tiles make available types immediately visible
+- No Dependencies: Retains vanilla TypeScript pattern established in codebase
+
+**Alternatives Considered:**
+- Keep table: Functional but lacks visual polish
+- Use framework (React/Vue): Would require dependency shift, rejected per constraints
+- External images: Requires asset pipeline, using gradients instead
+
+**Impact:**
+- **Client:** New dashboard pattern for game selection/session browsing
+- **WaitingRoom:** Could adopt similar card-based pattern for consistency
+- **Server:** No changes needed (Colyseus protocol unchanged)
+- **Testing:** All 189 tests passing, build and lint clean
+
+**Benefits:**
+- Establishes reusable UI pattern for list-based views
+- Improved user experience and platform aesthetics
+- Foundation for future enhancements (filters, search, images)
+- No technical debt or breaking changes
+
+**Future Enhancements:**
+- Online Players panel (requires server-side presence tracking)
+- Game tile images (when asset pipeline ready)
+- Advanced filtering (by player count, game state, etc.)
+- Search/sort functionality for sessions
+
+**Risks:**
+- Learning curve for new developers
+- Additional CSS maintenance vs. table approach
+- Accessibility testing needed (keyboard navigation, screen readers)
+
+---
+
+## Session: Session Resilience — Client-Server Reconnection (2026-03-15)
+
+### Pemulis: Presence-backed Reconnect Cleanup
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Use a Colyseus presence topic (`playgrid:lobby:game-room-disposed`) for game-room → lobby cleanup, rather than keeping direct references between `BaseGameRoom` and `LobbyRoom`.
+
+**Rationale:**
+- Loose coupling: Game rooms only publish disposal facts; lobby decides how to clear stale entries
+- Compatible with Colyseus local presence today; remains compatible with Redis presence if scaled later
+- Centralizes lobby cleanup in one place: Removing a dead in-progress game also clears stale `currentGameId` assignments for connected lobby sessions
+- Extends existing plugin lifecycle contract to expose `onPlayerReconnect` hook for turn timer integration
+
+**Impact:**
+- Server-side reconnection window and cleanup fully implemented
+- LobbyRoom clears stale entries on game room disposal
+- Plugin system ready for turn timer pause/resume during reconnect window
+
+**Files Modified:**
+- server/src/rooms/lobbyPresence.ts
+- server/src/game/BaseGameRoom.ts
+- server/src/rooms/LobbyRoom.ts
+
+---
+
+### Gately: Client Reconnect UX & sessionStorage Persistence
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Persist only active game reconnect state in `sessionStorage` under `playgrid.active-session`, and restore it in `client/src/Application.ts` before booting a fresh lobby room. Drive the in-game reconnect UX from the Colyseus room lifecycle (`onDrop`, `onReconnect`, `onLeave`) while clearing stored state only on consented leave, `game-end`, or failed restore.
+
+**Rationale:**
+- Server already reserves seats for 30 seconds during active games, so the browser must try reclaiming that seat before opening a fresh lobby session
+- `sessionStorage` matches the desired lifecycle: Survives refresh, clears on tab close, avoids reviving dead sessions across future browser launches
+- Same-tab drops need visible feedback without bouncing players straight back to lobby; transient drops and final reconnect failure are separate states
+- Enables end-to-end recovery across browser refresh within the 30s reconnect window
+
+**Implementation:**
+- Persist `room.reconnectionToken` + minimal active-game metadata (gameType, spectator flag, timestamp) on room join
+- Attempt `client.reconnect(savedToken)` before creating fresh lobby session on startup
+- Clear persisted state on: consented leave, game-end, or reconnect-window expiry/failure
+- Bind `room.onDrop` and `room.onReconnect` to drive visible reconnecting/resumed states
+
+**Impact:**
+- Players can refresh mid-game and rejoin within 30s window
+- Visible reconnecting UI prevents silent SDK behavior
+- Tab close automatically clears stale session tokens
+- Works with existing 30s server-side reconnection window
+
+**Files Modified:**
+- client/src/Application.ts
+- client/src/networking/ConnectionManager.ts
+- client/src/ui/ReconnectOverlay.ts
+- client/index.html
+
+---
+
+### Steeply: Reconnect Test Strategy — Two-Layer Coverage
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Land reconnection coverage in two layers:
+1. Add concrete server-side behavioral tests where current seams already exist (`BaseGameRoom` and lobby pregame tests)
+2. Add explicit Vitest `.todo()` contracts for client startup/sessionStorage reconnect behavior and server/client edge cases
+
+**Rationale:**
+- Pemulis and Gately are landing implementation in parallel, but current branch does not expose stable client seams for session persistence or finished server reconnect lifecycle
+- Shipping green explicit TODO contracts keeps expected behavior visible in CI without forcing brittle implementation-coupled tests or breaking suite before feature lands
+- Two-layer approach allows staging: Server tests green now; client/cross-agent tests pinned as contracts for finishing agent to convert from `.todo()` to executable coverage
+
+**Coverage:**
+- **Server tests (green):** allowReconnection window, consented leave, timeout forfeits, lobby cleanup
+- **Client contracts (TODO):** sessionStorage persistence, startup reconnect attempt, reconnecting UI states, server/client edge cases covering full reconnection matrix
+
+**Impact:**
+- Server regressions around `allowReconnection`, consented leave, timeout forfeits covered now
+- Remaining reconnect requirements pinned as named tests; finishing agent can convert from `.todo()` without reinventing matrix
+- CI shows expected contracts without flaky timing-dependent tests
+
+**Files Modified:**
+- e2e/reconnection.test.ts (new)
+- e2e/lobby.test.ts (updated with reconnection contracts)
+
+---
+
+## Session: Previous — Player Reconnection Support (2026-03-14)
+
+*This session completed Phase 1 of reconnection: server-side 30s window support.*
+
+**Pemulis:** Implemented `allowReconnection(client, timeout)` in `BaseGameRoom.onLeave()` with 30s default, heartbeat config, and CONSENTED disconnect distinction.
+
+**Status:** Implemented  
+**Follow-up:** Client-side UI and end-to-end recovery (completed in 2026-03-15 session above)
+
+---
+
+### Marathe: Dual Custom Domains by Environment (2026-03-15)
+
+**Status:** Proposed  
+**Date:** 2026-03-15  
+
+Use separate optional Bicep parameters for Container App custom domains: `customDomainUat` for UAT and `customDomainProd` for production.
+
+**Decision:**
+- Keep dev deployments domain-free by default
+- Select the active custom domain from `environmentName` inside `infra/main.bicep`
+- Only emit ACA ingress `customDomains` when the selected environment-specific value is non-empty
+
+**Rationale:**
+- Matches the repo's single-template-per-environment pattern without reintroducing duplicated Bicep
+- Avoids accidental prod-domain reuse in UAT or vice versa
+- Preserves backward compatibility for existing dev deployments and any environment with no custom domain configured
+
+**Files:**
+- infra/main.bicep
+- infra/main.bicepparam
+
+---
+
+### Pemulis: Ready-Check Enforcement for Non-Host Players (2026-03-15)
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+For the current waiting-room flow, enforce that all joined non-host players must have `isReady = true` before the host can execute `start_game`.
+
+**Rationale:**
+- The waiting-room UX gives the host the Start Game control but does not expose a Ready toggle for the host
+- Treating the host as a starter/coordinator and enforcing readiness only on non-host players fixes issue #79 without introducing a larger UX change mid-stream
+- Simpler than requiring explicit "host ready" interaction
+
+**Follow-up:**
+If we later want a true "every participant explicitly readies" flow, add a separate host-ready interaction first and then tighten the server rule to match it.
+
+**Implementation:**
+- Server validation in `BaseGameRoom` or game-specific logic
+- Client: Start button disabled until ready is confirmed
+- Tests: Regression coverage added
+
+---
+
+### Marathe: ACA Bootstrap Placeholder Image (2026-03-15)
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Keep infrastructure deployment independent from image availability. Seed the Azure Container App with a public `node:22-alpine` bootstrap image and conditional startup logic:
+1. Start the real app when `/app/public/server/dist/src/index.js` exists
+2. Serve a tiny HTTP placeholder with `/health` on port `2567` when no app image has been pushed yet
+
+**Rationale:**
+- Prevents first-time ACA provisioning from failing against an empty ACR
+- Keeps probes and ingress aligned with the real runtime contract (`/health`, port `2567`)
+- Preserves the existing deploy workflow shape instead of adding extra bootstrap-only pipeline steps
+- The real PlayGrid image is CI/CD's responsibility via `deploy-dev.yml`; the placeholder is only for first-deploy bootstrap
+
+**Implementation:**
+- `infra/main.bicep` deploys the bootstrap image and health-check configuration
+- `.github/workflows/deploy-dev.yml` already handles the handoff after pushing the real image via `az containerapp update`
+- No manual redeployment needed on subsequent CI/CD image updates
+
+**Impact:**
+- Infra deploys can succeed before the first app image exists
+- Subsequent CI deploys replace the placeholder with the real application image without extra steps
+
+
+---
+
+### Marathe: Shared CAE Environment for UAT + Prod (2026-03-15)
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Keep `infra/main.bicep` as a single per-environment deployment template, but treat Container Apps Environment infrastructure as shared for non-dev environments:
+- `dev` keeps its own CAE/log workspace
+- `uat` and `prod` default to the shared names `playgrid-shared-cae` and `playgrid-shared-logs`
+- `deploy-infra.yml` accepts optional `container_app_env_resource_id` so the second environment can explicitly target the first environment's CAE when resource groups differ
+
+**Rationale:**
+- Preserves the existing manual `workflow_dispatch` deployment shape
+- Gives UAT/prod deterministic shared resource names so repeated deployments converge on the same CAE definition
+- Avoids CAE drift by also sharing the attached Log Analytics workspace instead of letting UAT/prod point the same CAE at different workspaces
+- Keeps dev isolated for low-risk testing and experimentation
+
+**Related:** User directive (2026-03-15T01:20:26Z) — UAT and prod can share the same Container Apps Environment for cost optimization.
+
+
+---
+
+## Session: Risk Game Plugin Triage (2026-03-15)
+
+### Hal: Risk Game Plugin Triage (Issue #80)
+
+**Status:** Approved for Sprint Assignment  
+**Date:** 2026-03-15  
+**Assignees:** Pemulis (squad:pemulis), Gately (squad:gately)  
+
+Triaged issue #80 "Add Risk game plugin" and determined complexity, scope risks, and team assignments. Risk is materially more complex than Checkers or Backgammon (900+ lines vs. 550–650) due to territory system (42 regions), multi-phase turns (reinforce → attack → fortify), stochastic combat (dice rolls), card mechanics, setup UX, and visual complexity.
+
+**Architectural Alignment:**
+- ✅ Plugin Pattern: Follows existing BaseGameRoom + GamePlugin interface
+- ✅ Pure Logic: Game mechanics separated from Colyseus (testable in isolation)
+- ✅ Spectator-Safe: Only hidden info = opponent cards (classic Risk rules)
+
+**Team Assignment:**
+- **Pemulis (Game Systems):** Risk game logic plugin + state management. Turn phases, combat dice resolution, territory/card state, card trade-in validation. ~350 lines server code + tests.
+- **Gately (Game Dev / Rendering):** Interactive Risk map renderer (procedural graphics). Setup phase territory selection UI, HUD, army placement visualization. ~600+ lines client code.
+
+**Decomposition (3 Sub-Issues):**
+1. **Core Game Logic & Plugin** (Pemulis) — RiskState schema, turn phases, combat mechanics, territory/card accounting, win detection. No UI; pure mechanics.
+2. **Setup & Territory Management** (Shared) — Territory selection phase, initial army placement rules, setup validation.
+3. **Interactive Map Renderer** (Gately) — Procedural map, clickable territories, army overlays, phase/action indicators.
+
+**Scope Clarifications:**
+- Card Mechanics: Accept standard Risk 5/4/3 trade-in set rules. In Phase 1, implement server-side validation + card count UI only. Defer card animation/visuals to Phase 2.
+
+**Rationale:**
+- Risk is next in approved game implementation order (after Dominoes → Poker → Hearts/Spades → Chess).
+- Timing is appropriate.
+- Decomposition prevents scope creep and enables parallel work (core logic → setup → rendering).
+
+
+---
+
+## Session: Risk Plugin Implementation Phase 1 (2026-03-15)
+
+### Pemulis: Risk Plugin Architecture
+
+**Status:** Implemented  
+**Date:** 2026-03-15  
+**Issue:** #80 (Phase 1 - Core Game Logic & Plugin)  
+
+Implemented the Risk game plugin following the established IGamePlugin pattern used by Checkers and Backgammon. Risk is significantly more complex than previous games with multi-phase turns, territory ownership, card mechanics, and variable player counts (2-6).
+
+**Decision 1: Setup Phase Strategy**
+
+Territories auto-distributed round-robin at game start, followed by a setup-place phase for initial army placement.
+
+Rationale: Original Risk manual territory selection is tedious and slows web play. Round-robin ensures fair distribution. Players then place remaining armies strategically (40−territories_owned). Matches digital Risk implementations; reduces setup time. Alternative considered: manual pick-one-at-a-time (too slow for async web play).
+
+**Decision 2: Card Mechanics Simplification**
+
+Track card count only (no card types: Infantry/Cavalry/Artillery). Trade any 3 cards for escalating bonus (4→6→8→10→12→15→20...).
+
+Rationale: Phase 1 has no card UI; tracking types wastes complexity. Simplified trade-in removes "forced trade when no valid set" edge case. Escalating bonus preserves Risk endgame acceleration. Can add card types in Phase 2 if UI supports it. Trade-off: less strategic depth than full card rules, but simpler implementation.
+
+**Decision 3: Turn Phase Management**
+
+Use string union types for turnPhase in state, enforce phase transitions in action handlers.
+
+Rationale: BaseGameRoom doesn't enforce phased turn config automatically. Each action handler validates current phase before executing. endPhase action transitions between reinforce→attack→fortify→reinforce. Simple state machine that client can render visually. Alternative considered: separate state machine class (over-engineered).
+
+**Decision 4: Combat Resolution**
+
+Pure server-side dice rolling with immediate resolution (no "roll until one side loses" loop). Each attack action is one dice throw; client can call multiple times.
+
+Rationale: Gives players control over when to stop attacking. Allows UI animation between rolls. Server-authoritative dice (no client cheating). Trade-off: more client→server round trips, better for web UX.
+
+**Decision 5: Territory Adjacency Data Structure**
+
+Static const arrays with adjacency lists in territoryData.ts, helper functions for lookups.
+
+Rationale: Territory graph never changes; hardcode it. Simple array lookups for adjacency checks (O(n) but n≤8 for any territory). Easy to verify correctness by reading the data. Alternative considered: adjacency matrix (harder to read, same performance).
+
+**Integration Notes:**
+- Plugin registered in `server/src/index.ts` alongside Checkers and Backgammon
+- State schema exported from `shared/src/games/risk/index.ts` for client access
+- All game logic in `riskLogic.ts` is pure functions (testable, reusable)
+- No client changes needed yet (Phase 1 is server-only)
+
+**Files Created:**
+- `server/src/games/risk/RiskPlugin.ts`
+- `server/src/games/risk/riskLogic.ts`
+- `server/src/games/risk/RiskState.ts`
+- `server/src/games/risk/territoryData.ts`
+- `shared/src/games/risk/index.ts`
+
+**Open Questions for Phase 2:**
+1. Should fortify require contiguous territory paths or just adjacency?
+2. How to handle attack animations with rapid consecutive attacks?
+3. Card UI: show card types retroactively or keep simplified system?
+4. Territory map rendering: SVG overlay or canvas-based?
+
+---
+
+### Steeply: Risk Test Strategy — Pure Logic First, Integration Later
+
+**Status:** Implemented  
+**Date:** 2026-03-15  
+**Issue:** #80 (Risk game plugin)  
+
+For complex game plugins like Risk (3× more complex than Checkers/Backgammon), use a phased test strategy:
+
+1. **Phase 1: Pure Logic Tests** — Test static data and pure functions immediately
+2. **Phase 2: Integration Stubs** — Write `.todo()` tests for plugin actions/lifecycle
+3. **Phase 3: Incremental Activation** — Convert `.todo()` to executable tests as implementation completes
+
+**Decision Rationale:**
+
+**Why Pure Logic First?**
+- Validates core game rules independently of plugin integration
+- Provides immediate value (16/64 tests passing on first commit)
+- Enables parallel work: Pemulis implements, Steeply validates
+- Catches errors in static data early (territory map, adjacency graph, continent bonuses)
+
+**Why `.todo()` for Integration?**
+- Documents expected behavior as executable specifications
+- Prevents brittle "mock everything" tests that don't test real behavior
+- Shows test coverage gaps in CI without blocking green builds
+- Easy conversion: just remove `.todo()` when implementation lands
+
+**Why Incremental Activation?**
+- Risk has 4 distinct phases (setup, reinforce, attack, fortify) that complete independently
+- Integration tests can activate phase-by-phase as Pemulis delivers
+- Reduces coordination overhead: no waiting for "all or nothing" completion
+- Maintains green CI throughout development
+
+**Implementation (Risk Game):**
+
+64 Total Tests:
+- 16 passing (pure logic): territory map, reinforcements, card trade-ins, initial armies
+- 48 `.todo()` (integration): plugin actions, lifecycle, state transitions, combat, win conditions
+
+**Test Categories:**
+- Territory Map (4): initialization, continent assignment, adjacency graph, continent bonus
+- Initial Setup (3): territory distribution, army allocation, player colors
+- Reinforcement (4): army pool deduction, continent bonus, edge cases
+- Card Mechanics (5): count tracking, trade-in validation, escalating bonus
+- Plugin Lifecycle (8): onCreate, onJoin, onLeave, turn order, state transitions
+- Reinforce Phase (12): setupPlace action, army placement, state updates
+- Attack Phase (14): territory validation, combat resolution, conquest mechanics
+- Fortify Phase (6): movement validation, army transfer, edge cases
+- Win Conditions (8): solo player detection, game end, final state, elimination
+
+**File:** `server/src/__tests__/risk.test.ts` (follows Backgammon pattern)
+
+**Imports:** Actual implementation (RiskPlugin, riskLogic, territoryData) with no mocks.
+
+**Cross-Agent Impact:**
+
+**Pemulis (Systems Dev):** Test expectations documented before implementation complete. Pure logic functions validated immediately (green tests = confidence). `.todo()` tests serve as acceptance criteria for plugin actions.
+
+**Gately (Game Dev):** Can reference test coverage when building UI (knows what server validates). `.todo()` tests hint at client-side testing needs.
+
+**Recommendation:** Adopt this pattern for all future complex game plugins (Dominoes, Poker, etc.):
+1. Identify pure logic (static data, calculations, validators)
+2. Test pure logic immediately with actual implementation
+3. Write `.todo()` integration tests as specification
+4. Convert `.todo()` to executable tests as plugin actions complete
+
+This balances immediate validation with practical coordination for parallel development.
+
+
+---
+
+## Session: Risk Game Plugin Phase 3 Complete (2026-03-15)
+
+### Gately: Risk Client Renderer Architecture
+
+**Status:** Implemented  
+**Date:** 2026-03-15
+
+Implemented Risk game client renderer following the established Checkers pattern with PixiJS.
+
+**Context:**
+Phase 3 of Risk game plugin (#80) required an interactive map renderer on the client side. Server-side state (RiskState) and logic (RiskPlugin) were already completed by Pemulis in Phase 1.
+
+**Key Decisions:**
+
+1. **Territory Layout:** Hardcoded procedural grid-based positioning for 42 territories
+   - Functional over geographically accurate (matches task requirement)
+   - Faster initial implementation vs. SVG import or geographic data
+   - Easy to adjust positions for visual balance
+   - Keeps bundle size small (no external map data)
+
+2. **Rendering Layers:** Three-layer Container structure: mapLayer → territoryLayer → hudLayer
+   - Follows Checkers pattern exactly (team consistency)
+   - Clean separation of concerns
+   - Easy z-ordering for overlays
+
+3. **Territory Interaction:** Two-click pattern for attack/fortify, single-click for place
+   - Setup/Reinforce: Click owned territory → place army (immediate)
+   - Attack: Click owned → click adjacent enemy (two-step)
+   - Fortify: Click owned → click adjacent owned (two-step)
+   - Consistent with card game and board game UX patterns
+
+4. **State Management:** Direct Colyseus room message sending with reactive re-rendering
+   - Messages: `placeArmy({ territoryId })`, `attack({ from, to, attackDiceCount })`, `fortify({ from, to, armyCount })`, `tradeCards({})`, `endPhase({})`
+   - Server-authoritative (client sends intents, not state changes)
+   - Re-render driven by onStateChange events
+
+5. **Simplified Game Parameters:** Attack uses max dice (3 attacker, 2 defender based on armies); Fortify moves max-1 armies
+   - Reduces UI complexity for MVP
+   - Can add detailed controls later if needed
+   - Most players use max dice anyway (optimal strategy)
+
+**Alternatives Considered:**
+- Geographic SVG Map: Rejected (overkill for Phase 3, larger bundle, more complex hit detection)
+- Three-click Attack Pattern: Rejected (extra friction, Checkers uses two-click)
+- Client-side Combat Calculation: Rejected (server must be authoritative, risk of desync)
+
+**Implementation:**
+- `client/src/renderers/RiskRenderer.ts` (23KB)
+- `client/src/games/risk/riskClientLogic.ts` (helper functions)
+- `client/src/renderers/index.ts` (registry entry)
+- Registered with key "risk", auto-loaded by GameScene
+
+**Validation:**
+- ✅ Build passes (npm run build)
+- ✅ No TypeScript errors
+- ✅ Follows GameRenderer interface
+- ✅ Consistent with Checkers pattern
+- ✅ All phases supported (setup-pick, setup-place, reinforce, attack, fortify)
+
+**Cross-Agent Impact:**
+- Hal (Architect): No architectural changes needed, adheres to GameRenderer contract
+- Pemulis (Backend): Client consumes server state schema correctly, message types match
+- Steeply (Testing): Can write client integration tests against GameRenderer interface
+- Joelle (Docs): May want to document Risk UI controls for players
+
+**Future Enhancements:**
+1. Combat animation (dice roll visualization)
+2. Territory capture animation (color transition)
+3. Card trade UI
+4. Detailed dice count selection for attack
+5. Fortify army count slider
+6. Territory name search/filter
+7. Minimap for large displays
+8. Zoom/pan controls for mobile
+
+
+---
+
+## Session: Post-Work Review and Fixes (2026-03-15)
+
+### Gately: Lobby Card Backgrounds via Inline SVG Data URLs
+
+**Status:** Approved  
+**Date:** 2026-03-15
+
+Use inline SVG data URLs generated in `client/src/ui/LobbyScreen.ts` for lobby game library card artwork, with CSS overlay/shadow treatment in `client/index.html` to keep labels readable.
+
+**Rationale:**
+- Keeps artwork fully self-contained in lobby UI code; no new asset pipeline required
+- Lightweight and easy to tweak with bespoke art direction per card
+- One shared CSS contrast layer instead of duplicating overlays inside assets
+- Fits existing HTML/CSS lobby architecture
+
+**Files:**
+- `client/src/ui/LobbyScreen.ts`
+- `client/index.html`
+
+---
+
+### Marathe: Fix Shared CAE Dependency and PostgreSQL Password Requirement
+
+**Status:** Approved  
+**Date:** 2026-03-15
+
+Keep shared UAT/prod Container Apps Environment (CAE) architecture, but make `Microsoft.App/containerApps` explicitly depend on the conditionally created `Microsoft.App/managedEnvironments` resource when `containerAppEnvResourceId` is empty. Require PostgreSQL administrator password at deployment time with no empty default.
+
+**Rationale:**
+- Template was computing CAE resource ID as string without creating ARM dependency edge
+- First-time deployments could attempt container app before managed environment existed, causing `ManagedEnvironmentNotFound`
+- Empty password fallback caused late deployment failures instead of fast validation
+- First-time deployments can now create shared CAE and dependent container app in one run
+
+**Impact:**
+- Cross-resource-group reuse still works via `containerAppEnvResourceId`
+- Manual deploys must provide `POSTGRES_ADMIN_PASSWORD`, avoiding accidental empty passwords
+
+**Files:**
+- `infra/main.bicep`
+- `infra/main.bicepparam`
+
+---
+
+### Hal: Risk Game Implementation Standards
+
+**Status:** Approved  
+**Date:** 2026-03-15
+
+Establish four architectural standards from PR #83 review:
+
+1. **Shared Static Data:** Game configuration data (maps, adjacency graphs, card decks) MUST be located in `shared/src/games/{game}/` so both client (renderer) and server (logic) use a single source of truth.
+2. **Test Implementation:** PR descriptions must accurately reflect test coverage. `it.todo()` placeholders do not count as implemented tests. Critical game logic (combat, movement, win conditions) must be tested before merge.
+3. **Scope Transparency:** Intentional simplifications of game rules MUST be explicitly documented as "Phase 1 Limitations" in the PR description to distinguish from bugs.
+4. **PR Atomicity:** Infrastructure changes should be in separate PRs from feature work to keep reviews focused.
+
+**Rationale:**
+- Prevents client/server state drift through shared data models
+- Test metrics in PRs require verification; unclear coverage masks incomplete implementation
+- Scope cuts need explicit documentation to prevent confusion with bugs or incomplete features
+- Bundled unrelated changes degrade review quality and increase risk of regression
+
+**Files:**
+- PR #83 follow-up work (routed to Marathe)
+

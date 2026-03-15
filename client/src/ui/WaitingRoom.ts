@@ -3,9 +3,11 @@ import {
   GAME_PLAYERS,
   GAME_STARTED,
   LEAVE_GAME,
+  LOBBY_ERROR,
   SET_READY,
   START_GAME,
   type GameSessionInfo,
+  type LobbyErrorPayload,
 } from "./LobbyScreen";
 
 export interface PreGamePlayerInfo {
@@ -136,13 +138,25 @@ export class WaitingRoom {
           return;
         }
 
+        const gameType = this.gameInfo?.gameType ?? "checkers";
         this.hide();
         this.eventCallback?.({
           type: "game_started",
           gameId: payload.gameId,
           roomId: payload.roomId,
-          gameType: this.gameInfo?.gameType ?? "checkers",
+          gameType,
         });
+      });
+
+      room.onMessage(LOBBY_ERROR, (payload: LobbyErrorPayload) => {
+        if (!this.isHost || !this.gameId) {
+          return;
+        }
+
+        this.startButton.textContent = payload.message.toLowerCase().includes("ready")
+          ? "Start when everyone is ready"
+          : "Start Game";
+        this.updateControls();
       });
     }
 
@@ -221,14 +235,19 @@ export class WaitingRoom {
   private updateControls(): void {
     this.readyButton.style.display = this.isHost ? "none" : "inline-flex";
     this.startButton.style.display = this.isHost ? "inline-flex" : "none";
-    this.startButton.disabled = this.players.length < 1;
+    this.startButton.disabled = !this.canStartGame();
 
     if (this.isHost) {
-      this.startButton.textContent = "Start Game";
+      this.startButton.textContent = this.canStartGame() ? "Start Game" : "Start when everyone is ready";
     }
 
     this.readyButton.textContent = this.isReady ? "Not Ready" : "Ready";
     this.readyButton.classList.toggle("is-active", this.isReady);
+  }
+
+  private canStartGame(): boolean {
+    const hostId = this.gameInfo?.hostId ?? this.room?.sessionId ?? "";
+    return this.players.length > 0 && this.players.every((player) => player.userId === hostId || player.isReady);
   }
 
   private toggleReady(): void {

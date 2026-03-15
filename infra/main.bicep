@@ -9,6 +9,9 @@ param environmentName string
 @description('Azure region for resources')
 param location string = resourceGroup().location
 
+@description('Existing Container Apps Environment resource ID to reuse (optional)')
+param containerAppEnvResourceId string = ''
+
 @description('PostgreSQL administrator username')
 param postgresAdminUsername string = 'pgadmin'
 
@@ -19,17 +22,39 @@ param postgresAdminPassword string
 @description('PostgreSQL database name')
 param postgresDatabaseName string = 'playgrid'
 
-@description('Custom domain name (optional)')
-param customDomain string = ''
+@description('UAT custom domain name (optional)')
+param customDomainUat string = ''
+
+@description('Production custom domain name (optional)')
+param customDomainProd string = ''
 
 // Naming convention: playgrid-{env}-{resource-type}
 var resourcePrefix = 'playgrid-${environmentName}'
+var sharedInfrastructurePrefix = 'playgrid-shared'
+var usesSharedContainerInfrastructure = environmentName == 'uat' || environmentName == 'prod'
 var acrName = replace('${resourcePrefix}acr', '-', '') // ACR names cannot contain hyphens
-var containerAppEnvName = '${resourcePrefix}-cae'
+var containerAppEnvName = usesSharedContainerInfrastructure ? '${sharedInfrastructurePrefix}-cae' : '${resourcePrefix}-cae'
+var createContainerAppEnv = empty(containerAppEnvResourceId)
+var containerAppEnvId = createContainerAppEnv ? resourceId('Microsoft.App/managedEnvironments', containerAppEnvName) : containerAppEnvResourceId
 var containerAppName = 'playgrid-${environmentName}'
-var logAnalyticsName = '${resourcePrefix}-logs'
+var logAnalyticsName = usesSharedContainerInfrastructure ? '${sharedInfrastructurePrefix}-logs' : '${resourcePrefix}-logs'
 var postgresServerName = '${resourcePrefix}-pg'
 var keyVaultName = replace('${resourcePrefix}-kv', '-', '') // shorten for 24 char limit
+var selectedCustomDomain = environmentName == 'uat'
+  ? customDomainUat
+  : environmentName == 'prod'
+    ? customDomainProd
+    : ''
+var customDomains = empty(selectedCustomDomain)
+  ? []
+  : [
+      {
+        name: selectedCustomDomain
+        bindingType: 'Disabled'
+      }
+    ]
+var bootstrapPlaceholderImage = 'node:22-alpine'
+var bootstrapPlaceholderCommand = 'if [ -f /app/public/server/dist/src/index.js ]; then exec node /app/public/server/dist/src/index.js; fi; exec node -e "const http = require(\\"http\\"); const port = Number(process.env.PORT || 2567); http.createServer((req, res) => { if (req.url === \\"/health\\") { res.writeHead(200, { \\"Content-Type\\": \\"application/json\\" }); res.end(JSON.stringify({ status: \\"ok\\", mode: \\"bootstrap-placeholder\\" })); return; } res.writeHead(200, { \\"Content-Type\\": \\"text/plain\\" }); res.end(\\"PlayGrid infrastructure bootstrap placeholder\\"); }).listen(port, \\"0.0.0.0\\");"'
 
 // Container App configuration based on environment
 var containerAppConfig = {
@@ -62,17 +87,26 @@ var tags = {
   project: 'playgrid'
   managedBy: 'bicep'
 }
+var infrastructureTags = usesSharedContainerInfrastructure
+  ? {
+      environment: 'shared'
+      project: 'playgrid'
+      managedBy: 'bicep'
+      sharedBy: 'uat,prod'
+    }
+  : tags
+var logAnalyticsRetentionInDays = usesSharedContainerInfrastructure ? 90 : 30
 
-// Log Analytics Workspace
-resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
+// Log Analytics Workspace for the Container Apps Environment
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = if (createContainerAppEnv) {
   name: logAnalyticsName
   location: location
-  tags: tags
+  tags: infrastructureTags
   properties: {
     sku: {
       name: 'PerGB2018'
     }
-    retentionInDays: environmentName == 'prod' ? 90 : 30
+    retentionInDays: logAnalyticsRetentionInDays
   }
 }
 
@@ -91,16 +125,16 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
 }
 
 // Container App Environment
-resource containerAppEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
+resource containerAppEnv 'Microsoft.App/managedEnvironments@2024-03-01' = if (createContainerAppEnv) {
   name: containerAppEnvName
   location: location
-  tags: tags
+  tags: infrastructureTags
   properties: {
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
-        customerId: logAnalytics.properties.customerId
-        sharedKey: logAnalytics.listKeys().primarySharedKey
+        customerId: logAnalytics!.properties.customerId
+        sharedKey: logAnalytics!.listKeys().primarySharedKey
       }
     }
     workloadProfiles: [
@@ -134,9 +168,6 @@ resource postgresServer 'Microsoft.DBforPostgreSQL/flexibleServers@2023-03-01-pr
     }
     highAvailability: {
       mode: 'Disabled'
-    }
-    network: {
-      publicNetworkAccess: 'Enabled'
     }
   }
 }
@@ -189,13 +220,14 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
     type: 'SystemAssigned'
   }
   properties: {
-    managedEnvironmentId: containerAppEnv.id
+    managedEnvironmentId: createContainerAppEnv ? containerAppEnv.id : containerAppEnvResourceId
     configuration: {
       ingress: {
         external: true
         targetPort: 2567
         transport: 'http'
         allowInsecure: false
+        customDomains: customDomains
         traffic: [
           {
             latestRevision: true
@@ -221,7 +253,15 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'playgrid'
-          image: '${acr.name}.azurecr.io/playgrid:latest'
+          // Use a public bootstrap image so the first infra deploy succeeds before CI has pushed the real app image into ACR.
+          image: bootstrapPlaceholderImage
+          command: [
+            '/bin/sh'
+            '-c'
+          ]
+          args: [
+            bootstrapPlaceholderCommand
+          ]
           resources: {
             cpu: json(containerAppConfig[environmentName].cpu)
             memory: containerAppConfig[environmentName].memory
@@ -312,11 +352,13 @@ output resourceGroupName string = resourceGroup().name
 output acrName string = acr.name
 output acrLoginServer string = acr.properties.loginServer
 output containerAppName string = containerApp.name
+output containerAppEnvironmentName string = last(split(containerAppEnvId, '/'))
+output containerAppEnvironmentId string = containerAppEnvId
 output containerAppFqdn string = containerApp.properties.configuration.ingress.fqdn
 output containerAppIdentityPrincipalId string = containerApp.identity.principalId
 output postgresServerFqdn string = postgresServer.properties.fullyQualifiedDomainName
 output postgresDatabaseName string = postgresDatabaseName
 output keyVaultName string = keyVault.name
 output keyVaultUri string = keyVault.properties.vaultUri
-output logAnalyticsWorkspaceId string = logAnalytics.id
-output logAnalyticsCustomerId string = logAnalytics.properties.customerId
+output logAnalyticsWorkspaceId string = createContainerAppEnv ? logAnalytics!.id : ''
+output logAnalyticsCustomerId string = createContainerAppEnv ? logAnalytics!.properties.customerId : ''

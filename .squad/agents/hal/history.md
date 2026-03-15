@@ -131,6 +131,9 @@
 
 ## Learnings
 
+- **Randomness in Tests:** Risk combat tests failed 42% of the time due to low sample size. Random mechanics need robust buffers (20 vs 1 army) or mocks. Fixed in PR #83.
+
+
 ### Wave 4 PR Reviews (2026-03-14)
 
 **Session:** Reviewed and merged 4 draft PRs targeting dev branch in dependency-safe order
@@ -215,3 +218,133 @@
 - Shared Playwright server requires order-independent test assertions
 - Row-scoped E2E assertions > global state checks for robustness
 - Skill pattern docs help standardize testing practices across game plugins
+
+## Session: E2E Test Suite Fix & ConnectionManager Import (2026-03-14)
+
+**Agents:** Steeply (E2E fix), Gately (support), Hal (lead review + merge)
+
+### What Happened
+
+Steeply fixed order-dependent E2E test assertions by making them row-scoped. During the process, Gately fixed missing ConnectionManager import. Hal reviewed both changes, rebased on dev (auto-resolved conflict with Gately's fix), squash-merged, and closed issue #77.
+
+**Hal's Leadership:**
+1. **Code Review:** Approved PR #78
+   - Validated lobby E2E pattern (row-scoped, order-independent)
+   - Validated ConnectionManager import fix
+   - Assessed testing approach and best practices
+
+2. **Git Rebase:**
+   - Rebased PR #78 on dev
+   - Auto-resolved merge conflict with Gately's earlier commit (413aa35)
+   - No manual intervention needed
+
+3. **Verification:**
+   - Full test suite: 189 tests passing ✓
+   - No regressions ✓
+
+4. **Merge & Issue Closure:**
+   - Squash-merged PR #78 as c740333
+   - Closed issue #77
+   - Branch deleted automatically
+
+**Decisions Made:**
+- Lobby E2E tests must use unique names + row-scoped assertions
+- E2E suite should be order-independent and runnable in any order
+- Recorded in decisions.md for team reference
+
+**Cross-Team Impact:**
+- E2E infrastructure is now stable
+- Future game E2E tests should follow this pattern
+- No more flaky test failures due to test ordering
+
+## 2026-03-15 Update (Shared CAE Infrastructure)
+- **Infrastructure Decision Merged:** UAT and prod now share Container Apps Environment (`playgrid-shared-cae`) and Log Analytics workspace (`playgrid-shared-logs`) for cost optimization and deterministic convergence. Dev maintains isolated CAE.
+- **Scaling Alignment:** This aligns with the approved single-replica Phase 1 strategy; scales cleanly when multi-server support arrives
+- **Related:** Marathe's Bicep restructure enables conditional CAE creation via `containerAppEnvResourceId` parameter
+
+## 2026-03-15 — Issue #80 Triage: Risk Game Plugin
+
+**Triaged Issue:** #80 — "Add Risk game plugin" (opened by dkirby-ms)
+
+**Complexity Assessment:** HIGH  
+**Assignment:** Pemulis (game systems) + Gately (rendering)  
+**Status:** Ready for decomposition and sprint assignment
+
+### Findings
+
+Risk is materially more complex than existing games:
+
+1. **Existing Games (Baseline):**
+   - Checkers: 331 lines game logic + 223 lines plugin = 554 lines total server
+   - Backgammon: 351 lines game logic + 295 lines plugin = 646 lines total server
+
+2. **Risk Complexity Drivers:**
+   - **Map & Territory System:** 42 territories + 6 continents (vs. Backgammon's 30 points or Checkers' 32 squares)
+   - **Multi-Phase Turns:** Reinforce → Attack → Fortify with conditional transitions
+   - **Stochastic Combat:** Dice resolution with cascading losses
+   - **Card Mechanics:** Trade-in validation and set collection
+   - **Setup Phase:** Territory selection + army placement UX (2–6 players)
+   - **Visual Complexity:** 600+ line interactive map (vs. Backgammon's ~400 lines procedural renderer)
+
+3. **Architectural Fit:**
+   - ✅ Follows plugin pattern (BaseGameRoom + GamePlugin interface)
+   - ✅ Pure logic separation testable
+   - ✅ Spectator-safe (hidden info = opponent cards only)
+
+### Assignment Rationale
+
+- **Pemulis:** Risk game logic, turn manager, combat simulation, territory/card state management (~300–350 lines)
+- **Gately:** Interactive map renderer, setup phase UI, phase/action HUD (~600+ lines procedural graphics)
+- **Shared Effort:** Coordinate on setup phase (territory selection, initial placement) — requires both systems + rendering
+
+### Decomposition Recommendation
+
+Split into 3 sub-issues to manage scope:
+1. **Core Game Logic & Plugin** (Pemulis) — no UI, pure mechanics
+2. **Setup & Territory Management** (shared)
+3. **Interactive Map Renderer** (Gately)
+
+### Scope Clarifications Needed
+
+⚠️ **Card mechanics partially specified.** Recommend clarifying:
+- Standard Risk (5,4,3 + jokers) or custom?
+- Card visual UI in Phase 1 or Phase 2?
+
+Suggestion: Implement server-side validation, show card count only in Phase 1.
+
+### Decision: Triage Completed
+
+Added squad:pemulis and squad:gately labels. Posted triage comment with decomposition + scope recommendations. Ready for sprint assignment.
+
+### PR #83 Review — Risk Game Plugin (2026-03-15)
+
+**Session:** Reviewed "feat: Add Risk game plugin" (PR #83)
+
+**Outcome:** ❌ Changes Requested
+
+**Key Issues Identified:**
+1.  **Missing Tests:** PR claimed 64 tests, but ~48 were `it.todo()` placeholders. Critical logic (combat, win conditions) untested.
+2.  **Architectural Duplication:** `TerritoryData` existed in both Server (logic) and Client (renderer), risking desync.
+3.  **Logic Simplifications:** Found 3 major deviations from Standard Risk (Card sets, Fortify paths, Attack movement) not explicitly documented as scope cuts.
+4.  **Bundled Changes:** PR included unrelated Local PostgreSQL infrastructure (Marathe's work), complicating the review.
+
+**Action Items:**
+- Pemulis/Steeply: Implement missing tests for combat & movement.
+- Pemulis/Gately: Refactor `territoryData.ts` to `shared/`.
+- Hal: Clarify scope on Card mechanics and Fortify rules.
+
+**Learnings:**
+- Complex games like Risk require strict shared data models to prevent client/server drift.
+- "Test count" metrics in PRs need verification against actual implementation (checking for TODOs).
+- PRs bundling unrelated infra changes degrade review quality; enforce atomicity where possible.
+
+## Cross-Agent Update — PR #83 Review Completed and Routed (2026-03-15)
+
+**Event:** Risk game plugin review (PR #83) completed and revision work routed to Marathe
+
+- **Review outcome:** Changes requested — identified 4 architectural gaps
+- **Issues found:** Missing tests (48 of 64 were `it.todo()` placeholders), duplicated territory data, undocumented scope cuts, bundled infrastructure changes
+- **Decisions created:** Four new game implementation standards for Risk and future games recorded in `.squad/decisions.md`
+- **Routing:** PR revision routed to Marathe due to original author lockout (Pemulis, Steeply, Gately)
+- **Impact:** Future game plugins must follow strict shared data models, explicit test implementation, and documented scope cuts
+

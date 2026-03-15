@@ -24,7 +24,7 @@ PlayGrid brings timeless games like chess, checkers, and cards to life with real
 
 ### Prerequisites
 - **Node.js 22+** (with npm)
-- **PostgreSQL 14+** (for game state and player data)
+- **Docker Desktop** or **Docker Engine + Compose plugin** (recommended for local PostgreSQL)
 - Git
 
 ### Development Setup (< 10 minutes)
@@ -36,23 +36,38 @@ PlayGrid brings timeless games like chess, checkers, and cards to life with real
    npm ci
    ```
 
-2. **Set up the database:**
+2. **Create your local env file:**
    ```bash
-   createdb playgrid
-   # The server will initialize tables on first run
+   cp .env.example .env
    ```
 
-3. **Start the dev environment:**
+3. **Start PostgreSQL for local development:**
+   ```bash
+   docker compose up -d postgres
+   # or: npm run db:up
+   ```
+
+   This starts a local PostgreSQL 15 instance on `localhost:5432` with database `playgrid` and persists data in the `postgres-data` Docker volume. The server will run its migrations on startup.
+
+4. **Start the dev environment:**
    ```bash
    npm run dev
    ```
 
-   This runs both the client (PixiJS at `http://localhost:5173`) and server (Colyseus at `localhost:3000`) concurrently.
+   This runs both the client (PixiJS at `http://localhost:5173`) and server (Colyseus at `http://localhost:2567` / `ws://localhost:2567`) concurrently.
 
-4. **Verify it's working:**
+5. **Verify it's working:**
    - Open `http://localhost:5173` in your browser
    - Create a lobby and invite a friend (or open another browser tab)
    - Play!
+
+### Local PostgreSQL Reference
+
+- **Connection string:** `postgresql://postgres:postgres@localhost:5432/playgrid`
+- **Start DB:** `docker compose up -d postgres`
+- **Stop DB:** `docker compose down`
+- **Follow logs:** `docker compose logs -f postgres`
+- **Reset DB volume (destructive):** `docker compose down -v`
 
 ## Project Structure
 

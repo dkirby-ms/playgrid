@@ -98,6 +98,24 @@ export class ConnectionManager {
     }
   }
 
+  async reconnect(reconnectionToken: string): Promise<ColyseusRoom> {
+    this.setState(ConnectionState.CONNECTING);
+    this.cancelReconnect();
+
+    try {
+      const room = (await this.client.reconnect(reconnectionToken)) as ColyseusRoom;
+      this.setState(ConnectionState.CONNECTED);
+      this.reconnectAttempts = 0;
+      this.setupRoomErrorHandling(room, "game");
+      return room;
+    } catch (error) {
+      this.setState(ConnectionState.DISCONNECTED);
+      const errorMessage = error instanceof Error ? error.message : "Failed to reconnect to game";
+      this.emitError(errorMessage, error as Error | undefined, "reconnectGame");
+      throw error;
+    }
+  }
+
   async leaveGame(room: ColyseusRoom | null): Promise<void> {
     if (!room) {
       return;

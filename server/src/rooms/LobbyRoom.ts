@@ -1,4 +1,4 @@
-import { Client, Room, matchMaker } from "colyseus";
+import { Client, CloseCode, Room, matchMaker } from "colyseus";
 import {
   CREATE_GAME,
   GAME_JOINED,
@@ -10,6 +10,7 @@ import {
   JOIN_GAME,
   LEAVE_GAME,
   LOBBY_ERROR,
+  ONLINE_PLAYERS,
   SET_READY,
   START_GAME,
   type CreateGamePayload,
@@ -19,13 +20,17 @@ import {
   type GameStartedPayload,
   type JoinGamePayload,
   type LobbyErrorPayload,
+  type OnlinePlayerInfo,
+  type OnlinePlayersPayload,
   type PreGamePlayerInfo,
   type SetReadyPayload,
 } from "@eschaton/playgrid-shared";
 import { gameRegistry } from "../game/GameRegistry";
+import { GAME_ROOM_DISPOSED_TOPIC, type GameRoomDisposedMessage } from "./lobbyPresence.js";
 
 const DEFAULT_GAME_TYPE = "checkers";
 const DEFAULT_MAX_PLAYERS = 4;
+const LOBBY_RECONNECTION_TIMEOUT_SECONDS = 30;
 const MAX_GAME_NAME_LENGTH = 32;
 const MAX_DISPLAY_NAME_LENGTH = 24;
 
@@ -43,6 +48,28 @@ export class LobbyRoom extends Room {
   private readonly sessions = new Map<string, LobbySession>();
   private readonly games = new Map<string, LobbyGameEntry>();
   private readonly waitingPlayers = new Map<string, Map<string, PreGamePlayerInfo>>();
+  private readonly handleDisposedGameRoom = (message: GameRoomDisposedMessage) => {
+    if (!message?.gameId) {
+      return;
+    }
+
+    const game = this.games.get(message.gameId);
+    if (!game || game.status !== "in_progress") {
+      return;
+    }
+
+    if (game.roomId && message.roomId && game.roomId !== message.roomId) {
+      return;
+    }
+
+    this.waitingPlayers.delete(message.gameId);
+    this.clearSessionAssignments(message.gameId);
+    this.games.delete(message.gameId);
+    this.broadcast(GAME_REMOVED, { gameId: message.gameId });
+    this.broadcastOnlinePlayers();
+
+    console.log(`[LobbyRoom] Removed disposed game ${message.gameId} from the lobby`);
+  };
 
   override onCreate() {
     this.onMessage(CREATE_GAME, (client, payload: CreateGamePayload) => {
@@ -65,10 +92,21 @@ export class LobbyRoom extends Room {
       this.handleSetReady(client, payload);
     });
 
+    void this.presence.subscribe(GAME_ROOM_DISPOSED_TOPIC, this.handleDisposedGameRoom);
     console.log("[LobbyRoom] Lobby created");
   }
 
   override onJoin(client: Client, options?: Record<string, unknown>) {
+    const existingSession = this.sessions.get(client.sessionId);
+    if (existingSession) {
+      client.send(GAME_LIST, {
+        games: Array.from(this.games.values(), (game) => this.toGameSessionInfo(game)),
+      });
+
+      console.log(`[LobbyRoom] ${existingSession.displayName} rejoined the lobby`);
+      return;
+    }
+
     const displayName = this.normalizeDisplayName(options?.displayName, client.sessionId);
 
     this.sessions.set(client.sessionId, {
@@ -80,23 +118,26 @@ export class LobbyRoom extends Room {
       games: Array.from(this.games.values(), (game) => this.toGameSessionInfo(game)),
     });
 
+    this.broadcastOnlinePlayers();
+
     console.log(`[LobbyRoom] ${displayName} joined the lobby`);
   }
 
-  override onLeave(client: Client, _code: number) {
-    const session = this.sessions.get(client.sessionId);
-    if (session?.currentGameId) {
-      const game = this.games.get(session.currentGameId);
-      if (game?.status === "in_progress") {
-        session.currentGameId = undefined;
+  override async onLeave(client: Client, code: number = CloseCode.NORMAL_CLOSURE) {
+    if (code !== CloseCode.CONSENTED) {
+      try {
+        await this.allowReconnection(client, LOBBY_RECONNECTION_TIMEOUT_SECONDS);
+        return;
+      } catch {
+        // fall through to final cleanup once the reconnection window expires
       }
     }
 
-    this.handleLeaveGame(client);
-    this.sessions.delete(client.sessionId);
+    this.removeSession(client.sessionId);
   }
 
   override onDispose() {
+    this.presence.unsubscribe(GAME_ROOM_DISPOSED_TOPIC, this.handleDisposedGameRoom);
     console.log("[LobbyRoom] Lobby disposed");
   }
 
@@ -233,8 +274,9 @@ export class LobbyRoom extends Room {
     console.log(`[LobbyRoom] ${session.displayName} joined game ${game.id}`);
   }
 
-  private handleLeaveGame(client: Client) {
-    const session = this.sessions.get(client.sessionId);
+  private handleLeaveGame(clientOrSessionId: Client | string) {
+    const sessionId = this.resolveSessionId(clientOrSessionId);
+    const session = this.sessions.get(sessionId);
     if (!session?.currentGameId) {
       return;
     }
@@ -248,21 +290,24 @@ export class LobbyRoom extends Room {
     }
 
     if (game.status !== "waiting") {
+      this.broadcastOnlinePlayers();
       return;
     }
 
     const players = this.waitingPlayers.get(gameId);
     if (!players) {
+      this.broadcastOnlinePlayers();
       return;
     }
 
-    players.delete(client.sessionId);
+    players.delete(sessionId);
 
-    if (client.sessionId === game.hostId || players.size === 0) {
-      this.clearGameAssignments(gameId, players);
+    if (sessionId === game.hostId || players.size === 0) {
+      this.clearSessionAssignments(gameId);
       this.games.delete(gameId);
       this.waitingPlayers.delete(gameId);
       this.broadcast(GAME_REMOVED, { gameId });
+      this.broadcastOnlinePlayers();
       console.log(`[LobbyRoom] Removed waiting game ${gameId}`);
       return;
     }
@@ -270,6 +315,7 @@ export class LobbyRoom extends Room {
     game.playerCount = players.size;
     this.broadcast(GAME_UPDATED, { game: this.toGameSessionInfo(game) });
     this.broadcastGamePlayers(gameId);
+    this.broadcastOnlinePlayers();
   }
 
   private async handleStartGame(client: Client) {
@@ -307,6 +353,11 @@ export class LobbyRoom extends Room {
     const minPlayers = registeredPlugin?.metadata.playerCount[0] ?? 1;
     if (players.size < minPlayers) {
       this.sendError(client, `At least ${minPlayers} players are required to start this game.`);
+      return;
+    }
+
+    if (!this.areWaitingPlayersReady(game, players)) {
+      this.sendError(client, "All players must be ready before starting the game.");
       return;
     }
 
@@ -383,17 +434,59 @@ export class LobbyRoom extends Room {
     }
   }
 
-  private clearGameAssignments(gameId: string, players: Map<string, PreGamePlayerInfo>) {
-    for (const sessionId of players.keys()) {
-      const session = this.sessions.get(sessionId);
-      if (session?.currentGameId === gameId) {
+  private broadcastOnlinePlayers() {
+    const players: OnlinePlayerInfo[] = Array.from(
+      this.sessions.values(),
+      (session) => ({
+        userId: session.sessionId,
+        displayName: session.displayName,
+        status: session.currentGameId ? "in_game" as const : "in_lobby" as const,
+      }),
+    );
+    const payload: OnlinePlayersPayload = { players };
+    this.broadcast(ONLINE_PLAYERS, payload);
+  }
+
+  private clearSessionAssignments(gameId: string) {
+    for (const session of this.sessions.values()) {
+      if (session.currentGameId === gameId) {
         session.currentGameId = undefined;
       }
     }
   }
 
+  private removeSession(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return;
+    }
+
+    if (session.currentGameId) {
+      const game = this.games.get(session.currentGameId);
+      if (game?.status === "in_progress") {
+        session.currentGameId = undefined;
+      }
+    }
+
+    this.handleLeaveGame(sessionId);
+    this.sessions.delete(sessionId);
+    this.broadcastOnlinePlayers();
+  }
+
+  private resolveSessionId(clientOrSessionId: Client | string) {
+    return typeof clientOrSessionId === "string"
+      ? clientOrSessionId
+      : clientOrSessionId.sessionId;
+  }
+
   private getClientBySessionId(sessionId: string) {
     return this.clients.find((client) => client.sessionId === sessionId);
+  }
+
+  private areWaitingPlayersReady(game: LobbyGameEntry, players: Map<string, PreGamePlayerInfo>) {
+    return Array.from(players.entries()).every(
+      ([sessionId, player]) => sessionId === game.hostId || player.isReady,
+    );
   }
 
   private createPreGamePlayerInfo(session: LobbySession): PreGamePlayerInfo {

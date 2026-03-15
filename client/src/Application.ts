@@ -1,3 +1,4 @@
+import { CloseCode } from "@colyseus/shared-types";
 import { type Room } from "@colyseus/sdk";
 import { Application as PixiApplication, Text } from "pixi.js";
 import {
@@ -19,6 +20,7 @@ import {
   type WaitingRoomSceneEnterData,
   type WaitingRoomSceneEvent,
 } from "./scenes/WaitingRoomScene";
+import { ReconnectOverlay } from "./ui/ReconnectOverlay";
 import type { LobbyEvent } from "./ui/LobbyScreen";
 
 const GAME_WIDTH = 800;
@@ -26,6 +28,11 @@ const GAME_HEIGHT = 600;
 const STATUS_MARGIN = 12;
 const STATUS_HIDE_DELAY_MS = 2500;
 const DISPLAY_NAME_STORAGE_KEY = "playgrid.display-name";
+const ACTIVE_SESSION_STORAGE_KEY = "playgrid.active-session";
+const ACTIVE_SESSION_MAX_AGE_MS = 30_000;
+const GAME_ENDED_MESSAGE = "game-end";
+const RECONNECT_FAILURE_RETURN_DELAY_MS = 1500;
+const RECONNECTED_HIDE_DELAY_MS = 1200;
 
 type ColyseusRoom = Room<Record<string, unknown>>;
 type Notice = { message: string; tone: "info" | "error" };
@@ -35,6 +42,16 @@ type StatusOptions = {
   visibleInGame?: boolean;
 };
 type RoomWithOptionalId = ColyseusRoom & { id?: string; roomId?: string };
+type ActiveSessionRecord = {
+  reconnectionToken: string;
+  roomId: string;
+  gameType: string;
+  timestamp: number;
+};
+type RestoreActiveSessionResult = {
+  restored: boolean;
+  notice?: Notice;
+};
 
 function createStatusText(app: PixiApplication): Text {
   const statusText = new Text({
@@ -61,9 +78,13 @@ export class PlaygridApp {
 
   private connectionManager!: ConnectionManager;
   private statusText!: Text;
+  private reconnectOverlay!: ReconnectOverlay;
   private statusHideTimeoutId: number | null = null;
+  private reconnectOverlayHideTimeoutId: number | null = null;
+  private reconnectReturnTimeoutId: number | null = null;
   private statusVisibleInGame = false;
   private displayName = "";
+  private activeGameType: string | null = null;
   private isDisplayNameUpdatePending = false;
   private readonly rendererRegistry = rendererRegistry;
   private readonly lobbyScene = new LobbyScene((event) => {
@@ -111,6 +132,9 @@ export class PlaygridApp {
     this.lobbyScene.setDisplayName(this.displayName);
 
     this.statusText = createStatusText(this.pixiApp);
+    this.reconnectOverlay = new ReconnectOverlay();
+    window.addEventListener("beforeunload", () => this.persistSessionForRefresh());
+    window.addEventListener("pagehide", () => this.persistSessionForRefresh());
     this.layoutStatusText();
 
     this.pixiApp.ticker.add(() => {
@@ -118,7 +142,10 @@ export class PlaygridApp {
       this.layoutStatusText();
     });
 
-    await this.connectToLobby();
+    const restoredSession = await this.tryRestoreActiveSession();
+    if (!restoredSession.restored) {
+      await this.connectToLobby(restoredSession.notice);
+    }
   }
 
   async joinGame(roomId: string, gameType?: string, spectator = false): Promise<void> {
@@ -128,15 +155,18 @@ export class PlaygridApp {
     try {
       const room = await this.connectionManager.joinGame(roomId, { spectator });
       const roomLabel = this.getRoomLabel(room);
+      const resolvedGameType = gameType ?? room.name;
+      this.activeGameType = resolvedGameType;
       this.gameRoom = room;
-      this.bindGameRoom(room);
+      this.bindGameRoom(room, resolvedGameType);
+      this.persistActiveSession(room, resolvedGameType);
       const statusMessage = spectator
         ? `Spectating — Room: ${roomLabel}`
         : `Connected — Room: ${roomLabel}`;
       this.setStatus(statusMessage, { visibleInGame: true });
       const enterData: GameSceneEnterData = {
         room,
-        gameType: gameType ?? room.name,
+        gameType: resolvedGameType,
       };
       await this.transitionTo(this.gameScene.name, enterData);
       console.log(`[playgrid] Joined game room: ${roomLabel}${spectator ? " (spectator)" : ""}`);
@@ -151,19 +181,24 @@ export class PlaygridApp {
     const room = this.gameRoom;
     const roomLabel = this.getRoomLabel(room);
 
+    this.clearActiveSession();
+    this.clearReconnectOverlayFeedback();
+    this.activeGameType = null;
     this.gameRoom = null;
 
     await this.connectionManager.leaveGame(room);
     console.log(`[playgrid] Left game room ${roomLabel}`);
 
-    await this.showLobby({ message: "Game room closed. Back in the lobby.", tone: "info" });
+    await this.returnToLobby({ message: "Game room closed. Back in the lobby.", tone: "info" });
   }
 
   private async connectToLobby(notice?: Notice): Promise<void> {
     this.ensureInitialized();
     this.lobbyRoom = null;
     this.gameRoom = null;
+    this.activeGameType = null;
     this.waitingRoomScene.hideOverlay();
+    this.clearReconnectOverlayFeedback();
     this.setStatus("Connecting to lobby…", { persistent: true });
 
     try {
@@ -240,16 +275,79 @@ export class PlaygridApp {
     }
   }
 
-  private bindGameRoom(room: ColyseusRoom): void {
+  private bindGameRoom(room: ColyseusRoom, gameType: string): void {
+    room.onMessage(GAME_ENDED_MESSAGE, () => {
+      if (this.gameRoom !== room) {
+        return;
+      }
+
+      this.clearActiveSession();
+    });
+
+    room.onDrop((code) => {
+      if (this.gameRoom !== room) {
+        return;
+      }
+
+      this.handleGameRoomDrop(room, code);
+    });
+
+    room.onReconnect(() => {
+      if (this.gameRoom !== room) {
+        return;
+      }
+
+      this.handleGameRoomReconnect(room, gameType);
+    });
+
     room.onLeave((code) => {
       if (this.gameRoom !== room) {
         return;
       }
 
-      console.log(`[playgrid] Left game room ${this.getRoomLabel(room)} (code: ${code})`);
-      this.gameRoom = null;
-      void this.showLobby({ message: "Game room closed. Back in the lobby.", tone: "info" });
+      void this.handleGameRoomLeave(room, code);
     });
+  }
+
+  private handleGameRoomDrop(room: ColyseusRoom, code: number): void {
+    console.log(`[playgrid] Dropped game room ${this.getRoomLabel(room)} (code: ${code})`);
+    this.clearReconnectReturnTimeout();
+    this.reconnectOverlay.showReconnecting();
+    this.setStatus("Reconnecting...", { persistent: true, visibleInGame: true });
+  }
+
+  private handleGameRoomReconnect(room: ColyseusRoom, gameType: string): void {
+    console.log(`[playgrid] Reconnected game room ${this.getRoomLabel(room)}`);
+    this.persistActiveSession(room, gameType);
+    this.clearReconnectReturnTimeout();
+    this.reconnectOverlay.showReconnected();
+    this.setStatus("Reconnected!", { visibleInGame: true });
+    this.scheduleReconnectOverlayHide();
+  }
+
+  private async handleGameRoomLeave(room: ColyseusRoom, code: number): Promise<void> {
+    console.log(`[playgrid] Left game room ${this.getRoomLabel(room)} (code: ${code})`);
+
+    if (code === CloseCode.CONSENTED) {
+      this.clearActiveSession();
+      this.clearReconnectOverlayFeedback();
+      this.activeGameType = null;
+      this.gameRoom = null;
+      await this.returnToLobby({ message: "Game room closed. Back in the lobby.", tone: "info" });
+      return;
+    }
+
+    this.clearActiveSession();
+    this.clearReconnectOverlayHideTimeout();
+    this.activeGameType = null;
+    this.gameRoom = null;
+    this.reconnectOverlay.showFailure();
+    this.setStatus("Connection lost. Returning to lobby...", {
+      tone: "error",
+      persistent: true,
+      visibleInGame: true,
+    });
+    this.scheduleReconnectReturn();
   }
 
   private async handleLobbyRoomLeave(room: ColyseusRoom, code: number): Promise<void> {
@@ -264,6 +362,16 @@ export class PlaygridApp {
     this.setStatus("Lobby disconnected.", { tone: "error", persistent: true });
 
     this.connectionManager.attemptReconnect(() => this.connectToLobby());
+  }
+
+  private async returnToLobby(notice?: Notice): Promise<void> {
+    if (this.lobbyRoom) {
+      this.clearReconnectOverlayFeedback();
+      await this.showLobby(notice);
+      return;
+    }
+
+    await this.connectToLobby(notice);
   }
 
   private async showLobby(notice?: Notice): Promise<void> {
@@ -331,6 +439,160 @@ export class PlaygridApp {
 
     window.clearTimeout(this.statusHideTimeoutId);
     this.statusHideTimeoutId = null;
+  }
+
+  private scheduleReconnectOverlayHide(): void {
+    this.clearReconnectOverlayHideTimeout();
+    this.reconnectOverlayHideTimeoutId = window.setTimeout(() => {
+      this.reconnectOverlayHideTimeoutId = null;
+      this.reconnectOverlay.hide();
+    }, RECONNECTED_HIDE_DELAY_MS);
+  }
+
+  private clearReconnectOverlayHideTimeout(): void {
+    if (this.reconnectOverlayHideTimeoutId === null) {
+      return;
+    }
+
+    window.clearTimeout(this.reconnectOverlayHideTimeoutId);
+    this.reconnectOverlayHideTimeoutId = null;
+  }
+
+  private scheduleReconnectReturn(): void {
+    this.clearReconnectReturnTimeout();
+    this.reconnectReturnTimeoutId = window.setTimeout(() => {
+      this.reconnectReturnTimeoutId = null;
+      this.reconnectOverlay.hide();
+      void this.returnToLobby({
+        message: "Connection lost. Back in the lobby.",
+        tone: "error",
+      });
+    }, RECONNECT_FAILURE_RETURN_DELAY_MS);
+  }
+
+  private clearReconnectReturnTimeout(): void {
+    if (this.reconnectReturnTimeoutId === null) {
+      return;
+    }
+
+    window.clearTimeout(this.reconnectReturnTimeoutId);
+    this.reconnectReturnTimeoutId = null;
+  }
+
+  private clearReconnectOverlayFeedback(): void {
+    this.clearReconnectOverlayHideTimeout();
+    this.clearReconnectReturnTimeout();
+    this.reconnectOverlay.hide();
+  }
+
+  private persistSessionForRefresh(): void {
+    if (!this.gameRoom || !this.activeGameType) {
+      return;
+    }
+
+    this.persistActiveSession(this.gameRoom, this.activeGameType);
+  }
+
+  private persistActiveSession(room: ColyseusRoom, gameType: string): void {
+    if (!room.reconnectionToken || !room.roomId) {
+      return;
+    }
+
+    const sessionRecord: ActiveSessionRecord = {
+      reconnectionToken: room.reconnectionToken,
+      roomId: room.roomId,
+      gameType,
+      timestamp: Date.now(),
+    };
+
+    try {
+      window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(sessionRecord));
+    } catch {
+      // Ignore storage failures and keep reconnect limited to the current runtime.
+    }
+  }
+
+  private loadActiveSession(): ActiveSessionRecord | null {
+    try {
+      const rawValue = window.sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+      if (!rawValue) {
+        return null;
+      }
+
+      const parsedValue = JSON.parse(rawValue) as Partial<ActiveSessionRecord>;
+      if (
+        typeof parsedValue.reconnectionToken !== "string" ||
+        typeof parsedValue.roomId !== "string" ||
+        typeof parsedValue.gameType !== "string" ||
+        typeof parsedValue.timestamp !== "number"
+      ) {
+        this.clearActiveSession();
+        return null;
+      }
+
+      return {
+        reconnectionToken: parsedValue.reconnectionToken,
+        roomId: parsedValue.roomId,
+        gameType: parsedValue.gameType,
+        timestamp: parsedValue.timestamp,
+      };
+    } catch {
+      this.clearActiveSession();
+      return null;
+    }
+  }
+
+  private clearActiveSession(): void {
+    try {
+      window.sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    } catch {
+      // Ignore storage failures and keep runtime state consistent.
+    }
+  }
+
+  private async tryRestoreActiveSession(): Promise<RestoreActiveSessionResult> {
+    const activeSession = this.loadActiveSession();
+    if (!activeSession) {
+      return { restored: false };
+    }
+
+    if (Date.now() - activeSession.timestamp >= ACTIVE_SESSION_MAX_AGE_MS) {
+      this.clearActiveSession();
+      return { restored: false };
+    }
+
+    this.reconnectOverlay.showReconnecting("Rejoining your active game...");
+    this.setStatus("Rejoining active game...", { persistent: true, visibleInGame: true });
+
+    try {
+      const room = await this.connectionManager.reconnect(activeSession.reconnectionToken);
+      this.activeGameType = activeSession.gameType;
+      this.gameRoom = room;
+      this.bindGameRoom(room, activeSession.gameType);
+      this.persistActiveSession(room, activeSession.gameType);
+      await this.transitionTo(this.gameScene.name, {
+        room,
+        gameType: activeSession.gameType,
+      } satisfies GameSceneEnterData);
+      this.reconnectOverlay.hide();
+      this.setStatus(`Rejoined — Room: ${this.getRoomLabel(room)}`, { visibleInGame: true });
+      console.log(`[playgrid] Rejoined game room: ${this.getRoomLabel(room)}`);
+      return { restored: true };
+    } catch (error) {
+      console.error(
+        `[playgrid] Failed to restore active game session ${activeSession.roomId}:`,
+        error,
+      );
+      this.clearActiveSession();
+      this.reconnectOverlay.hide();
+      return {
+        restored: false,
+        notice: {
+          message: "Previous game session expired. Back in the lobby.",
+          tone: "info",
+        },
+      };
+    }
   }
 
   private getRoomLabel(room: ColyseusRoom | null): string {

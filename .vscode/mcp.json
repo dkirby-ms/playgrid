@@ -1,0 +1,13 @@
+{
+  "servers": {
+    "figma": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3845/sse"
+    },
+    "context7": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    }
+  }
+}

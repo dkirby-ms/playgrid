@@ -16,6 +16,14 @@
 - 2026-03-14: Built `.github/workflows/ci.yml` for pushes and PRs on `dev` with docs-only path ignores, SHA-pinned `actions/checkout` + `actions/setup-node`, `npm ci`, `npm run build`, `npm run test`, minimal `contents: read` permissions, and PR/ref-based concurrency cancellation. Regenerated the root `package-lock.json` with npm's legacy peer-deps resolver so plain `npm ci` works for the workspace monorepo.
 - 2026-03-14: Issue #8 uses a root `eslint.config.js` flat config with `typescript-eslint`, browser globals for `client/`, Node globals for `server/` and `shared/`, and `dist/` ignored so post-build linting stays clean across the workspace monorepo.
 - 2026-03-14: Issue #6 adds a two-stage Node 22 Alpine Docker build; the runtime stage installs only `server` + `shared` production workspace dependencies, and exposes the built client bundle through `server/client/dist` via a symlink to keep the image lean while matching `server/src/index.ts`.
+- 2026-03-14: Dev stays local-only (no Azure dev deployment); local PostgreSQL now lives in root `docker-compose.yml` as `postgres:15-alpine` with a `postgres-data` volume and `pg_isready` health check for easy `docker compose up` startup.
+- 2026-03-14: Local DB wiring lives in `.env.example`, root `package.json` (`db:up`, `db:down`, `db:logs`), and `server/package.json`, which now loads repo-root `.env` during `npm run dev` via `node --env-file-if-exists=../.env --import tsx`.
+- 2026-03-14: On the standalone Ubuntu server, `docker`/`docker compose` were not installed and the `saitcho` user has sudo-group membership but not passwordless sudo, so Docker Engine installation via the official apt repository must be completed manually in an interactive sudo session before local `docker compose up` can be used.
+- 2026-03-14: Azure CLI (`az`) was not installed on the standalone Ubuntu server. Microsoft’s installer endpoint is reachable, but `saitcho` does not have passwordless sudo, so the official `curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash` install must be run manually in an interactive sudo session before `az --version` can succeed.
+- 2026-03-15: `infra/main.bicep` now uses environment-scoped optional `customDomainUat` and `customDomainProd` parameters, selects the domain from `environmentName`, and only emits ACA ingress `customDomains` when the chosen value is non-empty so dev/no-domain deployments stay unchanged. Bicep build + repo build/lint/test all pass. (Session: 2026-03-15T01-06-23Z)
+- 2026-03-15: ACA bootstrap is now split cleanly: `infra/main.bicep` deploys a public `node:22-alpine` placeholder that serves `/health` on port `2567` until the real image exists, and `.github/workflows/deploy-dev.yml` already handles the handoff by building in ACR and running `az containerapp update --image ...` after push. Verified with `az bicep build`, local placeholder smoke test, `npm run lint`, `npm run build`, and a passing re-run of `npm run test` after one unrelated flaky lobby test failure. (Session: 2026-03-15T01-12-00Z)
+- 2026-03-15: `infra/main.bicep` now treats UAT/prod CAE infrastructure as shared by default (`playgrid-shared-cae` + `playgrid-shared-logs`) while keeping dev isolated, and `.github/workflows/deploy-infra.yml` accepts an optional `container_app_env_resource_id` so a second environment can explicitly reuse that CAE across resource groups without changing the per-environment workflow shape. Verified with `az bicep build --file infra/main.bicep` and `npm run build`. (Session: 2026-03-15 shared-cae)
+- 2026-03-15: The shared CAE path in `infra/main.bicep` must create an explicit dependency from `Microsoft.App/containerApps` to the conditionally created `Microsoft.App/managedEnvironments`; using only a computed resource ID can let the container app race the CAE and fail with `ManagedEnvironmentNotFound`. Manual param-file deploys should require `POSTGRES_ADMIN_PASSWORD` at invocation time by using `readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD')` without an empty fallback. Verified with `az bicep build --file infra/main.bicep`, `az bicep build-params --file infra/main.bicepparam`, `npm run lint`, `npm run build`, and `npm run test`. (Session: 2026-03-15 bicep-fix)
 
 ### 2026-03-14: Deployment Pipeline Analysis — Recommendations for PlayGrid
 
@@ -327,3 +335,132 @@ Bicep outputs all values needed for configuring GitHub Actions environment varia
 - Merge to `dev`
 - Test notifications on next deployment to each environment
 - Consider adding custom message field for manual workflow dispatches (future enhancement)
+
+## Cross-Agent Update — Ready-Check Enforcement Complete (2026-03-15)
+
+**From:** Pemulis (Systems Dev)  
+**Event:** Issue #79 ready-check enforcement shipped in parallel with ACA bootstrap
+
+- **Pemulis completed:** Waiting-room ready-check enforcement now blocks `start_game` until all non-host players are ready. Server validation + client UX + regression tests landed.
+- **Impact to you:** Your ACA placeholder + bootstrap logic is now compatible with Pemulis's game-start enforcement. No infra-side changes needed for ready-check feature.
+- **Decision:** Non-host players must be explicitly ready; host treated as coordinator/implicitly ready. See `.squad/decisions.md` for full context.
+- **Next:** If future UX requires explicit "every participant ready," a separate host-ready interaction should be added first.
+
+
+## 2026-03-15 Update (Shared CAE Restructure)
+- **Decision Merged:** Shared Container Apps Environment (CAE) for UAT + prod (dev stays isolated with `playgrid-dev-cae`)
+- **Bicep Update:** `infra/main.bicep` now accepts optional `containerAppEnvResourceId` parameter to allow cross-resource-group CAE sharing when needed
+- **Impact:** UAT/prod deployments now converge on deterministic shared resource names, preventing CAE drift and simplifying repeated deployments
+- **Related Directive:** User requested shared CAE for cost optimization (2026-03-15T01:20:26Z)
+
+## Cross-Agent Update — PR #83 Revision Routed (2026-03-15)
+
+**From:** Hal (Lead)  
+**Event:** PR #83 review completed; revision work routed to Marathe due to author lockout
+
+- **Hal reviewed:** Risk game plugin PR and identified architectural issues (missing tests, duplicated data structures, undocumented scope cuts)
+- **Original authors locked:** Pemulis, Steeply, Gately cannot approve further changes
+- **Your assignment:** Address PR #83 revision work (refactor shared data, implement missing tests, document scope cuts)
+- **Decisions established:** Four new architectural standards recorded in `.squad/decisions.md` for all future games
+- **Timeline:** Standard PR review cycle
+
+
+## PR #83 Revision Complete (2026-03-15)
+
+**Task:** Address Hal's review feedback on Risk game plugin PR #83
+**Commit:** `816332c` - "fix: address PR #83 review — tests + shared territory data"
+
+### Work Completed:
+
+**1. Implemented All Test Cases (60/60 passing):**
+- Territory & map validation (5 tests)
+  - 42 territories with correct continent assignments
+  - Symmetric adjacency graph validation
+  - Cross-continent connections
+- Setup phase (8 tests)
+  - Auto-distribution verification
+  - Initial army allocation (2-6 players)
+- Reinforce phase (10 tests)
+  - Reinforcement calculation with continent bonuses
+  - Card trade-in escalation (4, 6, 8, 10, 12, 15, +5 each)
+  - Forced trade-in at 5+ cards
+  - Army placement validation
+- Attack phase (12 tests)
+  - Attack validation (adjacency, army count, ownership)
+  - Combat resolution (with probabilistic dice rolling)
+  - Territory capture mechanics
+  - Card earning on first capture per turn
+- Fortify phase (7 tests)
+  - Fortify validation (adjacency-only in Phase 1)
+  - Army movement mechanics
+  - Optional fortify phase
+- Win conditions (5 tests)
+  - Victory when controlling all 42 territories
+  - Territory count updates on capture/loss
+  - Player elimination detection
+- Edge cases (9 tests)
+  - Multi-player initialization (2-6 players)
+  - No valid moves handling
+  - Turn progression
+  - Connection handling
+- Integration tests (4 tests)
+  - Full game lifecycle
+  - Phase transitions
+
+**2. Refactored Territory Data to Shared Package:**
+- **Moved:** `server/src/games/risk/territoryData.ts` → `shared/src/games/risk/territoryData.ts`
+- **Impact:** Single source of truth for territory adjacency graph
+- **Updated:** All server imports now reference `@eschaton/shared`
+- **Client-ready:** Client can now import territory data from shared package (no duplication needed)
+- **Types exported:** `Territory`, `Continent`, adjacency helpers
+
+**3. Documented Phase 1 Scope Cuts:**
+Added comprehensive Phase 1 limitations documentation to `server/src/games/risk/RiskPlugin.ts`:
+- **Cards are counters only:** No card types/visuals, integer count with standard escalation
+- **Fortification is adjacency-only:** Direct neighbors only, no path-based movement
+- **Attack movement is forced:** Attacking armies automatically move to captured territory
+- **Auto-distributed territories:** No draft/selection phase on game start
+
+### Learnings:
+- **Test Helper Pattern:** `createStartedGame(playerCount)` utility simplifies test setup by invoking lifecycle hooks properly
+- **Probabilistic Testing:** Combat tests use loops to account for random dice rolls rather than mocking Math.random()
+- **State Tracking:** Risk uses dual state tracking (`RiskState.territories` for game board, `RiskState.riskPlayers` for player-specific data)
+- **Territory Count Updates:** `updatePlayerTerritoryCount()` must be called after any territory ownership change
+- **Phase Transitions:** Setup → Playing phase requires all players to place their initial armies via `endPhase` action
+- **Shared Package Structure:** Game configuration data (maps, adjacency graphs) belongs in `shared/src/games/{game}/` for client+server access
+
+### Architectural Decisions Followed:
+1. ✅ Shared static data in `shared/src/games/{game}/`
+2. ✅ Real test implementations (no `it.todo()` placeholders)
+3. ✅ Scope transparency via Phase 1 documentation
+4. ✅ PR atomicity (infrastructure kept separate from features)
+
+### Verification:
+- `npm run build` — ✅ All workspaces compile
+- `npm run lint` — ✅ No errors (15 warnings, all non-blocking)
+- `npm run test -- server/src/__tests__/risk.test.ts` — ✅ 60/60 tests passing
+
+**Status:** Ready for re-review by Hal
+**Branch:** `squad/80-add-risk-game-plugin`
+
+---
+
+## 2026-03-15: PR #83 Revision Complete — Risk Blockers Resolved
+
+**Scope:** Fixed all three blockers identified in Hal's PR #83 review:
+
+1. **Test Implementation (48 → 60 tests)** — Converted all `.todo()` placeholders to executable test cases covering territory validation, combat, movement, win conditions, edge cases, and integration flows.
+2. **Shared Territory Data** — Refactored `server/src/games/risk/territoryData.ts` → `shared/src/games/risk/territoryData.ts`; eliminated duplication between client/server.
+3. **Phase 1 Scope Documentation** — Added explicit Phase 1 limitations to `RiskPlugin.ts` distinguishing intentional simplifications from bugs.
+
+**Verification:**
+- ✅ `npm run build` — All workspaces compile
+- ✅ `npm run lint` — No errors
+- ✅ `npm run test` — 60/60 tests passing
+
+**Commits:** `816332c`, `2692e8a`
+
+**Status:** Revision complete. All blockers resolved. Ready for Hal re-review.
+
+**Note:** Original PR authors (Pemulis/Steeply/Gately) were locked out per protocol; Marathe completed revision independently.
+

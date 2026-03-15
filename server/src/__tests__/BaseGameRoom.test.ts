@@ -1,5 +1,5 @@
 import { BaseGameState, type GamePlugin } from "../../../shared/src/index.ts";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockedCloseCode, mockGameRegistry } = vi.hoisted(() => ({
   mockedCloseCode: {
@@ -52,6 +52,7 @@ function createPlugin(overrides: Partial<GamePlugin<TestState>> = {}): GamePlugi
     onPlayerJoin: vi.fn(),
     onGameStart: vi.fn(),
     onPlayerLeave: vi.fn(),
+    onPlayerReconnect: vi.fn(),
     onGameEnd: vi.fn(),
     onTick: undefined,
     ...overrides.lifecycle,
@@ -98,12 +99,15 @@ function createRoom(): TestRoom {
 
   const messageHandlers = new Map<string, (client: MockClient, payload: unknown) => unknown>();
 
-  return Object.assign(Object.create(BaseGameRoom.prototype), {
+  return Object.assign(new BaseGameRoom(), {
+    roomId: "test-room",
     clients: [] as MockClient[],
     maxClients: 1,
     messageHandlers,
+    allowReconnection: vi.fn(),
     broadcast: vi.fn(),
     disconnect: vi.fn().mockResolvedValue(undefined),
+    presence: { publish: vi.fn() },
     onMessage: vi.fn((type: string, handler: (client: MockClient, payload: unknown) => unknown) => {
       messageHandlers.set(type, handler);
     }),
@@ -117,6 +121,10 @@ function createRoom(): TestRoom {
 describeRoom("BaseGameRoom", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("creates plugin state, applies maxClients, and registers action handlers", () => {
@@ -274,7 +282,37 @@ describeRoom("BaseGameRoom", () => {
     expect(room.state.phase).toBe("waiting");
   });
 
-  it("marks a departed player disconnected and ends the game by forfeit when one player remains", async () => {
+  it("holds a playing seat for 30 seconds on an unexpected disconnect", async () => {
+    const room = createRoom();
+    const plugin = createPlugin({
+      lifecycle: {
+        onCreate: vi.fn(),
+        onGameStart: vi.fn(),
+        onPlayerLeave: vi.fn(),
+        onGameEnd: vi.fn(),
+      },
+    });
+
+    room.allowReconnection.mockResolvedValue(undefined);
+    mockGameRegistry.get.mockReturnValue(plugin);
+    room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+    const firstPlayer = createClient("player-1");
+    const secondPlayer = createClient("player-2");
+    room.onJoin(firstPlayer);
+    room.onJoin(secondPlayer);
+
+    await room.onLeave(secondPlayer, mockedCloseCode.NORMAL_CLOSURE);
+
+    expect(room.allowReconnection).toHaveBeenCalledWith(secondPlayer, 30);
+    expect(room.state.players.get(secondPlayer.sessionId)).toMatchObject({ isConnected: true });
+    expect(plugin.lifecycle.onPlayerLeave).not.toHaveBeenCalled();
+    expect(plugin.lifecycle.onGameEnd).not.toHaveBeenCalled();
+    expect(room.disconnect).not.toHaveBeenCalled();
+    expect(room.state.phase).toBe("playing");
+  });
+
+  it("does not hold a seat for a consented disconnect and forfeits immediately when one player remains", async () => {
     const room = createRoom();
     const plugin = createPlugin({
       lifecycle: {
@@ -295,6 +333,7 @@ describeRoom("BaseGameRoom", () => {
 
     await room.onLeave(secondPlayer, mockedCloseCode.CONSENTED);
 
+    expect(room.allowReconnection).not.toHaveBeenCalled();
     expect(room.state.players.get(secondPlayer.sessionId)).toMatchObject({ isConnected: false });
     expect(plugin.lifecycle.onPlayerLeave).toHaveBeenCalledWith(room.state, secondPlayer.sessionId);
     expect(plugin.lifecycle.onGameEnd).toHaveBeenCalledWith(
@@ -310,4 +349,140 @@ describeRoom("BaseGameRoom", () => {
     );
     expect(room.disconnect).toHaveBeenCalledTimes(1);
   });
+
+  it("releases the reserved seat after the reconnection window expires", async () => {
+    const room = createRoom();
+    const plugin = createPlugin({
+      lifecycle: {
+        onCreate: vi.fn(),
+        onGameStart: vi.fn(),
+        onPlayerLeave: vi.fn(),
+        onGameEnd: vi.fn(),
+      },
+    });
+
+    room.allowReconnection.mockRejectedValue(new Error("timed out"));
+    mockGameRegistry.get.mockReturnValue(plugin);
+    room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+    const firstPlayer = createClient("player-1");
+    const secondPlayer = createClient("player-2");
+    room.onJoin(firstPlayer);
+    room.onJoin(secondPlayer);
+
+    await room.onLeave(secondPlayer, mockedCloseCode.NORMAL_CLOSURE);
+
+    expect(room.allowReconnection).toHaveBeenCalledWith(secondPlayer, 30);
+    expect(plugin.lifecycle.onGameEnd).toHaveBeenCalledWith(
+      room.state,
+      expect.objectContaining({
+        type: "forfeit",
+        winnerId: firstPlayer.sessionId,
+        metadata: expect.objectContaining({
+          reconnectionTimeout: true,
+          disconnectedPlayerId: secondPlayer.sessionId,
+        }),
+      }),
+    );
+    expect(room.disconnect).toHaveBeenCalledTimes(1);
+    expect(room.state.phase).toBe("ended");
+  });
+
+  it("calls the plugin onPlayerReconnect hook when a reserved player rejoins", async () => {
+    const room = createRoom();
+    let resolveReconnection!: () => void;
+    const plugin = createPlugin({
+      lifecycle: {
+        onCreate: vi.fn(),
+        onGameStart: vi.fn(),
+        onPlayerReconnect: vi.fn(),
+      },
+    });
+
+    room.allowReconnection.mockImplementation(
+      () => new Promise<void>((resolve) => {
+        resolveReconnection = resolve;
+      }),
+    );
+    mockGameRegistry.get.mockReturnValue(plugin);
+    room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+    const firstPlayer = createClient("player-1");
+    const secondPlayer = createClient("player-2");
+    room.onJoin(firstPlayer);
+    room.onJoin(secondPlayer);
+
+    const leavePromise = room.onLeave(firstPlayer, mockedCloseCode.NORMAL_CLOSURE);
+    expect(room.state.players.get(firstPlayer.sessionId)).toMatchObject({ isConnected: false });
+
+    room.onJoin(firstPlayer);
+    resolveReconnection();
+    await leavePromise;
+
+    expect(plugin.lifecycle.onPlayerReconnect).toHaveBeenCalledWith(room.state, firstPlayer);
+    expect(plugin.lifecycle.onPlayerJoin).toHaveBeenCalledTimes(2);
+    expect(room.state.players.get(firstPlayer.sessionId)).toMatchObject({ isConnected: true });
+  });
+
+  it("pauses the turn timer while a seat is reserved and resumes it after reconnect", async () => {
+    vi.useFakeTimers();
+
+    const room = createRoom();
+    let resolveReconnection!: () => void;
+    const plugin = createPlugin({
+      lifecycle: {
+        onCreate: vi.fn(),
+        onGameStart: vi.fn(),
+        onGameEnd: vi.fn(),
+      },
+      turnConfig: {
+        mode: "sequential",
+        turnOrder: { type: "round-robin" },
+        allowPass: false,
+        turnTimeLimit: 5,
+      },
+    });
+
+    room.allowReconnection.mockImplementation(
+      () => new Promise<void>((resolve) => {
+        resolveReconnection = resolve;
+      }),
+    );
+    mockGameRegistry.get.mockReturnValue(plugin);
+    room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+    const firstPlayer = createClient("player-1");
+    const secondPlayer = createClient("player-2");
+    room.onJoin(firstPlayer);
+    room.onJoin(secondPlayer);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    const leavePromise = room.onLeave(firstPlayer, mockedCloseCode.NORMAL_CLOSURE);
+    expect(room.turnManager.isPaused()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(plugin.lifecycle.onGameEnd).not.toHaveBeenCalled();
+
+    room.onJoin(firstPlayer);
+    expect(room.turnManager.isPaused()).toBe(false);
+
+    resolveReconnection();
+    await leavePromise;
+
+    await vi.advanceTimersByTimeAsync(2_999);
+    expect(plugin.lifecycle.onGameEnd).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(plugin.lifecycle.onGameEnd).toHaveBeenCalledWith(
+      room.state,
+      expect.objectContaining({
+        type: "timeout",
+        winnerId: secondPlayer.sessionId,
+        metadata: expect.objectContaining({
+          timedOutPlayerId: firstPlayer.sessionId,
+        }),
+      }),
+    );
+  });
+  it.todo("resolves simultaneous disconnects during the reconnect window without awarding a premature forfeit");
 });

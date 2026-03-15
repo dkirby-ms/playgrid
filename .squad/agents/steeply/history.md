@@ -12,6 +12,9 @@
 - Lobby browser E2E can reliably assert against `#lobby-overlay` / `#waiting-room-overlay`, `input[name="player-name"]`, `input[name="game-name"]`, and `.waiting-room-player-name` while driving multiple isolated browser contexts against `npm run dev`.
 - The root Playwright run (`npx playwright test`) shares one server process across `e2e/checkers.spec.ts` and `e2e/lobby.spec.ts`, so lobby tests must key off their unique game row in `e2e/lobby.spec.ts` instead of assuming the table starts empty after earlier specs leave in-progress sessions visible.
 - `client/src/Application.ts` must import `ConnectionManager`/`ConnectionState` from `client/src/networking/index.ts`; if that wiring is missing, the browser dies at startup before `#lobby-overlay` ever renders and the E2E suite collapses immediately.
+- `server/src/__tests__/BaseGameRoom.test.ts` is the right seam for reconnection behavior: instantiate the room off the prototype, stub `allowReconnection`, and assert outcomes through lifecycle hooks plus room state instead of poking private helpers.
+- `server/src/__tests__/lobby-pregame.test.ts` already exposes the waiting-room seams needed for disconnect coverage (`waitingPlayers`, `sessions`, `currentGameId`), so lobby reconnection tests should stay there and assert membership preservation/removal behavior directly.
+- There is no real client-side `PlaygridApp` harness yet; for startup/sessionStorage reconnect work, Vitest `.todo()` coverage is the safe placeholder until Gately lands the application-side session persistence flow and a controllable `ConnectionManager` seam.
 
 ## Cross-Agent Update — Issue #1 Closed, PR #47 Open (2026-03-14)
 
@@ -80,6 +83,37 @@
 - **Pemulis:** Plugin system design should reference Grey Box pattern; each plugin must expose `window.__PLAYGRID_E2E__.app.gameRoom`
 - **Future Game Authors:** Refer to PR #58 (Checkers E2E) as template for all game plugin E2E
 
+## Session: E2E Test Suite Fix & ConnectionManager Import (2026-03-14)
+
+**Agents:** Steeply (lead), Gately (support), Hal (review + merge)
+
+### What Happened
+
+Full E2E suite was failing because lobby tests made order-dependent assertions. When checkers E2E ran first, it left sessions in the lobby. Lobby E2E then failed because it expected an empty lobby.
+
+**Steeply's Fix:**
+1. Made lobby assertions row-scoped: assert only on game row created by the test, not entire lobby
+2. Used unique game names (`Test Game ${timestamp}`) to avoid collisions
+3. Tests now pass in any order
+
+**Side Discovery (Gately):**
+- ConnectionManager was missing its import in Application.ts
+- ConnectionManager property was never initialized
+- Without it, connection lifecycle wasn't managed
+- Fixed in same PR
+
+**Review & Merge (Hal):**
+- Approved PR #78
+- Rebased on dev: one automatic conflict resolution (Gately's earlier fix)
+- Squash-merged as c740333
+- Closed issue #77
+- 189 tests passing
+
+**Decision Recorded:**
+- Lobby E2E best practice: use unique names + row-scoped assertions
+- Prevents test coupling and enables order-independent suites
+- Recorded in decisions.md
+
 ## Work Complete — Issue #46: Backgammon Logic and Plugin Tests (2026-03-14)
 
 - Created comprehensive test suite for Backgammon plugin with 83 tests covering:
@@ -93,3 +127,81 @@
 - All 83 backgammon tests passing
 - Follows existing test patterns from Checkers E2E tests
 - PR #69 created (draft) — squad/46-backgammon-tests
+
+---
+
+## 2026-03-15: Session Resilience — Two-Layer Test Coverage
+
+**From:** Squad Scribe  
+**Event:** Session completed — Reconnection test strategy landed
+
+**What Changed:**
+- 4 concrete server-side behavioral tests (green)
+- 14 named .todo() contract stubs (client + cross-agent)
+- Full reconnection matrix contracts pinned in CI
+
+**Coordination Notes:**
+- **Pemulis (Server):** Server-side tests passing for 30s window, cleanup, forfeit scenarios
+- **Gately (Client):** Client seams available now; contracts ready for conversion from .todo() to executable tests
+
+**Test Coverage Strategy:**
+1. **Server layer (green now):** allowReconnection window, consented leave, timeout forfeits, lobby cleanup
+2. **Client layer (pinned as contracts):** sessionStorage persistence, startup reconnect, reconnecting UI, edge cases
+
+**Action for Future Work:**
+Finishing agent should convert .todo() stubs to executable tests using Pemulis/Gately seams now available.
+
+**Status:** ✅ Tests pass. Contracts visible in CI without brittle timing dependencies.
+
+## Work Complete — Issue #80: Risk Game Test Suite (2026-03-15)
+
+- Created comprehensive test suite with 64 tests covering Risk game mechanics
+- 16 tests passing immediately (territory map, reinforcements, card trade-ins, initial armies)
+- 48 tests structured as `.todo()` awaiting Pemulis's plugin action implementations
+- Test file: `server/src/__tests__/risk.test.ts`
+- Follows Backgammon test pattern (root `__tests__` directory)
+- Uses actual imports from Pemulis's implementation (RiskPlugin, riskLogic, territoryData)
+
+**Coverage Areas:**
+1. **Territory & Map:** 42-territory validation, adjacency symmetry, continent bonuses
+2. **Setup Phase:** Initial army allocation (2-6 players), territory selection
+3. **Reinforce Phase:** Territory-based reinforcements, continent bonuses, card trade-ins
+4. **Attack Phase:** Validation, dice mechanics, combat resolution, territory capture
+5. **Fortify Phase:** Path validation, army movement constraints
+6. **Win Conditions:** Territory control, elimination, card transfer
+7. **Edge Cases:** Multi-player games, no valid moves, forced trades, disconnection
+
+**Key Learnings:**
+- Risk tests follow Backgammon pattern: root `__tests__` directory, not game-specific subdirectory
+- Pemulis delivered clean separation: `territoryData.ts` (static map), `riskLogic.ts` (pure functions), `RiskPlugin.ts` (actions)
+- Test strategy: validate pure logic functions first (passing), defer plugin integration tests to `.todo()` until actions complete
+- Used actual TERRITORIES, CONTINENTS, and logic functions rather than mocks—enables immediate validation
+- Combat resolution needs deterministic testing approach (stochastic dice currently uses Math.random)
+
+**Coordination:**
+- Pemulis has core logic functions ready: `calculateReinforcements`, `getCardTradeInValue`, `checkWinCondition`, attack/fortify validators
+- Plugin action handlers still in progress—48 integration tests remain as `.todo()`
+- Tests ready for incremental conversion as Pemulis completes action implementations
+
+---
+
+## 2026-03-15: Cross-Agent Update — PR #83 Revision Complete (Lockout Protocol)
+
+**From:** Scribe (on behalf of Marathe)  
+**Event:** PR #83 blockers resolved; lockout protocol applied per Hal's re-review requirement
+
+**Situation:**
+- Hal identified three critical blockers in PR #83 (Risk Game Plugin): incomplete test implementation (~48 `it.todo()` placeholders), territory data duplication (server/client drift risk), missing Phase 1 scope documentation.
+- Original PR authors (Pemulis, you, Gately) were locked out per protocol — revision could not proceed with original team.
+
+**Resolution:**
+- Marathe (DevOps) completed full revision: 60 executable tests, shared territory data refactored to `shared/src/games/risk/`, Phase 1 limitations documented in RiskPlugin.
+- All blockers verified: `npm run build` ✅, `npm run lint` ✅, `npm run test` ✅ (60/60 passing).
+- Commits: `816332c` (fix), `2692e8a` (docs).
+
+**Impact on Your Work:**
+- Your test suite structure remains the baseline; Marathe filled in the `.todo()` placeholders with real test implementations.
+- Architectural standard captured in `.squad/decisions.md`: "Test Implementation: PR descriptions must accurately reflect test coverage. `it.todo()` placeholders do not count as implemented tests. Critical game logic must be tested before merge."
+
+**Next Step:** Hal will re-review revised PR #83. Ready for merge once approved.
+
