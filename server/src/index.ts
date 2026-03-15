@@ -59,9 +59,11 @@ server.define("lobby", LobbyRoom);
 const startServer = async () => {
   try {
     initializeTelemetry();
-    await connectDb();
+    // Listen first so health probes can respond during DB init
     await server.listen(config.port);
     console.log(`[playgrid] Server listening on http://localhost:${config.port} and ws://localhost:${config.port}`);
+    await connectDb();
+    console.log("[playgrid] Database connected.");
   } catch (error) {
     console.error("[playgrid] Server startup failed.", error);
     process.exit(1);

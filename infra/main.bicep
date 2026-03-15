@@ -300,10 +300,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
                 port: 2567
                 scheme: 'HTTP'
               }
-              initialDelaySeconds: 10
+              initialDelaySeconds: 30
               periodSeconds: 5
-              timeoutSeconds: 3
-              failureThreshold: 3
+              timeoutSeconds: 5
+              failureThreshold: 6
             }
           ]
         }
