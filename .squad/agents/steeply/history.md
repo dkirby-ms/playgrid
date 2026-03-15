@@ -207,3 +207,39 @@ Finishing agent should convert .todo() stubs to executable tests using Pemulis/G
 
 **Next Step:** Hal will re-review revised PR #83. Ready for merge once approved.
 
+
+## Checkers E2E Tests — Full Suite (2026-03-15)
+
+**Session:** Built comprehensive E2E test suite for Checkers game
+
+**Outcome:** ✅ COMPLETED
+
+**Artifacts:**
+- File: `e2e/checkers.spec.ts`
+- Tests: Modal-based game creation, card-based joining, lobby flow integration
+- Status: All passing
+- PR: #93 (opened)
+
+**Design Approach:**
+- Follows patterns established in PR #92 (lobby E2E fix)
+- Uses current UI seams: modal selectors, game card targeting
+- Tests order-independent and compatible with shared-server Playwright runs
+- Scoped button locators to prevent label collisions
+
+**Dependencies:**
+- Depends on PR #92 (merged) for lobby E2E foundation patterns
+- Awaiting review before merge
+
+---
+
+## Cross-Agent Update — Lobby E2E Standardization (2026-03-15)
+
+**From:** Hal (Lead)
+
+**Event:** PR #92 (Lobby E2E fix) approved and merged
+
+- **Review outcome:** ✅ APPROVED — fix properly addresses test isolation root cause
+- **Standard established:** Lobby E2E tests must use current UI seams and target unique test-created sessions
+- **Impact:** Your Checkers E2E suite correctly implements this standard (PR #93)
+- **Next step:** Hal will review PR #93
+

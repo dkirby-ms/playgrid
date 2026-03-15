@@ -363,3 +363,32 @@ Added squad:pemulis and squad:gately labels. Posted triage comment with decompos
 - **Follow-up triage:** Created issues #81 (test resilience, assigned to Gately+Pemulis) and #82 (rule scope documentation, assigned to Pemulis)
 - **Impact:** Risk game plugin now ready for production. Test resilience and rule documentation standards established for future games.
 
+
+## PR #92 Review — Lobby E2E Fix (2026-03-15)
+
+**Session:** Reviewed "fix: Lobby E2E suite isolation" (PR #92)
+
+**Outcome:** ✅ APPROVED
+
+**Key Validation:**
+- Fix properly addresses root cause of test isolation (issue #91)
+- Test logic targets unique session created by test
+- Uses current UI seams: player name input blur, create game modal, game card selector
+- Button locators scoped to avoid label overlap (`Create Game`, `Ready`, `Start Game`)
+- Makes suite order-independent and resilient to shared lobby state
+- Aligned with current accessible UI (removes table-era assumptions)
+
+**Action:** PR merged (squash). Branch deleted. Issue #91 closed.
+
+**Decision Merged:** Steeply's lobby E2E test pattern decision recorded in `.squad/decisions.md`.
+
+---
+
+## E2E Test Readiness — Checkers Suite (2026-03-15)
+
+**Cross-Agent Update from Steeply:**
+- Checkers E2E tests created (`e2e/checkers.spec.ts`)
+- Full game flow coverage: modal-based creation, card-based joining, lobby integration
+- All tests passing
+- PR #93 opened, awaiting review
+- Follows patterns from PR #92 (current UI seams, scoped locators)

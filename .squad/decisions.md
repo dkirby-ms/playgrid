@@ -2019,3 +2019,25 @@ Flaky tests are treated as broken code.
 - Tests that fail randomly waste developer time and obscure real regressions
 - Forces better test design (larger sample sizes, statistical buffers)
 
+
+---
+
+### Steeply: Lobby E2E Test Isolation & Current UI Patterns
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Lobby E2E coverage should target only the unique session created by the test and should use current UI seams:
+- Save display names by blurring `input[name="player-name"]`
+- Create games through `#create-game-modal`
+- Find sessions via the test's unique `.active-game-card`
+- Use exact/scoped button locators when labels overlap (`Create Game`, `Ready`, `Start Game`)
+
+**Rationale:**
+- Makes the suite order-independent and resilient to shared lobby state
+- Aligns with current accessible UI instead of removed table layout
+- Removes table-era assumptions that caused issue #91
+
+**Context:** Issue #91 exposed lobby Playwright suite drift from shipped UI and fragility under shared-server runs.
+
+**PR:** #92 (merged)
