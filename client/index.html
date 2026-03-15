@@ -1016,6 +1016,77 @@
         }
       }
 
+      /* Game Over Overlay */
+      .game-over-overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(10, 10, 26, 0.85);
+        backdrop-filter: blur(12px);
+        z-index: 40;
+      }
+
+      .game-over-content {
+        width: min(460px, 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        padding: 40px 32px;
+        border-radius: 20px;
+        border: 1px solid rgba(124, 58, 237, 0.4);
+        background: linear-gradient(180deg, rgba(18, 18, 41, 0.98), rgba(10, 10, 26, 0.98));
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+        text-align: center;
+      }
+
+      .game-over-result {
+        color: #f4f6fb;
+        font-size: clamp(2rem, 5vw, 3rem);
+        font-weight: 800;
+        line-height: 1.1;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        background: linear-gradient(135deg, #7c3aed, #c4b5fd);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .game-over-message {
+        color: #d1d5db;
+        font-size: 1.125rem;
+        line-height: 1.6;
+        max-width: 32ch;
+      }
+
+      .game-over-button {
+        margin-top: 8px;
+        padding: 14px 32px;
+        border-radius: 12px;
+        border: 1px solid rgba(124, 58, 237, 0.5);
+        background: linear-gradient(135deg, #7c3aed, #6d28d9);
+        color: #ffffff;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .game-over-button:hover {
+        background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+        border-color: rgba(167, 139, 250, 0.6);
+        transform: translateY(-1px);
+        box-shadow: 0 8px 20px rgba(124, 58, 237, 0.3);
+      }
+
+      .game-over-button:active {
+        transform: translateY(0);
+      }
+
       /* Responsive */
       @media (max-width: 1024px) {
         .lobby-grid {

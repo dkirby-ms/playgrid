@@ -403,7 +403,13 @@ export class BaseGameRoom extends Room {
       }
     }
 
-    await this.disconnect();
+    if (this.clock) {
+      this.clock.setTimeout(() => {
+        void this.disconnect();
+      }, 6000);
+    } else {
+      await this.disconnect();
+    }
   }
 
   private getParticipatingPlayers() {
