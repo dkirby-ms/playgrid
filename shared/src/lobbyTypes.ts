@@ -11,27 +11,32 @@ export const GAME_REMOVED = "game_removed" as const;
 export const GAME_STARTED = "game_started" as const;
 export const GAME_PLAYERS = "game_players" as const;
 export const LOBBY_ERROR = "lobby_error" as const;
+export const ONLINE_PLAYERS = "online_players" as const;
 
 export type GameStatus = "waiting" | "in_progress";
 
 export interface GameSessionInfo {
   id: string;
   name: string;
+  gameType: string;
   hostId: string;
   hostName: string;
   status: GameStatus;
   playerCount: number;
   maxPlayers: number;
   createdAt: number;
+  canSpectate?: boolean;
 }
 
 export interface CreateGamePayload {
   name: string;
+  gameType: string;
   maxPlayers?: number;
 }
 
 export interface JoinGamePayload {
   gameId: string;
+  spectator?: boolean;
 }
 
 export interface GameJoinedPayload {
@@ -61,4 +66,14 @@ export interface GameStartedPayload {
 
 export interface LobbyErrorPayload {
   message: string;
+}
+
+export interface OnlinePlayerInfo {
+  userId: string;
+  displayName: string;
+  status: "in_lobby" | "in_game";
+}
+
+export interface OnlinePlayersPayload {
+  players: OnlinePlayerInfo[];
 }

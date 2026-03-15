@@ -3,3 +3,6 @@ dist/
 *.log
 .env
 .DS_Store
+playwright-report/
+test-results/
+infra/set-repo-secrets.sh

@@ -6,7 +6,8 @@ interface GameRoomOptions {
   maxPlayers?: number;
 }
 
-export class GameRoom extends Room<GameState> {
+export class GameRoom extends Room {
+  state = new GameState();
   private gameId?: string;
 
   override onCreate(options: GameRoomOptions = {}) {
@@ -16,7 +17,6 @@ export class GameRoom extends Room<GameState> {
       this.maxClients = Math.max(1, Math.floor(options.maxPlayers));
     }
 
-    this.setState(new GameState());
     this.setSimulationInterval(() => this.tick(), 1000 / TICK_RATE);
     console.log(`[GameRoom] Room created${this.gameId ? ` for game ${this.gameId}` : ""}`);
   }
@@ -28,7 +28,7 @@ export class GameRoom extends Room<GameState> {
     console.log(`[GameRoom] ${client.sessionId} joined`);
   }
 
-  override onLeave(client: Client) {
+  override onLeave(client: Client, _code: number) {
     this.state.players.delete(client.sessionId);
     console.log(`[GameRoom] ${client.sessionId} left`);
   }
