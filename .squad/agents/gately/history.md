@@ -328,6 +328,14 @@ function getContinentBonus(continent: string): number { ... }
 
 ---
 
+
+### 2026-03-15: Lobby game tiles now use local design-photo thumbnails
+
+- The provided Figma export archive lives at `docs/designs/project.zip`; it did not bundle binary images, but it did preserve the original tile photo URLs in `src/app/App.tsx`.
+- For lobby reliability, the design photos were captured into local 1200x900 JPEG thumbnails under `client/public/game-thumbnails/` so the card art no longer depends on external hosts at runtime.
+- `client/src/ui/LobbyScreen.ts` should keep game tile imagery as simple path mapping (`/game-thumbnails/*.jpg`) and render real `<img>` elements, while `client/index.html` owns the sizing contract with `object-fit: cover` for consistent 4:3 crops.
+- The existing `.game-tile-image::before` gradient remains the right place for text contrast, so artwork can change without re-tuning every image.
+
 ## 2026-03-15: Cross-Agent Update — PR #83 Revision Complete (Lockout Protocol)
 
 **From:** Scribe (on behalf of Marathe)  
