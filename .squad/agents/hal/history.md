@@ -258,3 +258,57 @@ Steeply fixed order-dependent E2E test assertions by making them row-scoped. Dur
 - **Infrastructure Decision Merged:** UAT and prod now share Container Apps Environment (`playgrid-shared-cae`) and Log Analytics workspace (`playgrid-shared-logs`) for cost optimization and deterministic convergence. Dev maintains isolated CAE.
 - **Scaling Alignment:** This aligns with the approved single-replica Phase 1 strategy; scales cleanly when multi-server support arrives
 - **Related:** Marathe's Bicep restructure enables conditional CAE creation via `containerAppEnvResourceId` parameter
+
+## 2026-03-15 — Issue #80 Triage: Risk Game Plugin
+
+**Triaged Issue:** #80 — "Add Risk game plugin" (opened by dkirby-ms)
+
+**Complexity Assessment:** HIGH  
+**Assignment:** Pemulis (game systems) + Gately (rendering)  
+**Status:** Ready for decomposition and sprint assignment
+
+### Findings
+
+Risk is materially more complex than existing games:
+
+1. **Existing Games (Baseline):**
+   - Checkers: 331 lines game logic + 223 lines plugin = 554 lines total server
+   - Backgammon: 351 lines game logic + 295 lines plugin = 646 lines total server
+
+2. **Risk Complexity Drivers:**
+   - **Map & Territory System:** 42 territories + 6 continents (vs. Backgammon's 30 points or Checkers' 32 squares)
+   - **Multi-Phase Turns:** Reinforce → Attack → Fortify with conditional transitions
+   - **Stochastic Combat:** Dice resolution with cascading losses
+   - **Card Mechanics:** Trade-in validation and set collection
+   - **Setup Phase:** Territory selection + army placement UX (2–6 players)
+   - **Visual Complexity:** 600+ line interactive map (vs. Backgammon's ~400 lines procedural renderer)
+
+3. **Architectural Fit:**
+   - ✅ Follows plugin pattern (BaseGameRoom + GamePlugin interface)
+   - ✅ Pure logic separation testable
+   - ✅ Spectator-safe (hidden info = opponent cards only)
+
+### Assignment Rationale
+
+- **Pemulis:** Risk game logic, turn manager, combat simulation, territory/card state management (~300–350 lines)
+- **Gately:** Interactive map renderer, setup phase UI, phase/action HUD (~600+ lines procedural graphics)
+- **Shared Effort:** Coordinate on setup phase (territory selection, initial placement) — requires both systems + rendering
+
+### Decomposition Recommendation
+
+Split into 3 sub-issues to manage scope:
+1. **Core Game Logic & Plugin** (Pemulis) — no UI, pure mechanics
+2. **Setup & Territory Management** (shared)
+3. **Interactive Map Renderer** (Gately)
+
+### Scope Clarifications Needed
+
+⚠️ **Card mechanics partially specified.** Recommend clarifying:
+- Standard Risk (5,4,3 + jokers) or custom?
+- Card visual UI in Phase 1 or Phase 2?
+
+Suggestion: Implement server-side validation, show card count only in Phase 1.
+
+### Decision: Triage Completed
+
+Added squad:pemulis and squad:gately labels. Posted triage comment with decomposition + scope recommendations. Ready for sprint assignment.

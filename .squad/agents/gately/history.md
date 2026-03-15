@@ -64,3 +64,45 @@
 - 30s reconnection window operational server-side
 
 **Status:** ✅ Build + lint pass. End-to-end refresh recovery enabled within 30s window.
+
+## Cross-Agent Update — Risk Game Plugin Triage (2026-03-15T01:40:25Z)
+
+**From:** Squad Scribe  
+**Event:** Hal completed triage of issue #80 "Add Risk game plugin"
+
+**What This Means for You:**
+
+Hal has triaged Risk and assigned you as the rendering lead. Your work is staged for Phase 3, starting after Pemulis stabilizes Phase 1.
+
+**Phase 3: Interactive Map Renderer** (~600+ lines client code)
+- Procedural map generation (42 territories, continent colors)
+- Clickable territory regions (hit detection, highlights)
+- Army count overlays (render army icons/numbers per territory)
+- HUD with turn phase, action indicators, card count display
+- Animation support for territory transitions
+
+**Setup Phase UI** (shared responsibility with Phase 2):
+- Territory selection interface (allow players to pick starting territories)
+- Initial army placement UI (drag/click to place armies before game starts)
+- Visual feedback (ownership colors, hover states, placement validation)
+
+**Complexity Drivers:**
+- 42 clickable regions (vs. 32 Checkers squares, 30 Backgammon points)
+- Multi-continent layout with continent colors
+- Real-time army count updates (cascading combat losses)
+- Touch/mobile support (responsive design with 44px+ hit areas)
+
+**Blockers:** Waiting for Pemulis to stabilize Phase 1 (RiskState schema contract).
+
+**Coordination:**
+- Pemulis is implementing core logic and will lock RiskState schema
+- You can design Phase 3 UI/architecture in parallel
+- Steeply is writing test cases for combat/phases (helps validate your rendering assumptions)
+
+**Architectural Notes:**
+- Use existing Scene.ts contract and SceneManager for transitions
+- Leverage PixiJS viewport scaling (mobile responsive)
+- Reference Checkers/Backgammon renderers (same architecture pattern)
+
+**Precedent:** Risk is next in approved game order (Dominoes → Poker → Hearts/Spades → Chess → Risk).
+

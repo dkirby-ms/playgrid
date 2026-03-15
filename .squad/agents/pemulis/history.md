@@ -248,3 +248,46 @@
 - **Impact to you:** Ready-check enforcement and reconnection work can proceed independently from infrastructure-level blockers. ACA infra is now stable for dev and UAT environments.
 - **Deploy workflow:** `deploy-dev.yml` continues to handle image updates via `az containerapp update`; no changes needed to your game/systems code.
 
+
+## Cross-Agent Update — Risk Game Plugin Triage (2026-03-15T01:40:25Z)
+
+**From:** Squad Scribe  
+**Event:** Hal completed triage of issue #80 "Add Risk game plugin"
+
+**What This Means for You:**
+
+Hal has triaged Risk and assigned you as the systems developer. Here's your scope:
+
+**Phase 1: Core Game Logic & Plugin** (~350 lines + tests)
+- RiskState schema definition (territories, armies, cards, turn phase)
+- Turn phase transitions (reinforce → attack → fortify)
+- Combat mechanics (dice rolls, loss calculation, cascading armies)
+- Territory/card accounting (capture, trade-in validation, 5/4/3 sets)
+- Win condition detection (territory control threshold)
+- No UI in Phase 1; pure mechanics only
+
+**Turn Structure:**
+1. **Reinforce Phase** — Place armies on owned territories (mandatory min 1)
+2. **Attack Phase** — Declare attacks, resolve dice rolls, cascade casualties
+3. **Fortify Phase** — Move armies between adjacent owned territories (optional)
+
+**Card Rules (Standard Risk):**
+- Trade-in sets: 5 identical, 4 identical, 3 identical, or 1 of each
+- Bonus armies: 2, 4, 6 per turn (increasing per trade)
+- Jokers: Not using (simplifies Phase 1)
+
+**Blockers:** None. Proceed with Phase 1 design.
+
+**Coordination:**
+- Steeply is writing test cases in parallel
+- Gately is staging Phase 3 (map renderer) and will start after your Phase 1 stabilizes
+- Your RiskState schema will lock the contract for Gately's renderer
+
+**Architectural Notes:**
+- Follows existing BaseGameRoom + IGamePlugin pattern
+- Pure logic (no Colyseus coupling) for testability
+- Only hidden info: opponent cards (classic Risk rules)
+- Spectator-safe by design
+
+**Precedent:** Risk is next in approved game order (Dominoes → Poker → Hearts/Spades → Chess → Risk).
+

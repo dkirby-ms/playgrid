@@ -1686,3 +1686,38 @@ Keep `infra/main.bicep` as a single per-environment deployment template, but tre
 
 **Related:** User directive (2026-03-15T01:20:26Z) — UAT and prod can share the same Container Apps Environment for cost optimization.
 
+
+---
+
+## Session: Risk Game Plugin Triage (2026-03-15)
+
+### Hal: Risk Game Plugin Triage (Issue #80)
+
+**Status:** Approved for Sprint Assignment  
+**Date:** 2026-03-15  
+**Assignees:** Pemulis (squad:pemulis), Gately (squad:gately)  
+
+Triaged issue #80 "Add Risk game plugin" and determined complexity, scope risks, and team assignments. Risk is materially more complex than Checkers or Backgammon (900+ lines vs. 550–650) due to territory system (42 regions), multi-phase turns (reinforce → attack → fortify), stochastic combat (dice rolls), card mechanics, setup UX, and visual complexity.
+
+**Architectural Alignment:**
+- ✅ Plugin Pattern: Follows existing BaseGameRoom + GamePlugin interface
+- ✅ Pure Logic: Game mechanics separated from Colyseus (testable in isolation)
+- ✅ Spectator-Safe: Only hidden info = opponent cards (classic Risk rules)
+
+**Team Assignment:**
+- **Pemulis (Game Systems):** Risk game logic plugin + state management. Turn phases, combat dice resolution, territory/card state, card trade-in validation. ~350 lines server code + tests.
+- **Gately (Game Dev / Rendering):** Interactive Risk map renderer (procedural graphics). Setup phase territory selection UI, HUD, army placement visualization. ~600+ lines client code.
+
+**Decomposition (3 Sub-Issues):**
+1. **Core Game Logic & Plugin** (Pemulis) — RiskState schema, turn phases, combat mechanics, territory/card accounting, win detection. No UI; pure mechanics.
+2. **Setup & Territory Management** (Shared) — Territory selection phase, initial army placement rules, setup validation.
+3. **Interactive Map Renderer** (Gately) — Procedural map, clickable territories, army overlays, phase/action indicators.
+
+**Scope Clarifications:**
+- Card Mechanics: Accept standard Risk 5/4/3 trade-in set rules. In Phase 1, implement server-side validation + card count UI only. Defer card animation/visuals to Phase 2.
+
+**Rationale:**
+- Risk is next in approved game implementation order (after Dominoes → Poker → Hearts/Spades → Chess).
+- Timing is appropriate.
+- Decomposition prevents scope creep and enables parallel work (core logic → setup → rendering).
+
