@@ -392,3 +392,143 @@ Added squad:pemulis and squad:gately labels. Posted triage comment with decompos
 - All tests passing
 - PR #93 opened, awaiting review
 - Follows patterns from PR #92 (current UI seams, scoped locators)
+
+---
+
+## PR #101 & #102 Review — Turn Timer & Error Display (2026-01-13)
+
+**Session:** Reviewed and merged two PRs from Gately
+
+### PR #101: Turn Timer Visibility ✅ MERGED
+**Branch:** fix/turn-timer-visibility → dev
+
+**Problem:** Turn countdown timer was invisible during gameplay despite HUD having display code.
+
+**Solution:**
+- Added `turnTimeRemaining: number` field to BaseGameState schema
+- Server: TurnManager.getRemainingTimeSeconds() calculates remaining time
+- Server: BaseGameRoom broadcasts updates every second via clock.setInterval()
+- Client: GameScene extracts timer from state and passes to HUD
+- HUD shows MM:SS format, red border when < 30 seconds
+
+**Code Quality:**
+- ✅ Clean end-to-end implementation leveraging Colyseus state sync
+- ✅ Server is source of truth for time calculations
+- ✅ Proper null-safe clock checks for test compatibility
+- ✅ Good architectural pattern documented in Gately's history
+- ✅ Build/lint/tests pass (259 passed, 12 todo)
+
+**Files Changed:**
+- shared/src/BaseGameState.ts
+- server/src/game/TurnManager.ts
+- server/src/game/BaseGameRoom.ts
+- client/src/scenes/GameScene.ts
+
+**Merge Notes:** Had conflicts with recent dev commits (PR #99). Resolved by merging origin/dev into feature branch before final merge.
+
+### PR #102: Start-Game Error in Modal ✅ MERGED
+**Branch:** fix/start-game-error-in-modal → dev
+
+**Problem:** Error messages when starting game without enough players were hard to see (only changed button text briefly).
+
+**Solution:**
+- Added dedicated error display element in waiting room modal
+- Red styling (rgba(248, 113, 113, 0.12) background, red border, red text)
+- Auto-clears on player state updates and modal hide
+- showError() and clearError() methods for control
+
+**Code Quality:**
+- ✅ Improves UX significantly - error is now prominent and clear
+- ✅ Good design choice to keep error in context (modal) vs toast
+- ✅ Auto-clear logic prevents stale errors
+- ✅ Build/lint/tests pass
+
+**Files Changed:**
+- client/index.html (CSS for .waiting-room-error)
+- client/src/ui/WaitingRoom.ts (error display logic)
+
+**Merge Notes:** Required update after PR #101 merged. Both PRs touched WaitingRoom.ts, conflicts resolved cleanly.
+
+**Overall Assessment:**
+Both PRs demonstrate good engineering practices:
+- Proper root cause analysis documented
+- Clean implementations without over-engineering
+- Tests maintained
+- Architectural patterns established and documented
+
+
+---
+
+## PR #103 Review — Lobby Activity Feed (2026-03-15)
+
+**Session:** Reviewed "feat: add lobby event message log" (PR #103, by Gately)
+
+**Outcome:** ✅ APPROVED & MERGED
+
+**Feature Summary:**
+Real-time activity feed in lobby showing:
+- Player joins/leaves (green/gray borders)
+- Game creation (purple)
+- Game starts (orange)
+- Game finishes (blue)
+- Player joining games (purple variant)
+
+**Code Quality Assessment:**
+
+✅ **Architecture:**
+- Clean server-client event flow using LOBBY_LOG_EVENT message
+- Server is source of truth for all events
+- Proper type safety with LobbyLogEntry in shared types
+- Consistent with existing event patterns (GAME_UPDATED, ONLINE_PLAYERS, etc.)
+
+✅ **Memory Management:**
+- 50-message limit implemented (maxMessages)
+- FIFO eviction when limit exceeded
+- Efficient array-based storage
+
+✅ **UI Implementation:**
+- MessageLog class encapsulates all log behavior
+- Auto-scrolls to bottom on new messages
+- Color-coded borders by event type (semantic visual feedback)
+- Styled scrollbar matches existing design system
+- Timestamp formatting (HH:MM)
+
+✅ **Event Coverage:**
+- Player lifecycle: player_joined, player_left
+- Game lifecycle: game_created, game_started, game_finished
+- Player-game interactions: player_joined_game
+- All key lobby events captured
+
+✅ **Type Safety:**
+- LobbyLogEventType union properly defined
+- LobbyLogEntry interface consistent across client/server/shared
+- Import from @eschaton/shared in MessageLog.ts
+
+✅ **Testing:**
+- Test mock updated with LOBBY_LOG_EVENT constant
+- All tests pass (259 passed, 12 todo)
+- Lint and build successful
+
+**Files Changed:**
+- client/index.html — Activity feed panel styles (91 lines CSS)
+- client/src/ui/LobbyScreen.ts — MessageLog integration, event handler
+- client/src/ui/MessageLog.ts — New class for message rendering (79 lines)
+- server/src/rooms/LobbyRoom.ts — Event broadcasting at all key points
+- shared/src/lobbyTypes.ts — LobbyLogEntry and LobbyLogEventType types
+- server/src/__tests__/lobby-pregame.test.ts — Mock updated
+
+**Design Strengths:**
+1. **Encapsulation:** MessageLog is self-contained with clear API (addMessage, clear, destroy)
+2. **Performance:** Bounded memory usage prevents growth issues in long-running lobbies
+3. **UX:** Color-coding and emojis make events easy to scan at a glance
+4. **Consistency:** Follows established patterns from existing panels (Active Games, Online Players)
+5. **Maintainability:** Event broadcasting centralized in LobbyRoom private method
+
+**Merge Details:**
+- Squash merged to dev
+- Branch feat/lobby-message-log deleted (local + remote)
+- No conflicts, clean fast-forward
+
+**Impact:**
+Lobby now provides real-time situational awareness. Players can see activity without manually checking panels. Excellent addition to the pre-game experience.
+

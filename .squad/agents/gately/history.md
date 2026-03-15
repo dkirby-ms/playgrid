@@ -509,3 +509,83 @@ When adding real-time game state that needs client visibility:
 
 This pattern avoids custom message protocols and leverages Colyseus's built-in state synchronization.
 
+
+---
+
+## 2026-03-15: Lobby Event Message Log Implementation
+
+**Task:** Add real-time activity feed to lobby showing lobby events  
+**PR:** https://github.com/dkirby-ms/playgrid/pull/103  
+**Branch:** feat/lobby-message-log
+
+### What Was Built
+
+**Server-Side Event Broadcasting (LobbyRoom.ts):**
+- Added `LOBBY_LOG_EVENT` message type for broadcasting lobby events to all connected clients
+- Created `broadcastLobbyEvent()` helper that adds timestamps and broadcasts to all clients
+- Integrated event broadcasting into key lobby lifecycle events:
+  - Player joins: "👋 PlayerName joined the lobby"
+  - Player leaves: "👋 PlayerName left the lobby"
+  - Game creation: "🎮 PlayerName created a GameType game"
+  - Game starts: "🚀 GameName started"
+  - Game finishes: "🏁 GameName finished" (when game room disposes)
+  - Player joins game: "🎲 PlayerName joined GameName"
+
+**Shared Types (lobbyTypes.ts):**
+- `LOBBY_LOG_EVENT` constant for message type
+- `LobbyLogEventType` union: player_joined, player_left, game_created, game_started, game_finished, player_joined_game
+- `LobbyLogEntry` interface with timestamp, type, message, and optional metadata (playerName, gameName, gameType, winner)
+
+**Client-Side Display (MessageLog.ts + LobbyScreen.ts):**
+- Created `MessageLog` component class for rendering scrollable event feed
+- Component features:
+  - 50-message circular buffer to prevent memory bloat
+  - Auto-scroll to bottom on new messages
+  - Timestamp formatting (HH:MM format)
+  - Clean HTML rendering with event-type-specific styling
+- Integrated message log panel into lobby sidebar (below Online Players)
+- Added `LOBBY_LOG_EVENT` message handler that feeds events to the log
+
+**UI Styling (index.html):**
+- Added `.message-log-panel`, `.message-log-content`, `.message-log-list` styles
+- Custom scrollbar styling (thin, dark theme)
+- Event-type-specific border colors via `.message-log-entry--{type}` classes:
+  - player_joined: green (#22c55e)
+  - player_left: gray (#71717a)
+  - game_created: purple (#7c3aed)
+  - game_started: orange (#f59e0b)
+  - game_finished: blue (#3b82f6)
+  - player_joined_game: light purple (#a855f7)
+- Responsive layout with max-height (400px) to prevent panel from dominating sidebar
+
+### Technical Notes
+
+**Event Broadcasting Pattern:**
+- Server broadcasts events to ALL connected clients (not just participants)
+- Events include human-readable messages with emoji for visual scanning
+- Metadata (playerName, gameName, gameType) included for potential future filtering/search
+
+**Memory Management:**
+- 50-message cap implemented client-side via array shift when exceeding limit
+- No server-side history persistence (events are ephemeral, not stored)
+
+**Testing:**
+- Updated `lobby-pregame.test.ts` mock to include `LOBBY_LOG_EVENT` constant
+- All 259 tests pass after changes
+- No new lint warnings introduced
+
+**Future Enhancement Opportunities:**
+- Winner information on game_finished events (requires GameRoomDisposedMessage enhancement)
+- Event filtering by type (show only game events, hide player joins/leaves)
+- Persistent event history (store last N events in lobby state for late joiners)
+- Click-to-join on game event messages
+
+### Key Files Modified
+- `shared/src/lobbyTypes.ts` — Added event types and interfaces
+- `server/src/rooms/LobbyRoom.ts` — Added event broadcasting to lifecycle hooks
+- `client/src/ui/MessageLog.ts` — New component for rendering event feed
+- `client/src/ui/LobbyScreen.ts` — Integrated message log panel and handler
+- `client/index.html` — Added CSS styles for message log UI
+- `server/src/__tests__/lobby-pregame.test.ts` — Updated mock for new constant
+
+**Status:** ✅ Feature complete, PR created to dev branch
