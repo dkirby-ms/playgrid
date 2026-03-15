@@ -58,13 +58,39 @@ jobs:
 
       - name: Deploy to Container App
         run: |
+          CONTAINER_APP_ID="$(az containerapp show \
+            --name ${{ vars.CONTAINER_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --query id \
+            --output tsv)"
+
           az containerapp update \
             --name ${{ vars.CONTAINER_APP_NAME }} \
             --resource-group ${{ vars.RESOURCE_GROUP }} \
             --image ${{ vars.ACR_NAME }}.azurecr.io/playgrid:${{ github.sha }} \
-            --command "" \
-            --args "" \
             --set-env-vars "NODE_ENV=production" "PORT=2567" "DATABASE_URL=secretref:postgres-connection-string"
+
+          az resource update \
+            --ids "$CONTAINER_APP_ID" \
+            --remove properties.template.containers[0].command \
+            --remove properties.template.containers[0].args \
+            --output none
+
+          COMMAND_OVERRIDE="$(az containerapp show \
+            --name ${{ vars.CONTAINER_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --query 'properties.template.containers[0].command' \
+            --output json)"
+          ARGS_OVERRIDE="$(az containerapp show \
+            --name ${{ vars.CONTAINER_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --query 'properties.template.containers[0].args' \
+            --output json)"
+
+          if [ "$COMMAND_OVERRIDE" != "null" ] || [ "$ARGS_OVERRIDE" != "null" ]; then
+            echo "Command override was not cleared: command=$COMMAND_OVERRIDE args=$ARGS_OVERRIDE"
+            exit 1
+          fi
 
       - name: Wait for deployment
         run: sleep 15
