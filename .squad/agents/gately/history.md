@@ -347,3 +347,46 @@ function getContinentBonus(continent: string): number { ... }
 - Architectural standard captured in `.squad/decisions.md`: "Shared Static Data: Game configuration data (maps, adjacency graphs, card decks) MUST be located in `shared/src/games/{game}/` so both client (renderer) and server (logic) use a single source of truth."
 
 **Next Step:** Hal will re-review revised PR #83. Ready for merge once approved.
+
+---
+
+## 2025-01-13: Backgammon Board Rendering Bug Fix (Issue #96)
+
+**Problem:** When a host creates a backgammon game, the checkers board was rendered instead of the backgammon board. The root cause was in the game scene selection logic in `WaitingRoom.ts`.
+
+**Investigation:**
+- Found that `GameStartedPayload` (shared type) only included `gameId` and `roomId`, not `gameType`
+- Client code in `WaitingRoom.ts` line 141 tried to get game type from cached `gameInfo?.gameType`
+- When `gameInfo` was null (race condition when game cache hadn't been updated yet), it defaulted to `"checkers"`
+- This caused backgammon and potentially other games to render with the wrong board
+
+**Root Cause:** Timing issue where:
+1. Host creates a backgammon game
+2. `GAME_JOINED` message arrives at client
+3. Game info might not be in cache yet (waiting for `GAME_UPDATED`)
+4. When game starts, `GAME_STARTED` payload lacks `gameType`
+5. Client defaults to "checkers" when `gameInfo` is null
+
+**Solution:** Added `gameType` field to `GameStartedPayload` so the server explicitly provides the game type:
+- **Shared Types** (`shared/src/lobbyTypes.ts`): Added `gameType: string` to `GameStartedPayload` interface
+- **Server** (`server/src/rooms/LobbyRoom.ts`): Include `game.gameType` in `GAME_STARTED` payload
+- **Client** (`client/src/ui/WaitingRoom.ts`): Use `payload.gameType` directly instead of fallback logic
+- **Tests** (`server/src/__tests__/lobby-pregame.test.ts`): Updated 3 test assertions to include `gameType: "checkers"`
+
+**Key Decisions:**
+- Chose server-side fix over client-side workarounds (more reliable, eliminates race condition)
+- Made gameType an explicit part of the game-start contract
+- This fix benefits all game types, not just backgammon
+
+**Validation:**
+- ✅ Build passes (all workspaces)
+- ✅ Lint passes (0 new errors)
+- ✅ Tests pass (259 passed, 12 todo)
+
+**Files Changed:**
+- `shared/src/lobbyTypes.ts` — GameStartedPayload interface
+- `server/src/rooms/LobbyRoom.ts` — GAME_STARTED payload construction
+- `client/src/ui/WaitingRoom.ts` — gameType usage (removed fallback)
+- `server/src/__tests__/lobby-pregame.test.ts` — test expectations
+
+**PR:** #98 (merged to `dev`)

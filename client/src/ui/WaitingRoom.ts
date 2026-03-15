@@ -25,6 +25,7 @@ export interface GamePlayersPayload {
 export interface GameStartedPayload {
   gameId: string;
   roomId: string;
+  gameType: string;
 }
 
 export interface SetReadyPayload {
@@ -138,13 +139,12 @@ export class WaitingRoom {
           return;
         }
 
-        const gameType = this.gameInfo?.gameType ?? "checkers";
         this.hide();
         this.eventCallback?.({
           type: "game_started",
           gameId: payload.gameId,
           roomId: payload.roomId,
-          gameType,
+          gameType: payload.gameType,
         });
       });
 

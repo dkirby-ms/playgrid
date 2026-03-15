@@ -62,6 +62,7 @@ export interface GamePlayersPayload {
 export interface GameStartedPayload {
   gameId: string;
   roomId: string;
+  gameType: string;
 }
 
 export interface LobbyErrorPayload {
