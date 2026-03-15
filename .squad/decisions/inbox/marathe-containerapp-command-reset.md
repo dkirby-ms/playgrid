@@ -5,24 +5,25 @@
 **Requested by:** dkirby-ms
 
 ## Decision
-Deploy workflows must not rely on `az containerapp update --command "" --args ""` to restore the image default startup command. After updating the image/env vars, the workflow must explicitly remove the bootstrap override with:
+Deploy workflows must not rely on `az containerapp update --command "" --args ""` to restore the image default startup command. The reliable production fix is to deploy the real image while explicitly setting the same startup command as the Dockerfile:
 
 ```bash
-az resource update \
-  --ids "$CONTAINER_APP_ID" \
-  --remove properties.template.containers[0].command \
-  --remove properties.template.containers[0].args
+az containerapp update \
+  --name "$CONTAINER_APP_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --image "$ACR_SERVER/playgrid:$GITHUB_SHA" \
+  --command "node" --args "server/dist/src/index.js"
 ```
 
 ## Rationale
 - GitHub Actions UAT run `23118352923` succeeded but the returned revision JSON still contained `command: [""]` and `args: [""]`, which kept the placeholder/bootstrap behavior active instead of reverting to the Dockerfile CMD.
 - Azure CLI help says empty strings clear existing values, but real ACA behavior here did not match that contract.
-- Removing the properties from the Container App template restores the runtime default from `Dockerfile` (`CMD ["node", "server/dist/src/index.js"]`).
+- A follow-up workflow attempt using `az resource update --remove properties.template.containers[0].command/args` was not dependable enough for deployment verification, while explicitly passing the Dockerfile CMD is simple, deterministic, and matches the container's intended runtime.
 
 ## Impact
-- `.github/workflows/deploy-uat.yml` and `.github/workflows/deploy-prod.yml` must perform a second Azure update to remove the override after image deployment.
-- Deploy workflows should verify that `properties.template.containers[0].command` and `.args` are `null` before proceeding.
-- `infra/main.bicep` keeps the placeholder bootstrap logic for first deploys; CI/CD is responsible for removing it during real app deploys.
+- `.github/workflows/deploy-uat.yml` and `.github/workflows/deploy-prod.yml` should set `--command "node" --args "server/dist/src/index.js"` during image deploys.
+- `infra/main.bicep` keeps the placeholder bootstrap logic for first deploys; CI/CD is responsible for overriding it with the real server command during app deploys.
+- Future ACA deploy debugging should treat empty-string clear semantics as untrusted until Azure proves otherwise.
 
 ## Key Paths
 - `.github/workflows/deploy-uat.yml`
