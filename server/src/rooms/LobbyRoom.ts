@@ -10,6 +10,7 @@ import {
   JOIN_GAME,
   LEAVE_GAME,
   LOBBY_ERROR,
+  LOBBY_LOG_EVENT,
   ONLINE_PLAYERS,
   SET_READY,
   START_GAME,
@@ -20,6 +21,7 @@ import {
   type GameStartedPayload,
   type JoinGamePayload,
   type LobbyErrorPayload,
+  type LobbyLogEntry,
   type OnlinePlayerInfo,
   type OnlinePlayersPayload,
   type PreGamePlayerInfo,
@@ -67,6 +69,12 @@ export class LobbyRoom extends Room {
     this.games.delete(message.gameId);
     this.broadcast(GAME_REMOVED, { gameId: message.gameId });
     this.broadcastOnlinePlayers();
+    this.broadcastLobbyEvent({
+      type: "game_finished",
+      message: `🏁 ${game.name} finished`,
+      gameName: game.name,
+      gameType: game.gameType,
+    });
 
     console.log(`[LobbyRoom] Removed disposed game ${message.gameId} from the lobby`);
   };
@@ -121,6 +129,11 @@ export class LobbyRoom extends Room {
     });
 
     this.broadcastOnlinePlayers();
+    this.broadcastLobbyEvent({
+      type: "player_joined",
+      message: `👋 ${displayName} joined the lobby`,
+      playerName: displayName,
+    });
 
     console.log(`[LobbyRoom] ${displayName} joined the lobby`);
   }
@@ -197,6 +210,13 @@ export class LobbyRoom extends Room {
     client.send(GAME_JOINED, payloadOut);
     this.broadcast(GAME_UPDATED, { game: this.toGameSessionInfo(game) });
     this.broadcastGamePlayers(gameId);
+    this.broadcastLobbyEvent({
+      type: "game_created",
+      message: `🎮 ${session.displayName} created a ${gameType} game`,
+      playerName: session.displayName,
+      gameName: name,
+      gameType,
+    });
 
     console.log(`[LobbyRoom] Created game ${gameId} (${name}, ${gameType})`);
   }
@@ -272,6 +292,13 @@ export class LobbyRoom extends Room {
     client.send(GAME_JOINED, joinedPayload);
     this.broadcast(GAME_UPDATED, { game: this.toGameSessionInfo(game) });
     this.broadcastGamePlayers(game.id);
+    this.broadcastLobbyEvent({
+      type: "player_joined_game",
+      message: `🎲 ${session.displayName} joined ${game.name}`,
+      playerName: session.displayName,
+      gameName: game.name,
+      gameType: game.gameType,
+    });
 
     console.log(`[LobbyRoom] ${session.displayName} joined game ${game.id}`);
   }
@@ -388,6 +415,13 @@ export class LobbyRoom extends Room {
         playerClient?.send(GAME_STARTED, startedPayload);
       }
 
+      this.broadcastLobbyEvent({
+        type: "game_started",
+        message: `🚀 ${game.name} started`,
+        gameName: game.name,
+        gameType: game.gameType,
+      });
+
       this.waitingPlayers.delete(game.id);
       console.log(`[LobbyRoom] Started game ${game.id} in room ${room.roomId}`);
     } catch (error) {
@@ -474,6 +508,11 @@ export class LobbyRoom extends Room {
     this.handleLeaveGame(sessionId);
     this.sessions.delete(sessionId);
     this.broadcastOnlinePlayers();
+    this.broadcastLobbyEvent({
+      type: "player_left",
+      message: `👋 ${session.displayName} left the lobby`,
+      playerName: session.displayName,
+    });
   }
 
   private resolveSessionId(clientOrSessionId: Client | string) {
@@ -518,6 +557,14 @@ export class LobbyRoom extends Room {
   private sendError(client: Client, message: string) {
     const payload: LobbyErrorPayload = { message };
     client.send(LOBBY_ERROR, payload);
+  }
+
+  private broadcastLobbyEvent(entry: Omit<LobbyLogEntry, "timestamp">) {
+    const event: LobbyLogEntry = {
+      ...entry,
+      timestamp: Date.now(),
+    };
+    this.broadcast(LOBBY_LOG_EVENT, event);
   }
 
   private normalizeGameName(value: unknown) {

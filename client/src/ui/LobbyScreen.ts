@@ -1,4 +1,5 @@
 import type { Room } from "@colyseus/sdk";
+import { MessageLog } from "./MessageLog.js";
 
 export const CREATE_GAME = "create_game" as const;
 export const JOIN_GAME = "join_game" as const;
@@ -13,6 +14,7 @@ export const GAME_STARTED = "game_started" as const;
 export const GAME_PLAYERS = "game_players" as const;
 export const LOBBY_ERROR = "lobby_error" as const;
 export const ONLINE_PLAYERS = "online_players" as const;
+export const LOBBY_LOG_EVENT = "lobby_log_event" as const;
 
 export type GameStatus = "waiting" | "in_progress" | "ended";
 
@@ -84,6 +86,24 @@ export type LobbyEvent =
 type LobbyFilter = "all" | "waiting" | "in_progress";
 type NoticeTone = "info" | "error";
 type LobbyEventCallback = (event: LobbyEvent) => void;
+
+export type LobbyLogEventType =
+  | "player_joined"
+  | "player_left"
+  | "game_created"
+  | "game_started"
+  | "game_finished"
+  | "player_joined_game";
+
+export interface LobbyLogEntry {
+  timestamp: number;
+  type: LobbyLogEventType;
+  message: string;
+  playerName?: string;
+  gameName?: string;
+  gameType?: string;
+  winner?: string;
+}
 
 interface GameTypeOption {
   value: string;
@@ -284,6 +304,7 @@ export class LobbyScreen {
   private readonly onlinePlayers: OnlinePlayerInfo[] = [];
   private readonly onlinePlayersListEl: HTMLElement;
   private readonly onlinePlayersBadgeEl: HTMLElement;
+  private messageLog: MessageLog | null = null;
 
   private room: Room | null = null;
   private boundRoom: Room | null = null;
@@ -414,7 +435,16 @@ export class LobbyScreen {
     this.onlinePlayersListEl.append(createElement("div", "panel-empty", "No players online"));
     onlinePlayersPanel.append(onlinePlayersHeader, this.onlinePlayersListEl);
     
-    sidebar.append(activeGamesPanel, onlinePlayersPanel);
+    // Message Log Panel
+    const messageLogPanel = createElement("div", "message-log-panel");
+    const messageLogHeader = createElement("div", "panel-header");
+    const messageLogTitle = createElement("h2", "panel-title", "Activity Feed");
+    messageLogHeader.append(messageLogTitle);
+    const messageLogContent = createElement("div", "message-log-content");
+    messageLogPanel.append(messageLogHeader, messageLogContent);
+    this.messageLog = new MessageLog(messageLogContent);
+    
+    sidebar.append(activeGamesPanel, onlinePlayersPanel, messageLogPanel);
 
     grid.append(gameLibrary, sidebar);
     content.append(grid);
@@ -592,6 +622,10 @@ export class LobbyScreen {
       this.onlinePlayers.length = 0;
       this.onlinePlayers.push(...payload.players);
       this.renderOnlinePlayers();
+    });
+
+    room.onMessage(LOBBY_LOG_EVENT, (entry: LobbyLogEntry) => {
+      this.messageLog?.addMessage(entry);
     });
   }
 

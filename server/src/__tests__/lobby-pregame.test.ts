@@ -25,6 +25,7 @@ const { mockCreateRoom, mockGameRegistry, mockedCloseCode, sharedExports } = vi.
     GAME_PLAYERS: "game_players",
     LOBBY_ERROR: "lobby_error",
     ONLINE_PLAYERS: "online_players",
+    LOBBY_LOG_EVENT: "lobby_log_event",
     DEFAULT_MAP_SIZE: 128,
     LOBBY_DEFAULTS: {
       MIN_PLAYERS: 1,
