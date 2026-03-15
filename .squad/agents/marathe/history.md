@@ -526,3 +526,78 @@ Added comprehensive Phase 1 limitations documentation to `server/src/games/risk/
 - Workflows should use variables directly without protocol manipulation
 - This aligns with the pattern in `infra/main.bicep` output `containerAppFqdn` which returns the full URL
 
+
+---
+
+## 2026-03-15: Fixed Container App Bootstrap Command Override
+
+**Root Cause:** After deploying to UAT, the browser showed `{"status":"ok","mode":"placeholder"}` instead of the actual app. The Bicep template (`infra/main.bicep`) bootstraps Container Apps with a placeholder Node.js image and explicit `command`/`args` override that runs an inline HTTP server. The deploy workflows used `az containerapp update --image` to swap in the real ACR image, but **did not clear the command/args override** — so the container kept running the placeholder script even with the real image.
+
+**Bootstrap Configuration (Bicep lines 249-255):**
+```bicep
+image: 'node:22-alpine'
+command: ['/bin/sh', '-c']
+args: ['node -e "require(\'http\').createServer((q,s)=>{s.writeHead(200,{\'Content-Type\':\'application/json\'});s.end(JSON.stringify({status:\'ok\',mode:\'placeholder\'}))}).listen(2567,\'0.0.0.0\')"']
+```
+
+**Investigation:**
+1. Confirmed `az containerapp update` does NOT automatically clear command/args when changing images
+2. Checked Azure CLI documentation: `--command ""` and `--args ""` explicitly clear existing values
+3. The Bicep bootstrap command/args are intentional and correct — they allow infra deployment before CI has pushed the real image
+
+**Fix Applied:**
+Added `--command ""` and `--args ""` to the "Deploy to Container App" step in both workflows:
+
+**deploy-uat.yml:**
+```bash
+az containerapp update \
+  --name ${{ vars.CONTAINER_APP_NAME }} \
+  --resource-group ${{ vars.RESOURCE_GROUP }} \
+  --image ${{ vars.ACR_NAME }}.azurecr.io/playgrid:${{ github.sha }} \
+  --command "" \
+  --args "" \
+  --set-env-vars "NODE_ENV=development" "PORT=2567" "DATABASE_URL=secretref:postgres-connection-string"
+```
+
+**deploy-prod.yml:** Same fix with `NODE_ENV=production`
+
+**Files Changed:**
+- `.github/workflows/deploy-uat.yml` (line 63-64)
+- `.github/workflows/deploy-prod.yml` (line 63-64)
+
+**Verification:**
+- ✅ `npm run build` — All workspaces compile successfully
+
+### Learnings:
+
+**Azure Container Apps Command Override Behavior:**
+- `az containerapp update --image` does NOT clear existing command/args from previous revisions
+- Explicit `--command ""` and `--args ""` are required to remove overrides and use the image's default CMD/ENTRYPOINT
+- Bootstrap placeholder commands in Bicep are **correct and intentional** — they're only for initial infra deployment
+
+**Bootstrap Strategy:**
+- Bicep templates use public bootstrap images (e.g., `node:22-alpine`) with placeholder servers so initial `az deployment group create` succeeds before CI has pushed the real app image into ACR
+- CI workflows must explicitly clear bootstrap command/args when deploying the real image
+- This two-phase approach avoids circular dependencies: infra creates the container app → RBAC propagates → CI pushes image → CI updates container app
+
+**Azure CLI Command/Args Syntax:**
+```bash
+# Clear command/args (use image's default)
+--command "" --args ""
+
+# Set custom command (array syntax)
+--command "/bin/sh" "-c"
+
+# Set custom args (array syntax)
+--args "npm start"
+```
+
+**Key File Paths:**
+- Deploy workflows: `.github/workflows/deploy-{uat,prod}.yml`
+- Bicep bootstrap config: `infra/main.bicep` lines 56-57 (variables), 249-255 (container template)
+- Dockerfile CMD: `Dockerfile` line 34 (`CMD ["node", "dist/index.js"]`)
+
+**Related Issues:**
+- Previous fix (2026-03-15): Health check URL double-prefix
+- Root cause: Environment variables included protocol, workflows prepended another `https://`
+- Resolution: Use `CONTAINER_APP_FQDN` variable directly without protocol manipulation

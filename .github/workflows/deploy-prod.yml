@@ -62,6 +62,8 @@ jobs:
             --name ${{ vars.CONTAINER_APP_NAME }} \
             --resource-group ${{ vars.RESOURCE_GROUP }} \
             --image ${{ vars.ACR_NAME }}.azurecr.io/playgrid:${{ github.sha }} \
+            --command "" \
+            --args "" \
             --set-env-vars "NODE_ENV=production" "PORT=2567" "DATABASE_URL=secretref:postgres-connection-string"
 
       - name: Wait for deployment
