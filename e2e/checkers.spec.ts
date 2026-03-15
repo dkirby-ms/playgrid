@@ -1,9 +1,13 @@
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
 const EMPTY = 0;
 const BLACK = 1;
 const RED = 2;
 const BLACK_KING = 3;
+
+function uniqueName(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36).slice(-4)}-${Math.random().toString(36).slice(2, 4)}`;
+}
 
 const FULL_GAME_SEQUENCE = [
   { from: 17, to: 24 },
@@ -154,39 +158,69 @@ type E2EWindow = Window & {
   };
 };
 
-async function openLobbyPlayer(browser: Browser): Promise<PlayerClient> {
+function lobbyOverlay(page: Page): Locator {
+  return page.locator("#lobby-overlay.visible");
+}
+
+function waitingRoomOverlay(page: Page): Locator {
+  return page.locator("#waiting-room-overlay.visible");
+}
+
+function activeGameCard(page: Page, gameName: string): Locator {
+  return page.locator(".active-game-card").filter({ hasText: gameName });
+}
+
+async function savePlayerName(page: Page, displayName: string): Promise<void> {
+  const playerNameInput = page.locator('input[name="player-name"]');
+  await playerNameInput.fill(displayName);
+  await playerNameInput.blur();
+  await expect(page.locator(".lobby-notice.visible")).toHaveText("Player name saved.");
+  await expect(playerNameInput).toHaveValue(displayName.trim());
+}
+
+async function createGame(page: Page, gameName: string): Promise<void> {
+  await page.getByRole("button", { name: "Create Game", exact: true }).click();
+
+  const createGameModal = page.locator("#create-game-modal.visible");
+  await expect(createGameModal).toBeVisible();
+  await createGameModal.locator('input[name="game-name"]').fill(gameName);
+  await createGameModal.locator('select[name="game-type"]').selectOption("checkers");
+  await createGameModal.getByRole("button", { name: "Create Game", exact: true }).click();
+}
+
+async function openLobbyPlayer(browser: Browser, displayName: string): Promise<PlayerClient> {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto("/?e2e=1");
-  await expect(page.locator("#lobby-overlay")).toContainText("Game Lobby");
+  await expect(lobbyOverlay(page)).toBeVisible();
+  await expect(lobbyOverlay(page)).toContainText("Board Game Lounge");
   await expect.poll(async () => (await getSnapshot(page)).sessionId).not.toBeNull();
+  await savePlayerName(page, displayName);
   return { context, page };
 }
 
 async function startMatch(browser: Browser, gameName: string): Promise<StartedMatch> {
-  const host = await openLobbyPlayer(browser);
-  const guest = await openLobbyPlayer(browser);
+  const host = await openLobbyPlayer(browser, uniqueName("checkers-host"));
+  const guest = await openLobbyPlayer(browser, uniqueName("checkers-guest"));
 
-  await host.page.locator('input[name="game-name"]').fill(gameName);
-  await host.page.getByRole("button", { name: "Create Game" }).click();
+  await createGame(host.page, gameName);
 
-  await expect(host.page.locator("#waiting-room-overlay.visible")).toBeVisible();
-  await expect(host.page.getByRole("button", { name: "Start Game" })).toBeVisible();
+  await expect(waitingRoomOverlay(host.page)).toBeVisible();
 
-  const joinRow = guest.page.locator("tr", { hasText: gameName });
-  await expect(joinRow).toContainText("Checkers");
-  await joinRow.getByRole("button", { name: "Join" }).click();
+  const guestCard = activeGameCard(guest.page, gameName);
+  await expect(guestCard).toContainText(gameName);
+  await guestCard.getByRole("button", { name: "Join" }).click();
 
-  await expect(guest.page.locator("#waiting-room-overlay.visible")).toBeVisible();
-  await expect(guest.page.getByRole("button", { name: "Ready" })).toBeVisible();
+  await expect(waitingRoomOverlay(guest.page)).toBeVisible();
+  await expect(guest.page.getByRole("button", { name: "Ready", exact: true })).toBeVisible();
   await expect(host.page.locator(".waiting-room-player")).toHaveCount(2);
   await expect(guest.page.locator(".waiting-room-player")).toHaveCount(2);
 
-  await guest.page.getByRole("button", { name: "Ready" }).click();
-  await expect(guest.page.getByRole("button", { name: "Not Ready" })).toBeVisible();
-  await expect(host.page.locator("#waiting-room-overlay")).toContainText("✅ Ready");
+  await guest.page.getByRole("button", { name: "Ready", exact: true }).click();
+  await expect(guest.page.getByRole("button", { name: "Not Ready", exact: true })).toBeVisible();
+  await expect(waitingRoomOverlay(host.page)).toContainText("✅ Ready");
 
-  await host.page.getByRole("button", { name: "Start Game" }).click();
+  await host.page.getByRole("button", { name: "Start Game", exact: true }).click();
 
   await expect(host.page.getByRole("button", { name: "Leave Game" })).toBeVisible();
   await expect(guest.page.getByRole("button", { name: "Leave Game" })).toBeVisible();
@@ -441,8 +475,8 @@ test.describe("Checkers E2E gameplay", () => {
           expect(redOutcome.overlayTitle).toBe("You lose");
           expect(redOutcome.overlaySubtitle).toBe("Black wins the match.");
 
-          await expect(match.host.page.locator("#lobby-overlay")).toContainText("Game Lobby");
-          await expect(match.guest.page.locator("#lobby-overlay")).toContainText("Game Lobby");
+          await expect(lobbyOverlay(match.host.page)).toContainText("Board Game Lounge");
+          await expect(lobbyOverlay(match.guest.page)).toContainText("Board Game Lounge");
           break;
         }
 

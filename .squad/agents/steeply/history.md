@@ -8,6 +8,7 @@
 
 ## Learnings
 - Lobby gameType coverage lives in `server/src/__tests__/lobby-pregame.test.ts`; the useful seams are the mocked `gameRegistry` responses plus `GAME_LIST`/`GAME_UPDATED` payload assertions to verify type propagation and player-limit clamping.
+- Checkers Playwright coverage has to follow the current lobby UI, not the old table flow: open `#create-game-modal`, scope joins to the unique `.active-game-card`, and assert the visible lobby shell as "Board Game Lounge" before using the `?e2e=1` harness for in-game state.
 - Checkers browser E2E is most stable when tests drive real lobby UI but send in-game moves through the actual browser room objects exposed by `client/src/index.ts` behind the `?e2e=1` harness; root Playwright runs against the server-served app on port 2567 and the deterministic 31-move sequence in `e2e/checkers.spec.ts` covers promotion, king back-move, and a no-valid-moves win.
 - Lobby browser E2E can reliably assert against `#lobby-overlay` / `#waiting-room-overlay`, `input[name="player-name"]`, `input[name="game-name"]`, and `.waiting-room-player-name` while driving multiple isolated browser contexts against `npm run dev`.
 - The root Playwright run (`npx playwright test`) shares one server process across `e2e/checkers.spec.ts` and `e2e/lobby.spec.ts`, so lobby tests must key off their unique game row in `e2e/lobby.spec.ts` instead of assuming the table starts empty after earlier specs leave in-progress sessions visible.
