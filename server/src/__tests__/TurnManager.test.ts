@@ -87,6 +87,30 @@ describe("TurnManager", () => {
     expect(onTimeout).not.toHaveBeenCalled();
   });
 
+  it("pauses and resumes the active turn timer", () => {
+    const onTimeout = vi.fn();
+    const manager = new TurnManager(["player-1", "player-2"], {
+      turnTimeLimit: 5,
+      onTimeout,
+    });
+
+    manager.startTurns();
+    vi.advanceTimersByTime(2_000);
+    manager.pause();
+
+    expect(manager.isPaused()).toBe(true);
+    vi.advanceTimersByTime(10_000);
+    expect(onTimeout).not.toHaveBeenCalled();
+
+    manager.resume();
+    expect(manager.isPaused()).toBe(false);
+    vi.advanceTimersByTime(2_999);
+    expect(onTimeout).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(onTimeout).toHaveBeenCalledWith("player-1");
+  });
+
   it("clears the timer when stopped", () => {
     const onTimeout = vi.fn();
     const manager = new TurnManager(["player-1"], {

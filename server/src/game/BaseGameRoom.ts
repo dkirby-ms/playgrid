@@ -12,8 +12,10 @@ import { TurnManager } from "./TurnManager.js";
 import { getPool } from "../db.js";
 import * as gameRepository from "../db/gameRepository.js";
 import { trackEvent } from "../telemetry.js";
+import { GAME_ROOM_DISPOSED_TOPIC } from "../rooms/lobbyPresence.js";
 
 interface BaseGameRoomOptions extends GameOptions {
+  gameId?: string;
   gameType?: string;
   maxPlayers?: number;
   expectedPlayers?: number;
@@ -34,6 +36,7 @@ export class BaseGameRoom extends Room {
   private expectedPlayers = 0;
   private reconnectionTimeout = DEFAULT_RECONNECTION_TIMEOUT;
   private gameId?: string;
+  private lobbyGameId?: string;
   private gameStartTime?: number;
 
   override async onCreate(options: BaseGameRoomOptions = {}) {
@@ -57,6 +60,11 @@ export class BaseGameRoom extends Room {
 
     if (typeof options.reconnectionTimeout === "number" && options.reconnectionTimeout > 0) {
       this.reconnectionTimeout = options.reconnectionTimeout;
+    }
+
+    if (typeof options.gameId === "string") {
+      const lobbyGameId = options.gameId.trim();
+      this.lobbyGameId = lobbyGameId || undefined;
     }
 
     const state = this.plugin.createState() as BaseGameState;
@@ -90,12 +98,19 @@ export class BaseGameRoom extends Room {
   override onJoin(client: Client, options: Record<string, unknown> = {}) {
     const existingPlayer = this.state.players.get(client.sessionId);
     if (existingPlayer) {
+      const wasDisconnected = !existingPlayer.isConnected;
       existingPlayer.isConnected = true;
-      trackEvent("player_reconnected", {
-        gameType: this.plugin.name,
-        roomId: this.roomId,
-        sessionId: client.sessionId,
-      });
+
+      if (wasDisconnected) {
+        this.resumeTurnTimerFor(client.sessionId);
+        this.plugin.lifecycle.onPlayerReconnect?.(this.state, client);
+        trackEvent("player_reconnected", {
+          gameType: this.plugin.name,
+          roomId: this.roomId,
+          sessionId: client.sessionId,
+        });
+      }
+
       return;
     }
 
@@ -158,6 +173,8 @@ export class BaseGameRoom extends Room {
       !player.isSpectator &&
       code !== CloseCode.CONSENTED
     ) {
+      this.pauseTurnTimerFor(client.sessionId);
+
       try {
         await this.allowReconnection(client, this.reconnectionTimeout);
         player.isConnected = true;
@@ -170,13 +187,7 @@ export class BaseGameRoom extends Room {
 
     this.plugin.lifecycle.onPlayerLeave?.(this.state, client.sessionId);
     this.turnManager?.removePlayer(client.sessionId);
-
-    if (this.turnManager?.isActive() && this.turnManager.getPlayerCount() > 0) {
-      this.state.currentTurn = this.turnManager.getCurrentPlayer();
-      this.state.turnNumber = this.turnManager.getTurnNumber();
-    } else if (this.state.phase !== "ended") {
-      this.state.currentTurn = "";
-    }
+    this.syncTurnState();
 
     if (this.state.phase !== "playing") {
       return;
@@ -201,6 +212,13 @@ export class BaseGameRoom extends Room {
 
   override onDispose() {
     this.turnManager?.stop();
+
+    if (this.lobbyGameId) {
+      this.presence.publish(GAME_ROOM_DISPOSED_TOPIC, {
+        gameId: this.lobbyGameId,
+        roomId: this.roomId,
+      });
+    }
   }
 
   private registerActionHandlers() {
@@ -326,6 +344,7 @@ export class BaseGameRoom extends Room {
     }
 
     this.turnManager?.removePlayer(sessionId);
+    this.syncTurnState();
 
     const remainingPlayers = this.getConnectedParticipants();
     if (remainingPlayers.length === 1) {
@@ -398,6 +417,40 @@ export class BaseGameRoom extends Room {
   private shouldStartGame() {
     return this.state.phase === "waiting"
       && this.getConnectedParticipants().length >= this.expectedPlayers;
+  }
+
+  private pauseTurnTimerFor(sessionId: string) {
+    if (
+      !this.turnManager?.isActive()
+      || this.state.currentTurn !== sessionId
+    ) {
+      return;
+    }
+
+    this.turnManager.pause();
+  }
+
+  private resumeTurnTimerFor(sessionId: string) {
+    if (
+      !this.turnManager?.isActive()
+      || this.state.currentTurn !== sessionId
+    ) {
+      return;
+    }
+
+    this.turnManager.resume();
+  }
+
+  private syncTurnState() {
+    if (this.turnManager?.isActive() && this.turnManager.getPlayerCount() > 0) {
+      this.state.currentTurn = this.turnManager.getCurrentPlayer();
+      this.state.turnNumber = this.turnManager.getTurnNumber();
+      return;
+    }
+
+    if (this.state.phase !== "ended") {
+      this.state.currentTurn = "";
+    }
   }
 
   private orderTurnPlayers(playerIds: string[]) {

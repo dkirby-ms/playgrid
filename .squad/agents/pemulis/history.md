@@ -231,3 +231,10 @@
 - 30s window working server-side before client attempted recovery
 
 **Status:** ✅ Build + tests pass. Ready for Gately's cross-agent integration.
+
+### Ready-check enforcement for waiting games (2026-03-15)
+
+- `server/src/rooms/LobbyRoom.ts` now refuses `start_game` while any joined non-host waiting player is still `isReady = false`, and returns a lobby error instead of creating the live game room.
+- Kept the existing host-start UX intact: the host still controls starting, but readiness is now enforced for every other joined player because the current waiting-room UI only exposes a Ready toggle to non-host participants.
+- `client/src/ui/WaitingRoom.ts` now disables the host Start Game button until every joined non-host player is ready, and it restores the button state if the server rejects a start attempt.
+- Regression coverage in `server/src/__tests__/lobby-pregame.test.ts` now includes the blocked-unready-start case plus the ready-then-start path.

@@ -12,6 +12,7 @@ export const GAME_REMOVED = "game_removed" as const;
 export const GAME_STARTED = "game_started" as const;
 export const GAME_PLAYERS = "game_players" as const;
 export const LOBBY_ERROR = "lobby_error" as const;
+export const ONLINE_PLAYERS = "online_players" as const;
 
 export type GameStatus = "waiting" | "in_progress" | "ended";
 
@@ -64,6 +65,16 @@ export interface LobbyErrorPayload {
   message: string;
 }
 
+export interface OnlinePlayerInfo {
+  userId: string;
+  displayName: string;
+  status: "in_lobby" | "in_game";
+}
+
+export interface OnlinePlayersPayload {
+  players: OnlinePlayerInfo[];
+}
+
 export type LobbyEvent =
   | { type: "join_game"; gameId: string; roomId: string; gameType: string }
   | { type: "waiting"; gameId: string; gameInfo: GameSessionInfo | null; isHost: boolean }
@@ -95,20 +106,11 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
-function getGameTypeLabel(gameType: string): string {
-  return GAME_TYPE_OPTIONS.find((option) => option.value === gameType)?.label
-    ?? gameType
-      .split(/[-_]/)
-      .filter(Boolean)
-      .map((segment) => `${segment.charAt(0).toUpperCase()}${segment.slice(1)}`)
-      .join(" ");
-}
-
 export class LobbyScreen {
   private readonly overlay: HTMLElement;
   private readonly subtitleEl: HTMLParagraphElement;
   private readonly notificationEl: HTMLDivElement;
-  private readonly gameListBody: HTMLTableSectionElement;
+  private readonly gameListBody: HTMLElement;
   private readonly playerNameInput: HTMLInputElement;
   private readonly gameNameInput: HTMLInputElement;
   private readonly gameTypeInput: HTMLSelectElement;
@@ -117,14 +119,18 @@ export class LobbyScreen {
   private readonly filterButtons = new Map<LobbyFilter, HTMLButtonElement>();
   private readonly filterCounts = new Map<LobbyFilter, HTMLSpanElement>();
 
-  private readonly defaultSubtitle = "Browse open sessions or spin up a new game.";
+  private readonly defaultSubtitle = "Play with friends worldwide";
   private readonly games = new Map<string, GameSessionInfo>();
+  private readonly onlinePlayers: OnlinePlayerInfo[] = [];
+  private readonly onlinePlayersListEl: HTMLElement;
+  private readonly onlinePlayersBadgeEl: HTMLElement;
 
   private room: Room | null = null;
   private boundRoom: Room | null = null;
   private eventCallback: LobbyEventCallback | null = null;
   private activeFilter: LobbyFilter = "all";
   private pendingTransition: "create" | "join" | null = null;
+  private pendingSpectator = false;
   private createTimeout: ReturnType<typeof window.setTimeout> | null = null;
   private noticeTimeout: ReturnType<typeof window.setTimeout> | null = null;
   private isCreatePending = false;
@@ -138,39 +144,135 @@ export class LobbyScreen {
     this.overlay = overlay;
     this.overlay.textContent = "";
 
-    const panel = createElement("section", "lobby-panel");
-    const header = createElement("header", "overlay-header");
-    const titleEl = createElement("h1", "overlay-title", "Game Lobby");
-    this.subtitleEl = createElement("p", "overlay-subtitle", this.defaultSubtitle);
-    header.append(titleEl, this.subtitleEl);
+    // Dashboard container
+    const dashboard = createElement("div", "lobby-dashboard");
 
-    this.notificationEl = createElement("div", "lobby-notice");
-    this.notificationEl.setAttribute("role", "status");
-
-    const playerSection = createElement("section", "lobby-profile-section");
-    const playerHeading = createElement("h2", "section-title", "Player name");
-    const playerForm = createElement("form", "lobby-profile-form");
-    const playerNameField = createElement("label", "field-group");
-    const playerNameLabel = createElement("span", "field-label", "Display name");
+    // Header
+    const header = createElement("header", "lobby-header");
+    const headerInner = createElement("div", "lobby-header-inner");
+    
+    const headerLeft = createElement("div", "lobby-header-left");
+    const logo = createElement("div", "lobby-logo");
+    logo.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12h12M6 16h12M6 8h12m-6 8v4M10 20h4"/></svg>';
+    
+    const titleGroup = createElement("div", "lobby-title-group");
+    const title = createElement("h1", "lobby-title", "Board Game Lounge");
+    this.subtitleEl = createElement("p", "lobby-subtitle", "Play with friends worldwide");
+    titleGroup.append(title, this.subtitleEl);
+    headerLeft.append(logo, titleGroup);
+    
+    const headerRight = createElement("div", "lobby-header-right");
+    
+    // Player name input in header
     this.playerNameInput = createElement("input", "lobby-input") as HTMLInputElement;
     this.playerNameInput.type = "text";
     this.playerNameInput.name = "player-name";
-    this.playerNameInput.placeholder = "Player name";
+    this.playerNameInput.placeholder = "Your name";
     this.playerNameInput.maxLength = MAX_DISPLAY_NAME_LENGTH;
-    playerNameField.append(playerNameLabel, this.playerNameInput);
-
-    const saveNameButton = createElement("button", "lobby-button lobby-button-secondary", "Save Name") as HTMLButtonElement;
-    saveNameButton.type = "submit";
-    playerForm.append(playerNameField, saveNameButton);
-    playerForm.addEventListener("submit", (event) => {
-      event.preventDefault();
+    this.playerNameInput.style.maxWidth = "180px";
+    this.playerNameInput.addEventListener("change", () => {
       this.handleSaveDisplayName();
     });
-    playerSection.append(playerHeading, playerForm);
+    
+    const userButton = createElement("button", "lobby-header-user") as HTMLButtonElement;
+    userButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+    userButton.title = "Player Profile";
+    
+    headerRight.append(this.playerNameInput, userButton);
+    headerInner.append(headerLeft, headerRight);
+    header.append(headerInner);
 
-    const createSection = createElement("section", "lobby-create-section");
-    const createHeading = createElement("h2", "section-title", "Create a session");
-    const createForm = createElement("form", "lobby-create-form");
+    // Notification element (positioned fixed)
+    this.notificationEl = createElement("div", "lobby-notice");
+    this.notificationEl.setAttribute("role", "status");
+
+    // Main content
+    const content = createElement("div", "lobby-content");
+    const grid = createElement("div", "lobby-grid");
+
+    // Game Library (left side)
+    const gameLibrary = createElement("div", "game-library");
+    const gameLibraryHeader = createElement("div", "game-library-header");
+    const gameLibraryTitle = createElement("h2", "game-library-title", "Game Library");
+    
+    const gameLibraryToolbar = createElement("div", "game-library-toolbar");
+    
+    // Create Game button
+    const createGameButton = createElement("button", "create-game-trigger") as HTMLButtonElement;
+    createGameButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Create Game</span>';
+    createGameButton.addEventListener("click", () => this.openCreateGameModal());
+    
+    // Filters
+    const filtersSection = createElement("div", "lobby-filters");
+    for (const filter of [
+      { key: "all", label: "All" },
+      { key: "waiting", label: "Waiting" },
+      { key: "in_progress", label: "In Progress" },
+    ] as const) {
+      const button = createElement("button", "lobby-filter-button") as HTMLButtonElement;
+      button.type = "button";
+      button.dataset.filter = filter.key;
+
+      const label = createElement("span", "filter-label", filter.label);
+      const count = createElement("span", "filter-badge", "0");
+
+      button.append(label, count);
+      button.addEventListener("click", () => this.setActiveFilter(filter.key));
+
+      this.filterButtons.set(filter.key, button);
+      this.filterCounts.set(filter.key, count);
+      filtersSection.append(button);
+    }
+    
+    gameLibraryToolbar.append(createGameButton, filtersSection);
+    gameLibraryHeader.append(gameLibraryTitle, gameLibraryToolbar);
+    
+    // Game tiles grid (shows game types and active sessions)
+    this.gameListBody = createElement("div", "game-tiles-grid") as HTMLElement;
+    
+    gameLibrary.append(gameLibraryHeader, this.gameListBody);
+
+    // Sidebar (right side)
+    const sidebar = createElement("div", "lobby-sidebar");
+    
+    // Active Games Panel (will be populated by renderGameList)
+    const activeGamesPanel = createElement("div", "active-games-panel");
+    activeGamesPanel.innerHTML = `
+      <div class="panel-header">
+        <h2 class="panel-title">Active Games</h2>
+      </div>
+      <div class="panel-content" id="active-games-list"></div>
+    `;
+    
+    // Online Players Panel
+    const onlinePlayersPanel = createElement("div", "online-players-panel");
+    const onlinePlayersHeader = createElement("div", "panel-header");
+    const onlinePlayersTitle = createElement("h2", "panel-title", "Online Players");
+    this.onlinePlayersBadgeEl = createElement("span", "panel-badge", "0");
+    onlinePlayersHeader.append(onlinePlayersTitle, this.onlinePlayersBadgeEl);
+    this.onlinePlayersListEl = createElement("div", "panel-content");
+    this.onlinePlayersListEl.append(createElement("div", "panel-empty", "No players online"));
+    onlinePlayersPanel.append(onlinePlayersHeader, this.onlinePlayersListEl);
+    
+    sidebar.append(activeGamesPanel, onlinePlayersPanel);
+
+    grid.append(gameLibrary, sidebar);
+    content.append(grid);
+
+    // Create Game Modal
+    const modal = createElement("div", "create-game-modal");
+    modal.id = "create-game-modal";
+    const modalContent = createElement("div", "create-game-modal-content");
+    
+    const modalHeader = createElement("div", "create-game-modal-header");
+    const modalTitle = createElement("h2", "create-game-modal-title", "Create New Game");
+    const modalClose = createElement("button", "create-game-modal-close") as HTMLButtonElement;
+    modalClose.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    modalClose.addEventListener("click", () => this.closeCreateGameModal());
+    modalHeader.append(modalTitle, modalClose);
+    
+    const modalBody = createElement("div", "create-game-modal-body");
+    const createForm = createElement("form", "create-game-form");
 
     const nameField = createElement("label", "field-group");
     const nameLabel = createElement("span", "field-label", "Game name");
@@ -214,61 +316,58 @@ export class LobbyScreen {
     gameTypeField.append(gameTypeLabel, this.gameTypeInput);
     maxPlayersField.append(maxPlayersLabel, this.maxPlayersInput);
 
-    this.createButton = createElement("button", "lobby-button lobby-button-primary", "Create Game") as HTMLButtonElement;
-    this.createButton.type = "submit";
-
-    createForm.append(nameField, gameTypeField, maxPlayersField, this.createButton);
+    createForm.append(nameField, gameTypeField, maxPlayersField);
     createForm.addEventListener("submit", (event) => {
       event.preventDefault();
       this.handleCreateGame();
     });
     this.syncGameTypeConstraints();
+    
+    modalBody.append(createForm);
+    
+    const modalFooter = createElement("div", "create-game-modal-footer");
+    const cancelButton = createElement("button", "lobby-button lobby-button-secondary", "Cancel") as HTMLButtonElement;
+    cancelButton.type = "button";
+    cancelButton.addEventListener("click", () => this.closeCreateGameModal());
+    
+    this.createButton = createElement("button", "lobby-button lobby-button-primary", "Create Game") as HTMLButtonElement;
+    this.createButton.type = "button";
+    this.createButton.addEventListener("click", () => {
+      createForm.requestSubmit();
+    });
+    
+    modalFooter.append(cancelButton, this.createButton);
+    
+    modalContent.append(modalHeader, modalBody, modalFooter);
+    modal.append(modalContent);
+    
+    // Close modal on backdrop click
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) {
+        this.closeCreateGameModal();
+      }
+    });
 
-    createSection.append(createHeading, createForm);
-
-    const filtersSection = createElement("section", "lobby-filters");
-    for (const filter of [
-      { key: "all", label: "All" },
-      { key: "waiting", label: "Waiting" },
-      { key: "in_progress", label: "In Progress" },
-    ] as const) {
-      const button = createElement("button", "lobby-filter-button") as HTMLButtonElement;
-      button.type = "button";
-      button.dataset.filter = filter.key;
-
-      const label = createElement("span", "filter-label", filter.label);
-      const count = createElement("span", "filter-badge", "0");
-
-      button.append(label, count);
-      button.addEventListener("click", () => this.setActiveFilter(filter.key));
-
-      this.filterButtons.set(filter.key, button);
-      this.filterCounts.set(filter.key, count);
-      filtersSection.append(button);
-    }
-
-    const listSection = createElement("section", "lobby-list-section");
-    const listHeading = createElement("h2", "section-title", "Open sessions");
-    const tableWrapper = createElement("div", "lobby-table-wrapper");
-    const table = createElement("table", "lobby-table");
-    const tableHead = createElement("thead");
-    const headRow = createElement("tr");
-
-    for (const label of ["Game", "Type", "Host", "Players", "Status", "Action"]) {
-      headRow.append(createElement("th", undefined, label));
-    }
-
-    tableHead.append(headRow);
-    this.gameListBody = createElement("tbody") as HTMLTableSectionElement;
-    table.append(tableHead, this.gameListBody);
-    tableWrapper.append(table);
-    listSection.append(listHeading, tableWrapper);
-
-    panel.append(header, this.notificationEl, playerSection, createSection, filtersSection, listSection);
-    this.overlay.append(panel);
+    dashboard.append(header, content, this.notificationEl, modal);
+    this.overlay.append(dashboard);
 
     this.renderGameList();
     this.setActiveFilter("all");
+  }
+
+  private openCreateGameModal(): void {
+    const modal = document.getElementById("create-game-modal");
+    if (modal) {
+      modal.classList.add("visible");
+      this.gameNameInput.focus();
+    }
+  }
+
+  private closeCreateGameModal(): void {
+    const modal = document.getElementById("create-game-modal");
+    if (modal) {
+      modal.classList.remove("visible");
+    }
   }
 
   onEvent(callback: LobbyEventCallback): void {
@@ -337,6 +436,12 @@ export class LobbyScreen {
       this.setCreatePending(false);
       this.showNotice(payload.message, "error");
       this.eventCallback?.({ type: "error", message: payload.message });
+    });
+
+    room.onMessage(ONLINE_PLAYERS, (payload: OnlinePlayersPayload) => {
+      this.onlinePlayers.length = 0;
+      this.onlinePlayers.push(...payload.players);
+      this.renderOnlinePlayers();
     });
   }
 
@@ -472,27 +577,182 @@ export class LobbyScreen {
     this.gameListBody.textContent = "";
 
     const filteredGames = this.getFilteredGames();
+    
+    // Render game type tiles (always show available game types)
+    for (const gameTypeOption of GAME_TYPE_OPTIONS) {
+      const activeGamesOfType = filteredGames.filter(g => g.gameType === gameTypeOption.value);
+      const tile = this.buildGameTile(gameTypeOption.value, gameTypeOption.label, activeGamesOfType.length);
+      this.gameListBody.append(tile);
+    }
+
+    // If no games, show empty state in game tiles grid
     if (filteredGames.length === 0) {
-      const emptyRow = createElement("tr", "lobby-empty-row");
-      const emptyCell = createElement("td", undefined, this.emptyMessageForFilter()) as HTMLTableCellElement;
-      emptyCell.colSpan = 6;
-      emptyRow.append(emptyCell);
-      this.gameListBody.append(emptyRow);
+      const emptyTile = createElement("div", "panel-empty");
+      emptyTile.textContent = this.emptyMessageForFilter();
+      emptyTile.style.gridColumn = "1 / -1";
+      emptyTile.style.padding = "2rem";
+      emptyTile.style.textAlign = "center";
+      emptyTile.style.color = "#71717a";
+      this.gameListBody.append(emptyTile);
+    }
+
+    // Render active games in sidebar
+    this.renderActiveGamesList(filteredGames);
+  }
+
+  private buildGameTile(gameType: string, label: string, activeCount: number): HTMLElement {
+    const tile = createElement("button", "game-tile") as HTMLButtonElement;
+    tile.type = "button";
+    
+    const imageArea = createElement("div", "game-tile-image");
+    const imageInner = createElement("div", "game-tile-image-inner");
+    
+    // Use gradient backgrounds for each game type
+    const gradients: Record<string, string> = {
+      checkers: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      backgammon: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+    };
+    imageInner.style.background = gradients[gameType] || "linear-gradient(135deg, #7c3aed 0%, #9333ea 100%)";
+    
+    imageArea.append(imageInner);
+    
+    const content = createElement("div", "game-tile-content");
+    const name = createElement("h3", "game-tile-name", label);
+    const meta = createElement("div", "game-tile-meta");
+    
+    const players = createElement("span", "game-tile-players");
+    players.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>2 players</span>`;
+    
+    const active = createElement("span", "game-tile-active", `${activeCount} active`);
+    
+    meta.append(players, active);
+    content.append(name, meta);
+    
+    tile.append(imageArea, content);
+    tile.addEventListener("click", () => {
+      this.gameTypeInput.value = gameType;
+      this.syncGameTypeConstraints();
+      this.openCreateGameModal();
+    });
+    
+    return tile;
+  }
+
+  private renderActiveGamesList(games: GameSessionInfo[]): void {
+    const activeGamesList = document.getElementById("active-games-list");
+    if (!activeGamesList) {
+      return;
+    }
+    
+    activeGamesList.textContent = "";
+    
+    if (games.length === 0) {
+      const empty = createElement("div", "panel-empty", "No active games yet");
+      activeGamesList.append(empty);
+      return;
+    }
+    
+    for (const game of games) {
+      const card = this.buildActiveGameCard(game);
+      activeGamesList.append(card);
+    }
+  }
+
+  private renderOnlinePlayers(): void {
+    this.onlinePlayersBadgeEl.textContent = String(this.onlinePlayers.length);
+    this.onlinePlayersListEl.textContent = "";
+
+    if (this.onlinePlayers.length === 0) {
+      this.onlinePlayersListEl.append(
+        createElement("div", "panel-empty", "No players online"),
+      );
       return;
     }
 
-    for (const game of filteredGames) {
-      const row = createElement("tr");
-      row.append(
-        this.buildTextCell(game.name || "Untitled game"),
-        this.buildTextCell(getGameTypeLabel(game.gameType || GAME_TYPE_OPTIONS[0].value)),
-        this.buildTextCell(game.hostName || "Unknown"),
-        this.buildTextCell(`${game.playerCount}/${game.maxPlayers}`),
-        this.buildStatusCell(game.status),
-        this.buildActionCell(game),
+    for (const player of this.onlinePlayers) {
+      const card = createElement("div", "online-player-item");
+
+      const avatarWrapper = createElement("div", "online-player-avatar-wrapper");
+      const avatar = createElement("div", "online-player-avatar");
+      avatar.textContent = player.displayName.charAt(0).toUpperCase();
+      const statusDot = createElement("div",
+        `online-player-status-dot ${player.status === "in_game" ? "in-game" : "online"}`,
       );
-      this.gameListBody.append(row);
+      avatarWrapper.append(avatar, statusDot);
+
+      const info = createElement("div", "online-player-info");
+      const name = createElement("div", "online-player-name", player.displayName);
+      const status = createElement("div", "online-player-status",
+        player.status === "in_game" ? "In Game" : "In Lobby",
+      );
+      info.append(name, status);
+
+      card.append(avatarWrapper, info);
+      this.onlinePlayersListEl.append(card);
     }
+  }
+
+  private buildActiveGameCard(game: GameSessionInfo): HTMLElement {
+    const card = createElement("div", "active-game-card");
+    
+    const header = createElement("div", "active-game-header");
+    const info = createElement("div", "active-game-info");
+    
+    const name = createElement("div", "active-game-name", game.name || "Untitled game");
+    const meta = createElement("div", "active-game-meta");
+    
+    const playersMeta = createElement("span", "active-game-meta-item");
+    playersMeta.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>${game.playerCount}/${game.maxPlayers}</span>`;
+    
+    meta.append(playersMeta);
+    
+    // Show time elapsed for in-progress games
+    if (game.status === "in_progress" && game.createdAt) {
+      const elapsed = Math.floor((Date.now() - game.createdAt) / 60000);
+      const timeMeta = createElement("span", "active-game-meta-item");
+      timeMeta.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>${elapsed}m</span>`;
+      meta.append(timeMeta);
+    }
+    
+    info.append(name, meta);
+    
+    const statusBadge = createElement("span", `game-status-badge ${game.status === "waiting" ? "waiting" : "playing"}`);
+    statusBadge.textContent = game.status === "waiting" ? "Waiting" : "Playing";
+    
+    header.append(info, statusBadge);
+    
+    const footer = createElement("div", "active-game-footer");
+    
+    // Player avatars
+    const playersDiv = createElement("div", "active-game-players");
+    // Show mock player avatars based on player count
+    for (let i = 0; i < Math.min(game.playerCount, 4); i++) {
+      const avatar = createElement("div", "player-avatar");
+      avatar.textContent = game.hostName ? game.hostName.charAt(0) : "?";
+      playersDiv.append(avatar);
+    }
+    
+    footer.append(playersDiv);
+    
+    // Join button for waiting games with space
+    const canJoin = game.status === "waiting" && game.playerCount < game.maxPlayers;
+    if (canJoin) {
+      const joinBtn = createElement("button", "active-game-join-btn") as HTMLButtonElement;
+      joinBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Join</span>';
+      joinBtn.addEventListener("click", () => {
+        if (!this.room) {
+          this.showNotice("Lobby is not connected yet.", "error");
+          return;
+        }
+        const payload: JoinGamePayload = { gameId: game.id };
+        this.pendingTransition = "join";
+        this.room.send(JOIN_GAME, payload);
+      });
+      footer.append(joinBtn);
+    }
+    
+    card.append(header, footer);
+    return card;
   }
 
   private getFilteredGames(): GameSessionInfo[] {
@@ -538,89 +798,5 @@ export class LobbyScreen {
     this.filterCounts.get("all")!.textContent = String(allGames.length);
     this.filterCounts.get("waiting")!.textContent = String(waitingCount);
     this.filterCounts.get("in_progress")!.textContent = String(inProgressCount);
-  }
-
-  private buildTextCell(text: string): HTMLTableCellElement {
-    const cell = createElement("td") as HTMLTableCellElement;
-    cell.textContent = text;
-    return cell;
-  }
-
-  private buildStatusCell(status: GameStatus): HTMLTableCellElement {
-    const cell = createElement("td") as HTMLTableCellElement;
-    const pill = createElement("span", `status-pill ${this.statusClass(status)}`, this.statusLabel(status));
-    cell.append(pill);
-    return cell;
-  }
-
-  private buildActionCell(game: GameSessionInfo): HTMLTableCellElement {
-    const cell = createElement("td") as HTMLTableCellElement;
-    const canJoin = game.status === "waiting" && game.playerCount < game.maxPlayers;
-    const canSpectate = game.canSpectate === true;
-
-    if (!canJoin && !canSpectate) {
-      const label = createElement(
-        "span",
-        "row-state",
-        game.status === "ended" ? "Closed" : "Full",
-      );
-      cell.append(label);
-      return cell;
-    }
-
-    if (canSpectate) {
-      const button = createElement("button", "lobby-button lobby-button-secondary", "Watch") as HTMLButtonElement;
-      button.type = "button";
-      button.addEventListener("click", () => {
-        if (!this.room) {
-          this.showNotice("Lobby is not connected yet.", "error");
-          return;
-        }
-
-        const payload: JoinGamePayload = { gameId: game.id, spectator: true };
-        this.pendingTransition = "join";
-        this.pendingSpectator = true;
-        this.room.send(JOIN_GAME, payload);
-      });
-
-      cell.append(button);
-      return cell;
-    }
-
-    const button = createElement("button", "lobby-button lobby-button-secondary", "Join") as HTMLButtonElement;
-    button.type = "button";
-    button.addEventListener("click", () => {
-      if (!this.room) {
-        this.showNotice("Lobby is not connected yet.", "error");
-        return;
-      }
-
-      const payload: JoinGamePayload = { gameId: game.id };
-      this.pendingTransition = "join";
-      this.room.send(JOIN_GAME, payload);
-    });
-
-    cell.append(button);
-    return cell;
-  }
-
-  private statusLabel(status: GameStatus): string {
-    if (status === "waiting") {
-      return "Waiting";
-    }
-    if (status === "in_progress") {
-      return "In Progress";
-    }
-    return "Ended";
-  }
-
-  private statusClass(status: GameStatus): string {
-    if (status === "waiting") {
-      return "is-waiting";
-    }
-    if (status === "in_progress") {
-      return "is-in-progress";
-    }
-    return "is-ended";
   }
 }

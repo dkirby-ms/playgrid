@@ -19,8 +19,11 @@ param postgresAdminPassword string
 @description('PostgreSQL database name')
 param postgresDatabaseName string = 'playgrid'
 
-@description('Custom domain name (optional)')
-param customDomain string = ''
+@description('UAT custom domain name (optional)')
+param customDomainUat string = ''
+
+@description('Production custom domain name (optional)')
+param customDomainProd string = ''
 
 // Naming convention: playgrid-{env}-{resource-type}
 var resourcePrefix = 'playgrid-${environmentName}'
@@ -30,6 +33,21 @@ var containerAppName = 'playgrid-${environmentName}'
 var logAnalyticsName = '${resourcePrefix}-logs'
 var postgresServerName = '${resourcePrefix}-pg'
 var keyVaultName = replace('${resourcePrefix}-kv', '-', '') // shorten for 24 char limit
+var selectedCustomDomain = environmentName == 'uat'
+  ? customDomainUat
+  : environmentName == 'prod'
+    ? customDomainProd
+    : ''
+var customDomains = empty(selectedCustomDomain)
+  ? []
+  : [
+      {
+        name: selectedCustomDomain
+        bindingType: 'Disabled'
+      }
+    ]
+var bootstrapPlaceholderImage = 'node:22-alpine'
+var bootstrapPlaceholderCommand = 'if [ -f /app/public/server/dist/src/index.js ]; then exec node /app/public/server/dist/src/index.js; fi; exec node -e "const http = require(\\"http\\"); const port = Number(process.env.PORT || 2567); http.createServer((req, res) => { if (req.url === \\"/health\\") { res.writeHead(200, { \\"Content-Type\\": \\"application/json\\" }); res.end(JSON.stringify({ status: \\"ok\\", mode: \\"bootstrap-placeholder\\" })); return; } res.writeHead(200, { \\"Content-Type\\": \\"text/plain\\" }); res.end(\\"PlayGrid infrastructure bootstrap placeholder\\"); }).listen(port, \\"0.0.0.0\\");"'
 
 // Container App configuration based on environment
 var containerAppConfig = {
@@ -196,6 +214,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: 2567
         transport: 'http'
         allowInsecure: false
+        customDomains: customDomains
         traffic: [
           {
             latestRevision: true
@@ -221,7 +240,15 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'playgrid'
-          image: '${acr.name}.azurecr.io/playgrid:latest'
+          // Use a public bootstrap image so the first infra deploy succeeds before CI has pushed the real app image into ACR.
+          image: bootstrapPlaceholderImage
+          command: [
+            '/bin/sh'
+            '-c'
+          ]
+          args: [
+            bootstrapPlaceholderCommand
+          ]
           resources: {
             cpu: json(containerAppConfig[environmentName].cpu)
             memory: containerAppConfig[environmentName].memory

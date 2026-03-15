@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCreateRoom, mockGameRegistry, sharedExports } = vi.hoisted(() => ({
+const { mockCreateRoom, mockGameRegistry, mockedCloseCode, sharedExports } = vi.hoisted(() => ({
   mockCreateRoom: vi.fn(),
   mockGameRegistry: {
     getAll: vi.fn(),
     get: vi.fn(),
     has: vi.fn(),
+  },
+  mockedCloseCode: {
+    NORMAL_CLOSURE: 1000,
+    CONSENTED: 4000,
   },
   sharedExports: {
     CREATE_GAME: "create_game",
@@ -20,6 +24,7 @@ const { mockCreateRoom, mockGameRegistry, sharedExports } = vi.hoisted(() => ({
     GAME_STARTED: "game_started",
     GAME_PLAYERS: "game_players",
     LOBBY_ERROR: "lobby_error",
+    ONLINE_PLAYERS: "online_players",
     DEFAULT_MAP_SIZE: 128,
     LOBBY_DEFAULTS: {
       MIN_PLAYERS: 1,
@@ -32,6 +37,7 @@ const { mockCreateRoom, mockGameRegistry, sharedExports } = vi.hoisted(() => ({
 
 vi.mock("colyseus", () => ({
   Room: class {},
+  CloseCode: mockedCloseCode,
   matchMaker: { createRoom: mockCreateRoom },
 }));
 
@@ -57,6 +63,7 @@ const {
 
 const LobbyRoom = lobbyModule?.LobbyRoom;
 const describeLobby = LobbyRoom ? describe : describe.skip;
+const CONSENTED_CLOSE = mockedCloseCode.CONSENTED;
 
 type MockClient = {
   sessionId: string;
@@ -88,8 +95,8 @@ function createLobbyRoom(): TestRoom {
 
   const games = new Map<string, any>();
   const players = new Map<string, any>();
-
-  return Object.assign(Object.create(LobbyRoom.prototype), {
+  const room = Object.assign(new LobbyRoom(), {
+    roomId: "lobby-room",
     state: { games, players },
     games,
     waitingPlayers: new Map<string, Map<string, any>>(),
@@ -98,11 +105,19 @@ function createLobbyRoom(): TestRoom {
     pendingGameOptions: new Map<string, Record<string, unknown>>(),
     gameRoomIds: new Map<string, string>(),
     clients: [] as MockClient[],
+    allowReconnection: vi.fn(),
     broadcast: vi.fn(),
     onMessage: vi.fn(),
+    presence: {
+      subscribe: vi.fn().mockResolvedValue(undefined),
+      unsubscribe: vi.fn(),
+    },
     setState: vi.fn(),
     setSimulationInterval: vi.fn(),
   });
+
+  room.onCreate();
+  return room;
 }
 
 function registerClient(
@@ -290,9 +305,26 @@ describeLobby("LobbyRoom pregame flow", () => {
     expect(getWaitingPlayers(room, gameId).get(guest.sessionId)?.isReady).toBe(false);
   });
 
-  it("starts a game through matchMaker and notifies the waiting players", async () => {
+  it("rejects starting a game while joined players are still unready", async () => {
     const gameId = await createGame(room, host);
     await room.handleJoinGame(guest, { gameId });
+
+    host.send.mockClear();
+    guest.send.mockClear();
+
+    await room.handleStartGame(host);
+
+    expect(mockCreateRoom).not.toHaveBeenCalled();
+    expect(getGame(room, gameId)?.status).toBe("waiting");
+    expect(findPayload(host, GAME_STARTED)).toBeUndefined();
+    expect(findPayload(guest, GAME_STARTED)).toBeUndefined();
+    expectLobbyError(host, /ready/i);
+  });
+
+  it("starts a game through matchMaker once every waiting player is ready", async () => {
+    const gameId = await createGame(room, host);
+    await room.handleJoinGame(guest, { gameId });
+    room.handleSetReady(guest, { ready: true });
 
     host.send.mockClear();
     guest.send.mockClear();
@@ -315,7 +347,6 @@ describeLobby("LobbyRoom pregame flow", () => {
     const gameId = await createGame(room, host, { name: "Full Flow" });
 
     await room.handleJoinGame(guest, { gameId });
-    room.handleSetReady(host, { ready: true });
     room.handleSetReady(guest, { ready: true });
     await room.handleStartGame(host);
 
@@ -475,6 +506,18 @@ describeLobby("LobbyRoom pregame flow", () => {
     expect(getTrackedGameId(room, guest.sessionId)).toBeFalsy();
   });
 
+  it("removes a consented leaver from the waiting room immediately", async () => {
+    const gameId = await createGame(room, host);
+    await room.handleJoinGame(guest, { gameId });
+
+    await room.onLeave(guest, CONSENTED_CLOSE);
+
+    expect(getWaitingPlayers(room, gameId).has(guest.sessionId)).toBe(false);
+    expect(getTrackedGameId(room, guest.sessionId)).toBeFalsy();
+    expect(room.sessions.has(guest.sessionId)).toBe(false);
+    expect(getGame(room, gameId)).toMatchObject({ playerCount: 1, status: "waiting" });
+  });
+
   it("removes the game when the host leaves an otherwise empty waiting game", async () => {
     const gameId = await createGame(room, host);
 
@@ -484,17 +527,43 @@ describeLobby("LobbyRoom pregame flow", () => {
     expect(room.waitingPlayers.has(gameId)).toBe(false);
   });
 
-  it("cleans up tracked waiting-room membership on disconnect", async () => {
+  it("preserves a waiting-room spot during an unexpected disconnect", async () => {
     const gameId = await createGame(room, host);
     await room.handleJoinGame(guest, { gameId });
+    room.allowReconnection.mockResolvedValue(undefined);
 
-    room.onLeave(guest);
+    await room.onLeave(guest);
+
+    expect(room.allowReconnection).toHaveBeenCalledWith(guest, 30);
+    expect(getWaitingPlayers(room, gameId).has(guest.sessionId)).toBe(true);
+    expect(getTrackedGameId(room, guest.sessionId)).toBe(gameId);
+    expect(room.sessions.has(guest.sessionId)).toBe(true);
+  });
+
+  it("keeps a host-owned waiting room reserved across an unexpected disconnect", async () => {
+    const gameId = await createGame(room, host);
+    room.allowReconnection.mockResolvedValue(undefined);
+
+    await room.onLeave(host);
+
+    expect(getGames(room).has(gameId)).toBe(true);
+    expect(getTrackedGameId(room, host.sessionId)).toBe(gameId);
+    expect(room.sessions.has(host.sessionId)).toBe(true);
+  });
+
+  it("cleans up tracked waiting-room membership when the reconnect window expires", async () => {
+    const gameId = await createGame(room, host);
+    await room.handleJoinGame(guest, { gameId });
+    room.allowReconnection.mockRejectedValue(new Error("timed out"));
+
+    await room.onLeave(guest);
 
     expect(getWaitingPlayers(room, gameId).has(guest.sessionId)).toBe(false);
     expect(getTrackedGameId(room, guest.sessionId)).toBeFalsy();
+    expect(room.sessions.has(guest.sessionId)).toBe(false);
   });
 
-  it("clears an in-progress game assignment when a lobby client disconnects", async () => {
+  it("clears an in-progress game assignment when the reconnect window expires", async () => {
     const gameId = await createGame(room, host);
     const trackedSession = room.sessions.get(host.sessionId);
     const game = getGame(room, gameId);
@@ -505,12 +574,28 @@ describeLobby("LobbyRoom pregame flow", () => {
 
     game.status = "in_progress";
     trackedSession.currentGameId = gameId;
+    room.allowReconnection.mockRejectedValue(new Error("timed out"));
 
-    room.onLeave(host);
+    await room.onLeave(host);
 
     expect(trackedSession.currentGameId).toBeUndefined();
     expect(room.sessions.has(host.sessionId)).toBe(false);
     expect(getGame(room, gameId)?.status).toBe("in_progress");
+  });
+
+  it("removes disposed game rooms from the lobby and clears player assignments", async () => {
+    const gameId = await createGame(room, host);
+    await room.handleJoinGame(guest, { gameId });
+    room.handleSetReady(guest, { ready: true });
+    await room.handleStartGame(host);
+
+    const disposeListener = room.presence.subscribe.mock.calls[0]?.[1];
+    disposeListener?.({ gameId, roomId: "game-room-123" });
+
+    expect(getGames(room).has(gameId)).toBe(false);
+    expect(getTrackedGameId(room, host.sessionId)).toBeFalsy();
+    expect(getTrackedGameId(room, guest.sessionId)).toBeFalsy();
+    expect(room.broadcast).toHaveBeenCalledWith(shared.GAME_REMOVED, { gameId });
   });
 
   it("allows a solo host to start a game", async () => {
