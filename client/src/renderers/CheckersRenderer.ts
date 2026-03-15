@@ -8,7 +8,7 @@ import {
   type CheckersState,
   type GameResult,
 } from "@eschaton/shared";
-import { Container, Graphics, Text } from "pixi.js";
+import { Container, FillGradient, Graphics, Text } from "pixi.js";
 import {
   getPieceColor,
   getPlayerColorFromPlayerIndex,
@@ -27,14 +27,27 @@ const BOARD_CELL_COUNT = BOARD_DIMENSION * BOARD_DIMENSION;
 const DEFAULT_WIDTH = 800;
 const DEFAULT_HEIGHT = 600;
 const LIGHT_SQUARE_COLOR = 0xf0d9b5;
-const DARK_SQUARE_COLOR = 0xb58863;
-const BLACK_PIECE_COLOR = 0x333333;
-const RED_PIECE_COLOR = 0xcc3333;
-const KING_MARKER_COLOR = 0xf7e36a;
+const LIGHT_SQUARE_ALT_COLOR = 0xe8d1ab;
+const DARK_SQUARE_COLOR = 0x8b6914;
+const DARK_SQUARE_ALT_COLOR = 0x7a5c10;
+const DARK_SQUARE_SHADOW_COLOR = 0x5a440a;
+const BLACK_PIECE_COLOR = 0x2a2a2a;
+const BLACK_PIECE_HIGHLIGHT = 0x4a4a4a;
+const BLACK_PIECE_SHADOW = 0x111111;
+const RED_PIECE_COLOR = 0xbe2929;
+const RED_PIECE_HIGHLIGHT = 0xe04040;
+const RED_PIECE_SHADOW = 0x7a1616;
+const KING_MARKER_COLOR = 0xffd700;
 const PIECE_OUTLINE_COLOR = 0x111111;
+const PIECE_DROP_SHADOW_COLOR = 0x000000;
+const PIECE_RING_ALPHA = 0.18;
 const SELECTED_SQUARE_COLOR = 0xf7e36a;
 const VALID_TARGET_COLOR = 0x53d769;
 const VALID_TARGET_ALPHA = 0.8;
+const BOARD_FRAME_COLOR = 0x5c3d1a;
+const BOARD_FRAME_HIGHLIGHT = 0x7a5630;
+const BOARD_FRAME_SHADOW = 0x3a2510;
+const BOARD_FRAME_WIDTH = 12;
 const HUD_TEXT_COLOR = 0xffffff;
 const SUBTLE_TEXT_COLOR = 0xd7d9df;
 const TURN_READY_COLOR = 0x53d769;
@@ -61,6 +74,7 @@ export class CheckersRenderer implements GameRenderer {
   readonly container = new Container();
 
   private readonly boardLayer = new Container();
+  private readonly boardFrame = new Graphics();
   private readonly piecesLayer = new Container();
   private readonly overlayLayer = new Container();
   private readonly overlayBackground = new Graphics();
@@ -149,6 +163,7 @@ export class CheckersRenderer implements GameRenderer {
     }
 
     this.container.addChild(
+      this.boardFrame,
       this.boardLayer,
       this.piecesLayer,
       this.blackCountText,
@@ -232,21 +247,51 @@ export class CheckersRenderer implements GameRenderer {
   }
 
   private redrawBoard(): void {
+    const fw = BOARD_FRAME_WIDTH;
+    this.boardFrame.clear();
+    // Outer frame shadow
+    this.boardFrame
+      .rect(this.boardOffsetX - fw, this.boardOffsetY - fw, this.boardSize + fw * 2, this.boardSize + fw * 2)
+      .fill(BOARD_FRAME_SHADOW);
+    // Main frame body
+    this.boardFrame
+      .rect(this.boardOffsetX - fw + 2, this.boardOffsetY - fw + 2, this.boardSize + fw * 2 - 4, this.boardSize + fw * 2 - 4)
+      .fill(BOARD_FRAME_COLOR);
+    // Top/left highlight bevel
+    this.boardFrame
+      .rect(this.boardOffsetX - fw + 2, this.boardOffsetY - fw + 2, this.boardSize + fw * 2 - 4, 3)
+      .fill({ color: BOARD_FRAME_HIGHLIGHT, alpha: 0.7 });
+    this.boardFrame
+      .rect(this.boardOffsetX - fw + 2, this.boardOffsetY - fw + 2, 3, this.boardSize + fw * 2 - 4)
+      .fill({ color: BOARD_FRAME_HIGHLIGHT, alpha: 0.5 });
+
     for (let displayIndex = 0; displayIndex < BOARD_CELL_COUNT; displayIndex += 1) {
       const boardIndex = this.toBoardIndex(displayIndex);
       const row = Math.floor(displayIndex / BOARD_DIMENSION);
       const column = displayIndex % BOARD_DIMENSION;
       const square = this.squareGraphics[displayIndex];
-      const squareColor = (row + column) % 2 === 0 ? LIGHT_SQUARE_COLOR : DARK_SQUARE_COLOR;
+      const isDark = (row + column) % 2 !== 0;
       const x = this.boardOffsetX + (column * this.squareSize);
       const y = this.boardOffsetY + (row * this.squareSize);
       const isSelected = this.selectedIndex === boardIndex;
       const isValidTarget = this.validTargetIndexes.has(boardIndex);
 
       square.clear();
-      square.rect(x, y, this.squareSize, this.squareSize).fill(squareColor);
+
+      if (isDark) {
+        // Checkerboard pattern on dark squares for subtle wood texture
+        const altRow = (row + column) % 4 < 2;
+        square.rect(x, y, this.squareSize, this.squareSize).fill(altRow ? DARK_SQUARE_COLOR : DARK_SQUARE_ALT_COLOR);
+        // Inner shadow on top and left edges
+        square.rect(x, y, this.squareSize, 2).fill({ color: DARK_SQUARE_SHADOW_COLOR, alpha: 0.4 });
+        square.rect(x, y, 2, this.squareSize).fill({ color: DARK_SQUARE_SHADOW_COLOR, alpha: 0.3 });
+      } else {
+        const altRow = (row + column) % 4 === 0;
+        square.rect(x, y, this.squareSize, this.squareSize).fill(altRow ? LIGHT_SQUARE_COLOR : LIGHT_SQUARE_ALT_COLOR);
+      }
 
       if (isSelected) {
+        square.rect(x, y, this.squareSize, this.squareSize).fill({ color: SELECTED_SQUARE_COLOR, alpha: 0.35 });
         square.stroke({
           color: SELECTED_SQUARE_COLOR,
           width: Math.max(3, this.squareSize * 0.08),
@@ -272,6 +317,35 @@ export class CheckersRenderer implements GameRenderer {
     const pieceRadius = this.squareSize * 0.35;
     const outlineWidth = Math.max(1, this.squareSize * 0.04);
 
+    // Create gradients once for efficiency
+    const blackGradient = new FillGradient({
+      type: 'radial',
+      center: { x: 0.42, y: 0.38 },
+      innerRadius: 0,
+      outerCenter: { x: 0.5, y: 0.5 },
+      outerRadius: 0.5,
+      colorStops: [
+        { offset: 0, color: toCssHexColor(BLACK_PIECE_HIGHLIGHT) },
+        { offset: 0.5, color: toCssHexColor(BLACK_PIECE_COLOR) },
+        { offset: 1, color: toCssHexColor(BLACK_PIECE_SHADOW) },
+      ],
+      textureSpace: 'local',
+    });
+
+    const redGradient = new FillGradient({
+      type: 'radial',
+      center: { x: 0.42, y: 0.38 },
+      innerRadius: 0,
+      outerCenter: { x: 0.5, y: 0.5 },
+      outerRadius: 0.5,
+      colorStops: [
+        { offset: 0, color: toCssHexColor(RED_PIECE_HIGHLIGHT) },
+        { offset: 0.5, color: toCssHexColor(RED_PIECE_COLOR) },
+        { offset: 1, color: toCssHexColor(RED_PIECE_SHADOW) },
+      ],
+      textureSpace: 'local',
+    });
+
     for (const [index, piece] of this.board.entries()) {
       if (piece === EMPTY) {
         continue;
@@ -282,22 +356,40 @@ export class CheckersRenderer implements GameRenderer {
       const column = displayIndex % BOARD_DIMENSION;
       const centerX = this.boardOffsetX + (column * this.squareSize) + (this.squareSize / 2);
       const centerY = this.boardOffsetY + (row * this.squareSize) + (this.squareSize / 2);
-      const pieceColor = piece === BLACK || piece === BLACK_KING ? BLACK_PIECE_COLOR : RED_PIECE_COLOR;
+      const isBlackPiece = piece === BLACK || piece === BLACK_KING;
+      const gradient = isBlackPiece ? blackGradient : redGradient;
 
+      // Draw drop shadow
+      pieceGraphics
+        .circle(centerX + 2, centerY + 3, pieceRadius * 1.05)
+        .fill({ color: PIECE_DROP_SHADOW_COLOR, alpha: 0.35 });
+
+      // Draw main piece with radial gradient for 3D dome effect
       pieceGraphics
         .circle(centerX, centerY, pieceRadius)
-        .fill(pieceColor)
+        .fill(gradient)
         .stroke({ color: PIECE_OUTLINE_COLOR, width: outlineWidth });
+
+      // Add subtle highlight ring at the top
+      pieceGraphics
+        .circle(centerX, centerY - pieceRadius * 0.15, pieceRadius * 0.6)
+        .fill({ color: 0xffffff, alpha: PIECE_RING_ALPHA });
 
       if (piece === BLACK_KING || piece === RED_KING) {
         const kingMarker = new Text({
-          text: "K",
+          text: "♛",
           style: {
             fontFamily: "sans-serif",
-            fontSize: this.squareSize * 0.34,
+            fontSize: this.squareSize * 0.42,
             fontWeight: "700",
             fill: KING_MARKER_COLOR,
             align: "center",
+            dropShadow: {
+              color: 0x000000,
+              alpha: 0.5,
+              blur: 2,
+              distance: 1,
+            },
           },
         });
         kingMarker.anchor.set(0.5);

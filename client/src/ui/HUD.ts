@@ -144,11 +144,11 @@ export class HUD {
     Object.assign(panel.style, {
       position: "absolute",
       top: "16px",
-      left: "16px",
+      right: "16px",
       display: "flex",
       flexDirection: "column",
       gap: "10px",
-      width: "min(360px, calc(100vw - 152px))",
+      width: "min(300px, calc(100vw - 152px))",
       padding: "12px 14px",
       background: "rgba(16, 16, 29, 0.92)",
       border: "1px solid rgba(126, 207, 255, 0.22)",

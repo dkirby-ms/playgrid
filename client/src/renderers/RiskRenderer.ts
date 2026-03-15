@@ -321,7 +321,7 @@ export class RiskRenderer implements GameRenderer {
       const graphic = this.territoryGraphics.get(layout.id);
       if (!graphic) continue;
 
-      const territory = this.state.territories.get(layout.id);
+      const territory = this.state.territories?.get(layout.id);
       const x = this.mapOffsetX + (layout.x * this.mapScale);
       const y = this.mapOffsetY + (layout.y * this.mapScale);
       const radius = 28 * this.mapScale;
@@ -420,7 +420,7 @@ export class RiskRenderer implements GameRenderer {
       (this.state.turnPhase === "reinforce" && this.getArmiesToPlace() === 0)
     );
 
-    const riskPlayer = this.state.riskPlayers.get(sessionId);
+    const riskPlayer = this.state.riskPlayers?.get(sessionId);
     const canTradeCards = isMyTurn && 
       this.state.turnPhase === "reinforce" && 
       (riskPlayer?.cardsHeld ?? 0) >= 3;
@@ -502,7 +502,7 @@ export class RiskRenderer implements GameRenderer {
     if (this.state.turnPhase === "fortify") {
       if (this.selectedTerritory) {
         if (this.validTargets.has(territoryId)) {
-          const fromTerritory = this.state.territories.get(this.selectedTerritory);
+          const fromTerritory = this.state.territories?.get(this.selectedTerritory);
           const moveCount = Math.max(1, (fromTerritory?.armyCount ?? 1) - 1);
           this.room.send("fortify", {
             from: this.selectedTerritory,
@@ -549,7 +549,7 @@ export class RiskRenderer implements GameRenderer {
     if (!this.selectedTerritory || !this.state) return;
 
     const sessionId = this.room?.sessionId ?? "";
-    const territory = this.state.territories.get(this.selectedTerritory);
+    const territory = this.state.territories?.get(this.selectedTerritory);
     
     if (!territory || territory.owner !== sessionId) {
       this.clearSelection();
@@ -571,14 +571,14 @@ export class RiskRenderer implements GameRenderer {
 
     if (this.state.turnPhase === "attack") {
       for (const adjacentId of selectedLayout.adjacentTo) {
-        const adjacent = this.state.territories.get(adjacentId);
+        const adjacent = this.state.territories?.get(adjacentId);
         if (adjacent && adjacent.owner !== sessionId) {
           this.validTargets.add(adjacentId);
         }
       }
     } else if (this.state.turnPhase === "fortify") {
       for (const adjacentId of selectedLayout.adjacentTo) {
-        const adjacent = this.state.territories.get(adjacentId);
+        const adjacent = this.state.territories?.get(adjacentId);
         if (adjacent && adjacent.owner === sessionId) {
           this.validTargets.add(adjacentId);
         }
@@ -619,7 +619,7 @@ export class RiskRenderer implements GameRenderer {
     if (!this.state || !this.room) return 0;
     
     const sessionId = this.room.sessionId;
-    const riskPlayer = this.state.riskPlayers.get(sessionId);
+    const riskPlayer = this.state.riskPlayers?.get(sessionId);
     
     return riskPlayer?.armiesToPlace ?? 0;
   }
@@ -627,7 +627,7 @@ export class RiskRenderer implements GameRenderer {
   private getPlayerIndex(sessionId: string): number {
     if (!this.state) return -1;
 
-    const playersList = Array.from(this.state.players.values());
+    const playersList = Array.from(this.state.players?.values() ?? []);
     const index = playersList.findIndex(p => p.sessionId === sessionId);
     
     return index;

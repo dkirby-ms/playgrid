@@ -6,6 +6,7 @@
 |-----------|----------|----------|
 | Architecture & scope | Hal | Project structure, tech decisions, priorities |
 | Rendering & UI | Gately | Canvas rendering, game loop, input handling |
+| UX & Design | Mario | Layout, color, usability, interaction design |
 | Game systems | Pemulis | Simulation, AI, world generation, combat |
 | CI/CD & DevOps | Marathe | Workflows, deployment, build pipelines |
 | Testing | Steeply | Tests, edge cases, performance checks |
@@ -44,6 +45,7 @@
 | `squad:steeply` | Testing | Steeply |
 | `squad:marathe` | CI/CD, infra | Marathe |
 | `squad:joelle` | Community, docs | Joelle |
+| `squad:mario` | UX design, layout, usability | Mario |
 | `squad:copilot` | Single-file fixes, tests, docs | @copilot |
 
 ## Rules

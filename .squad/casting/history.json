@@ -1,0 +1,18 @@
+{
+  "assignments": [
+    {
+      "assignment_id": "ij-001",
+      "universe": "Infinite Jest",
+      "created_at": "2026-03-14T01:09:23Z",
+      "agents": ["Hal", "Gately", "Pemulis", "Steeply", "Marathe", "Joelle"],
+      "note": "Initial team — legacy named, casting initialized retroactively"
+    },
+    {
+      "assignment_id": "ij-002",
+      "universe": "Infinite Jest",
+      "created_at": "2026-03-15T23:33:39Z",
+      "agents": ["Mario"],
+      "note": "Added UX Consultant — Mario Incandenza, sees things others miss"
+    }
+  ]
+}
