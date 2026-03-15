@@ -1721,3 +1721,134 @@ Triaged issue #80 "Add Risk game plugin" and determined complexity, scope risks,
 - Timing is appropriate.
 - Decomposition prevents scope creep and enables parallel work (core logic → setup → rendering).
 
+
+---
+
+## Session: Risk Plugin Implementation Phase 1 (2026-03-15)
+
+### Pemulis: Risk Plugin Architecture
+
+**Status:** Implemented  
+**Date:** 2026-03-15  
+**Issue:** #80 (Phase 1 - Core Game Logic & Plugin)  
+
+Implemented the Risk game plugin following the established IGamePlugin pattern used by Checkers and Backgammon. Risk is significantly more complex than previous games with multi-phase turns, territory ownership, card mechanics, and variable player counts (2-6).
+
+**Decision 1: Setup Phase Strategy**
+
+Territories auto-distributed round-robin at game start, followed by a setup-place phase for initial army placement.
+
+Rationale: Original Risk manual territory selection is tedious and slows web play. Round-robin ensures fair distribution. Players then place remaining armies strategically (40−territories_owned). Matches digital Risk implementations; reduces setup time. Alternative considered: manual pick-one-at-a-time (too slow for async web play).
+
+**Decision 2: Card Mechanics Simplification**
+
+Track card count only (no card types: Infantry/Cavalry/Artillery). Trade any 3 cards for escalating bonus (4→6→8→10→12→15→20...).
+
+Rationale: Phase 1 has no card UI; tracking types wastes complexity. Simplified trade-in removes "forced trade when no valid set" edge case. Escalating bonus preserves Risk endgame acceleration. Can add card types in Phase 2 if UI supports it. Trade-off: less strategic depth than full card rules, but simpler implementation.
+
+**Decision 3: Turn Phase Management**
+
+Use string union types for turnPhase in state, enforce phase transitions in action handlers.
+
+Rationale: BaseGameRoom doesn't enforce phased turn config automatically. Each action handler validates current phase before executing. endPhase action transitions between reinforce→attack→fortify→reinforce. Simple state machine that client can render visually. Alternative considered: separate state machine class (over-engineered).
+
+**Decision 4: Combat Resolution**
+
+Pure server-side dice rolling with immediate resolution (no "roll until one side loses" loop). Each attack action is one dice throw; client can call multiple times.
+
+Rationale: Gives players control over when to stop attacking. Allows UI animation between rolls. Server-authoritative dice (no client cheating). Trade-off: more client→server round trips, better for web UX.
+
+**Decision 5: Territory Adjacency Data Structure**
+
+Static const arrays with adjacency lists in territoryData.ts, helper functions for lookups.
+
+Rationale: Territory graph never changes; hardcode it. Simple array lookups for adjacency checks (O(n) but n≤8 for any territory). Easy to verify correctness by reading the data. Alternative considered: adjacency matrix (harder to read, same performance).
+
+**Integration Notes:**
+- Plugin registered in `server/src/index.ts` alongside Checkers and Backgammon
+- State schema exported from `shared/src/games/risk/index.ts` for client access
+- All game logic in `riskLogic.ts` is pure functions (testable, reusable)
+- No client changes needed yet (Phase 1 is server-only)
+
+**Files Created:**
+- `server/src/games/risk/RiskPlugin.ts`
+- `server/src/games/risk/riskLogic.ts`
+- `server/src/games/risk/RiskState.ts`
+- `server/src/games/risk/territoryData.ts`
+- `shared/src/games/risk/index.ts`
+
+**Open Questions for Phase 2:**
+1. Should fortify require contiguous territory paths or just adjacency?
+2. How to handle attack animations with rapid consecutive attacks?
+3. Card UI: show card types retroactively or keep simplified system?
+4. Territory map rendering: SVG overlay or canvas-based?
+
+---
+
+### Steeply: Risk Test Strategy — Pure Logic First, Integration Later
+
+**Status:** Implemented  
+**Date:** 2026-03-15  
+**Issue:** #80 (Risk game plugin)  
+
+For complex game plugins like Risk (3× more complex than Checkers/Backgammon), use a phased test strategy:
+
+1. **Phase 1: Pure Logic Tests** — Test static data and pure functions immediately
+2. **Phase 2: Integration Stubs** — Write `.todo()` tests for plugin actions/lifecycle
+3. **Phase 3: Incremental Activation** — Convert `.todo()` to executable tests as implementation completes
+
+**Decision Rationale:**
+
+**Why Pure Logic First?**
+- Validates core game rules independently of plugin integration
+- Provides immediate value (16/64 tests passing on first commit)
+- Enables parallel work: Pemulis implements, Steeply validates
+- Catches errors in static data early (territory map, adjacency graph, continent bonuses)
+
+**Why `.todo()` for Integration?**
+- Documents expected behavior as executable specifications
+- Prevents brittle "mock everything" tests that don't test real behavior
+- Shows test coverage gaps in CI without blocking green builds
+- Easy conversion: just remove `.todo()` when implementation lands
+
+**Why Incremental Activation?**
+- Risk has 4 distinct phases (setup, reinforce, attack, fortify) that complete independently
+- Integration tests can activate phase-by-phase as Pemulis delivers
+- Reduces coordination overhead: no waiting for "all or nothing" completion
+- Maintains green CI throughout development
+
+**Implementation (Risk Game):**
+
+64 Total Tests:
+- 16 passing (pure logic): territory map, reinforcements, card trade-ins, initial armies
+- 48 `.todo()` (integration): plugin actions, lifecycle, state transitions, combat, win conditions
+
+**Test Categories:**
+- Territory Map (4): initialization, continent assignment, adjacency graph, continent bonus
+- Initial Setup (3): territory distribution, army allocation, player colors
+- Reinforcement (4): army pool deduction, continent bonus, edge cases
+- Card Mechanics (5): count tracking, trade-in validation, escalating bonus
+- Plugin Lifecycle (8): onCreate, onJoin, onLeave, turn order, state transitions
+- Reinforce Phase (12): setupPlace action, army placement, state updates
+- Attack Phase (14): territory validation, combat resolution, conquest mechanics
+- Fortify Phase (6): movement validation, army transfer, edge cases
+- Win Conditions (8): solo player detection, game end, final state, elimination
+
+**File:** `server/src/__tests__/risk.test.ts` (follows Backgammon pattern)
+
+**Imports:** Actual implementation (RiskPlugin, riskLogic, territoryData) with no mocks.
+
+**Cross-Agent Impact:**
+
+**Pemulis (Systems Dev):** Test expectations documented before implementation complete. Pure logic functions validated immediately (green tests = confidence). `.todo()` tests serve as acceptance criteria for plugin actions.
+
+**Gately (Game Dev):** Can reference test coverage when building UI (knows what server validates). `.todo()` tests hint at client-side testing needs.
+
+**Recommendation:** Adopt this pattern for all future complex game plugins (Dominoes, Poker, etc.):
+1. Identify pure logic (static data, calculations, validators)
+2. Test pure logic immediately with actual implementation
+3. Write `.todo()` integration tests as specification
+4. Convert `.todo()` to executable tests as plugin actions complete
+
+This balances immediate validation with practical coordination for parallel development.
+

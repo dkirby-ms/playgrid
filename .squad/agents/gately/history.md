@@ -106,3 +106,124 @@ Hal has triaged Risk and assigned you as the rendering lead. Your work is staged
 
 **Precedent:** Risk is next in approved game order (Dominoes → Poker → Hearts/Spades → Chess → Risk).
 
+---
+
+## 2026-03-15T01:48:51Z: Risk Plugin Phase 1 Complete — Schema Locked for Phase 3
+
+**From:** Squad Scribe  
+**Event:** Pemulis completed Risk core logic; Steeply completed test suite (16 passing, 48 `.todo()`)
+
+**Implementation Details for Your Phase 3 Work:**
+
+### State Schema (Locked)
+
+**File:** `shared/src/games/risk/RiskState.ts`
+
+**Key Types:**
+```typescript
+interface RiskState extends GameState {
+  territories: Territory[];           // 42 territories
+  players: Player[];                  // 2-6 players
+  turnPhase: 'reinforce' | 'attack' | 'fortify';
+  currentPlayerIndex: number;
+  cards: number;                      // Card count per player (no types in Phase 1)
+  round: number;
+}
+
+interface Territory {
+  id: number;                         // 0-41
+  owner: number;                      // Player index or -1 (neutral)
+  armies: number;
+  continent: string;                  // 'NorthAmerica' | 'SouthAmerica' | ...
+  neighbors: number[];                // Adjacency list (0-8 neighbors)
+}
+
+interface Player {
+  id: string;
+  index: number;
+  color: string;                      // 'red' | 'blue' | 'green' | ...
+  armies: number;                     // Reinforcement pool
+  eliminated: boolean;
+  cards: number;
+}
+```
+
+### Game Logic (Pure Functions)
+
+**File:** `server/src/games/risk/riskLogic.ts`
+
+**Key Functions (all pure, reusable):**
+- `calculateArmies(territories: Territory[], playerId: number)` → number (continent bonuses included)
+- `isAdjacent(from: number, to: number)` → boolean (from territoryData.ts)
+- `rollAttack(attackDice: number, defendDice: number)` → { attacker: number, defender: number } (casualties)
+- `validateTrade(cards: number)` → boolean
+- `getTradeBonus(cardCount: number)` → number (4→6→8→10→12→15→20...)
+- `getWinner(players: Player[])` → Player | null
+
+### Territory Data
+
+**File:** `server/src/games/risk/territoryData.ts`
+
+**Structure:**
+```typescript
+const TERRITORIES = [
+  { id: 0, name: 'Alaska', continent: 'NorthAmerica', neighbors: [1, 2, 29] },
+  // ... 42 total
+];
+
+function isAdjacent(from: number, to: number): boolean { ... }
+function getContinent(territoryId: number): string { ... }
+function getContinentBonus(continent: string): number { ... }
+```
+
+### Setup Sequence (for UI Design)
+
+1. **Auto-Distribute Phase (Server):** Round-robin territory ownership to all players
+2. **Setup-Place Phase (Interactive):** Players place remaining armies (40 − territories_owned) on their territories
+   - Client sends `setupPlace(territoryId, count)` actions
+   - Server validates: player owns territory, army pool > 0, count > 0
+   - State updates via message
+3. **Transition to Reinforce:** Once all armies placed, first player enters reinforce phase
+
+### Action Signatures (for Client Integration)
+
+**From RiskPlugin.ts:**
+- `setupPlace(playerId: string, territoryId: number, count: number)` → void
+- `reinforce(playerId: string, territoryId: number)` → void
+- `attack(playerId: string, from: number, to: number, diceCount: number)` → void
+- `fortify(playerId: string, from: number, to: number, armies: number)` → void
+- `endPhase(playerId: string)` → void
+
+### Rendering Notes for Phase 3
+
+**Territory Layout:**
+- 42 clickable regions (vs. 32 Checkers squares, 30 Backgammon points)
+- Continent colors: North America (green), South America (yellow), Europe (purple), Africa (orange), Asia (red), Australia (blue)
+- Hit detection: radius/polygon vs. center point (territories vary in size)
+
+**Army Display:**
+- Overlays per territory: icon/number showing army count
+- Update on reinforce/attack/fortify actions
+
+**Phase Indicator:**
+- HUD shows current phase: "Reinforce", "Attack", "Fortify"
+- Action buttons/prompts change per phase
+
+**Setup UI (Shared Responsibility):**
+- Phase 2: Territory selection interface + initial army placement drag/click UX
+- Territory highlight on hover (shows neighbors for attack validation)
+- Visual feedback: ownership colors, placement validation
+
+**Mobile Responsiveness:**
+- 44px+ hit areas for touchscreen
+- Continent legend (color key)
+- Responsive SVG/canvas with viewport scaling
+
+### Coordination with Pemulis & Steeply
+
+**Pemulis:** Will complete action handlers as Phase 1 progresses. RiskPlugin message signatures are stable.
+
+**Steeply:** 48 `.todo()` integration tests document expected behavior. 16 pure logic tests pass (territory map, continent bonuses verified).
+
+**Your Work:** Can begin procedural map generation and clickable region architecture immediately (schema locked, no blockers).
+
