@@ -169,9 +169,6 @@ resource postgresServer 'Microsoft.DBforPostgreSQL/flexibleServers@2023-03-01-pr
     highAvailability: {
       mode: 'Disabled'
     }
-    network: {
-      publicNetworkAccess: 'Enabled'
-    }
   }
 }
 
@@ -222,6 +219,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   identity: {
     type: 'SystemAssigned'
   }
+  dependsOn: createContainerAppEnv ? [
+    containerAppEnv
+  ] : []
   properties: {
     managedEnvironmentId: containerAppEnvId
     configuration: {

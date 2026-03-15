@@ -8,7 +8,8 @@ param containerAppEnvResourceId = ''
 
 param postgresAdminUsername = 'pgadmin'
 
-param postgresAdminPassword = readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD', '')
+// Required at deploy time. Export POSTGRES_ADMIN_PASSWORD before running az deployment group create.
+param postgresAdminPassword = readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD')
 
 param postgresDatabaseName = 'playgrid'
 
