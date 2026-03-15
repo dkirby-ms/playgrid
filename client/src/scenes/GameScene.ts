@@ -122,11 +122,14 @@ export class GameScene implements Scene {
 
     const players = this.extractPlayersFromState(this.room.state);
     const currentTurn = this.extractCurrentTurn(this.room.state);
+    const turnTimeRemaining = this.extractTurnTimeRemaining(this.room.state);
+    const showTimer = turnTimeRemaining > 0;
 
     this.hud.show(this.room, {
       players,
       currentTurn,
-      showTimer: false,
+      gameTimer: turnTimeRemaining,
+      showTimer,
     });
   }
 
@@ -137,10 +140,14 @@ export class GameScene implements Scene {
 
     const players = this.extractPlayersFromState(state);
     const currentTurn = this.extractCurrentTurn(state);
+    const turnTimeRemaining = this.extractTurnTimeRemaining(state);
+    const showTimer = turnTimeRemaining > 0;
 
     this.hud.update({
       players,
       currentTurn,
+      gameTimer: turnTimeRemaining,
+      showTimer,
     });
   }
 
@@ -185,6 +192,15 @@ export class GameScene implements Scene {
 
     const stateObj = state as Record<string, unknown>;
     return typeof stateObj.currentTurn === "string" ? stateObj.currentTurn : undefined;
+  }
+
+  private extractTurnTimeRemaining(state: unknown): number {
+    if (typeof state !== "object" || state === null) {
+      return 0;
+    }
+
+    const stateObj = state as Record<string, unknown>;
+    return typeof stateObj.turnTimeRemaining === "number" ? stateObj.turnTimeRemaining : 0;
   }
 
   private handleHUDEvent(event: HUDEvent): void {

@@ -79,6 +79,12 @@ export class BaseGameRoom extends Room {
       });
     }
 
+    if (this.clock) {
+      this.clock.setInterval(() => {
+        this.updateTurnTimeRemaining();
+      }, 1000);
+    }
+
     try {
       const pool = getPool();
       this.gameId = await gameRepository.createGame(pool, {
@@ -301,6 +307,7 @@ export class BaseGameRoom extends Room {
     this.turnManager.startTurns();
     this.state.currentTurn = this.turnManager.getCurrentPlayer();
     this.state.turnNumber = this.turnManager.getTurnNumber();
+    this.updateTurnTimeRemaining();
     trackEvent("game_started", {
       gameType: this.plugin.name,
       roomId: this.roomId,
@@ -316,6 +323,7 @@ export class BaseGameRoom extends Room {
 
     this.state.currentTurn = this.turnManager.nextTurn();
     this.state.turnNumber = this.turnManager.getTurnNumber();
+    this.updateTurnTimeRemaining();
   }
 
   private async handleTurnTimeout(sessionId: string) {
@@ -451,11 +459,20 @@ export class BaseGameRoom extends Room {
     if (this.turnManager?.isActive() && this.turnManager.getPlayerCount() > 0) {
       this.state.currentTurn = this.turnManager.getCurrentPlayer();
       this.state.turnNumber = this.turnManager.getTurnNumber();
+      this.updateTurnTimeRemaining();
       return;
     }
 
     if (this.state.phase !== "ended") {
       this.state.currentTurn = "";
+    }
+  }
+
+  private updateTurnTimeRemaining() {
+    if (this.turnManager?.isActive()) {
+      this.state.turnTimeRemaining = this.turnManager.getRemainingTimeSeconds();
+    } else {
+      this.state.turnTimeRemaining = 0;
     }
   }
 

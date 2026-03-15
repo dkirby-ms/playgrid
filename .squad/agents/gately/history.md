@@ -390,3 +390,77 @@ function getContinentBonus(continent: string): number { ... }
 - `server/src/__tests__/lobby-pregame.test.ts` — test expectations
 
 **PR:** #98 (merged to `dev`)
+
+---
+
+## 2026-01-13: Turn Timer Visibility Fix (Issue #100 / PR #101)
+
+**Problem:** Turn countdown timer was not visible during gameplay despite HUD component having timer display code. Players had no indication of remaining turn time.
+
+**Root Cause Analysis:**
+1. **Server-side**: TurnManager tracked `remainingTurnTimeMs` internally but had no method to expose it
+2. **Shared State**: BaseGameState schema had no field for turn time remaining
+3. **State sync**: No mechanism to broadcast timer updates from server to clients
+4. **Client-side**: GameScene initialized HUD with `showTimer: false` and never updated it
+
+**Solution - End-to-End Timer Synchronization:**
+
+**Shared State (`BaseGameState.ts`):**
+- Added `turnTimeRemaining: number` field to schema (synced via Colyseus)
+- Default value 0 when no timer active
+
+**Server (`TurnManager.ts`):**
+- Added `getRemainingTimeSeconds()` method to calculate current remaining time in seconds
+- Handles active/paused states correctly
+- Accounts for elapsed time since timer started
+- Returns 0 when timer not active
+
+**Server (`BaseGameRoom.ts`):**
+- Added `updateTurnTimeRemaining()` private method that queries TurnManager and updates state
+- Clock interval broadcasts updates every second: `this.clock.setInterval(() => this.updateTurnTimeRemaining(), 1000)`
+- Called on game start, turn advance, and state sync
+- Gracefully handles missing clock in tests (same pattern as endGame 6s delay)
+
+**Client (`GameScene.ts`):**
+- Added `extractTurnTimeRemaining(state)` helper to extract timer from state
+- Updated `initHUD()` and `updateHUD()` to pass timer data to HUD
+- Enables timer display when `turnTimeRemaining > 0`
+- HUD automatically shows/hides based on timer value
+
+**Timer Display Behavior:**
+- Shows MM:SS format (e.g., "1:45")
+- Updates every second via server broadcasts
+- Turns red border/text when under 30 seconds
+- Only visible when > 0 (games with turn limits)
+- Works with pause/resume on disconnect/reconnect
+
+**Key Architectural Decisions:**
+- Used existing Colyseus state sync (no custom messages needed)
+- Server is source of truth for time calculations
+- Client-side countdown in HUD is for display smoothness only
+- 1-second broadcast interval balances network traffic vs. responsiveness
+- Null-safe clock checks for test compatibility
+
+**Files Changed:**
+- `shared/src/BaseGameState.ts` — Added turnTimeRemaining field
+- `server/src/game/TurnManager.ts` — Added getRemainingTimeSeconds() method
+- `server/src/game/BaseGameRoom.ts` — Timer sync every second, update on turn changes
+- `client/src/scenes/GameScene.ts` — Extract and pass timer to HUD
+
+**Validation:**
+- ✅ Build passes (all workspaces)
+- ✅ Lint passes (0 new errors, 15 pre-existing warnings)
+- ✅ Tests pass (259 passed, 12 todo)
+
+**PR:** #101 (merged to `dev`)
+
+**Design Pattern Established:**
+When adding real-time game state that needs client visibility:
+1. Add field to shared state schema (BaseGameState or game-specific state)
+2. Server updates field on relevant events (turn changes, actions, etc.)
+3. Add clock interval if continuous updates needed (like countdown timers)
+4. Client extracts from state in scene's state change handler
+5. Pass to UI components for display
+
+This pattern avoids custom message protocols and leverages Colyseus's built-in state synchronization.
+
