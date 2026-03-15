@@ -643,6 +643,97 @@
         font-size: 0.875rem;
       }
 
+      /* Message Log Panel */
+      .message-log-panel {
+        border-radius: 12px;
+        background: rgba(39, 39, 42, 0.5);
+        backdrop-filter: blur(12px);
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        max-height: 400px;
+      }
+
+      .message-log-content {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: thin;
+        scrollbar-color: #3f3f46 transparent;
+      }
+
+      .message-log-content::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .message-log-content::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .message-log-content::-webkit-scrollbar-thumb {
+        background: #3f3f46;
+        border-radius: 3px;
+      }
+
+      .message-log-content::-webkit-scrollbar-thumb:hover {
+        background: #52525b;
+      }
+
+      .message-log-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .message-log-entry {
+        padding: 0.5rem;
+        border-radius: 6px;
+        background: rgba(24, 24, 27, 0.5);
+        font-size: 0.875rem;
+        line-height: 1.4;
+        display: flex;
+        gap: 0.5rem;
+        align-items: flex-start;
+        border-left: 2px solid transparent;
+      }
+
+      .message-log-entry--player_joined {
+        border-left-color: #22c55e;
+      }
+
+      .message-log-entry--player_left {
+        border-left-color: #71717a;
+      }
+
+      .message-log-entry--game_created {
+        border-left-color: #7c3aed;
+      }
+
+      .message-log-entry--game_started {
+        border-left-color: #f59e0b;
+      }
+
+      .message-log-entry--game_finished {
+        border-left-color: #3b82f6;
+      }
+
+      .message-log-entry--player_joined_game {
+        border-left-color: #a855f7;
+      }
+
+      .message-log-time {
+        color: #71717a;
+        font-size: 0.75rem;
+        font-weight: 500;
+        flex-shrink: 0;
+        line-height: 1.4;
+      }
+
+      .message-log-text {
+        color: #d4d4d8;
+        flex: 1;
+      }
+
       /* Create Game Modal */
       .create-game-modal {
         position: fixed;
