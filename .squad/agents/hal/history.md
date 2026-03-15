@@ -253,3 +253,8 @@ Steeply fixed order-dependent E2E test assertions by making them row-scoped. Dur
 - E2E infrastructure is now stable
 - Future game E2E tests should follow this pattern
 - No more flaky test failures due to test ordering
+
+## 2026-03-15 Update (Shared CAE Infrastructure)
+- **Infrastructure Decision Merged:** UAT and prod now share Container Apps Environment (`playgrid-shared-cae`) and Log Analytics workspace (`playgrid-shared-logs`) for cost optimization and deterministic convergence. Dev maintains isolated CAE.
+- **Scaling Alignment:** This aligns with the approved single-replica Phase 1 strategy; scales cleanly when multi-server support arrives
+- **Related:** Marathe's Bicep restructure enables conditional CAE creation via `containerAppEnvResourceId` parameter

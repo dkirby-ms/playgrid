@@ -1665,3 +1665,24 @@ Keep infrastructure deployment independent from image availability. Seed the Azu
 - Infra deploys can succeed before the first app image exists
 - Subsequent CI deploys replace the placeholder with the real application image without extra steps
 
+
+---
+
+### Marathe: Shared CAE Environment for UAT + Prod (2026-03-15)
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Keep `infra/main.bicep` as a single per-environment deployment template, but treat Container Apps Environment infrastructure as shared for non-dev environments:
+- `dev` keeps its own CAE/log workspace
+- `uat` and `prod` default to the shared names `playgrid-shared-cae` and `playgrid-shared-logs`
+- `deploy-infra.yml` accepts optional `container_app_env_resource_id` so the second environment can explicitly target the first environment's CAE when resource groups differ
+
+**Rationale:**
+- Preserves the existing manual `workflow_dispatch` deployment shape
+- Gives UAT/prod deterministic shared resource names so repeated deployments converge on the same CAE definition
+- Avoids CAE drift by also sharing the attached Log Analytics workspace instead of letting UAT/prod point the same CAE at different workspaces
+- Keeps dev isolated for low-risk testing and experimentation
+
+**Related:** User directive (2026-03-15T01:20:26Z) — UAT and prod can share the same Container Apps Environment for cost optimization.
+

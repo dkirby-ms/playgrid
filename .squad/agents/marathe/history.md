@@ -345,3 +345,9 @@ Bicep outputs all values needed for configuring GitHub Actions environment varia
 - **Decision:** Non-host players must be explicitly ready; host treated as coordinator/implicitly ready. See `.squad/decisions.md` for full context.
 - **Next:** If future UX requires explicit "every participant ready," a separate host-ready interaction should be added first.
 
+
+## 2026-03-15 Update (Shared CAE Restructure)
+- **Decision Merged:** Shared Container Apps Environment (CAE) for UAT + prod (dev stays isolated with `playgrid-dev-cae`)
+- **Bicep Update:** `infra/main.bicep` now accepts optional `containerAppEnvResourceId` parameter to allow cross-resource-group CAE sharing when needed
+- **Impact:** UAT/prod deployments now converge on deterministic shared resource names, preventing CAE drift and simplifying repeated deployments
+- **Related Directive:** User requested shared CAE for cost optimization (2026-03-15T01:20:26Z)
