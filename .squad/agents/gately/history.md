@@ -328,6 +328,12 @@ function getContinentBonus(continent: string): number { ... }
 
 ---
 
+### 2026-03-15: Browser branding via bundled SVG favicon
+
+- `client/index.html` now owns the browser-facing brand text with the title `Playgrid - Online Board Games` and a favicon link to `./favicon.svg`.
+- Keeping the favicon as a standalone SVG beside `index.html` lets Vite fingerprint and bundle it automatically, which is cleaner than adding extra asset plumbing for a simple tab icon.
+- The mark uses a compact board-grid layout with contrasting pieces so the multiplayer tabletop concept still reads clearly at favicon size.
+- Production build verification confirmed the generated HTML points at the hashed favicon asset in `client/dist/assets/`.
 
 ### 2026-03-15: Lobby game tiles now use local design-photo thumbnails
 
@@ -945,3 +951,38 @@ This pattern avoids custom message protocols and leverages Colyseus's built-in s
 - Added optional `getHUDStatus()` support to the `GameRenderer` contract so individual renderers can feed game-specific status copy and accents into the shared panel without coupling `GameScene` to per-game rules.
 - `client/src/renderers/CheckersRenderer.ts` is the first adopter: the old canvas status copy moved into the shared HUD while the board keeps only board-specific counters and the game-over overlay.
 - Adoption path for future games is now: keep roster/timer in `HUD`, implement `getHUDStatus()` in the renderer when a game needs custom turn/state text, and leave renderer-owned canvas HUD elements for board-specific info only.
+
+## Cross-Agent Update — Features Batch 2 (2026-03-15T21:26:56Z)
+
+**From:** Squad Scribe  
+**Event:** Session completed — 3 features landed with git history
+
+**What Happened:**
+
+Three background agents (Gately agents 9-10, Pemulis agent 11) completed UX polish batch:
+
+1. **Shared HUD status panel** (agent-9) — Consolidated game status (turn, players, timer) into `HUD.ts` overlay instead of per-game canvas copy. Checkers migrated. Commit df7ad2f.
+2. **Design-aligned lobby thumbnails** (agent-10) — Replaced SVG tiles with extracted design prototype images in `client/public/game-thumbnails/`. Commit 232a3ce.
+3. **Shareable waiting-room links** (agent-11) — Added `?join={gameId}` parameter with copy-link button and auto-join on boot. Commit 2dc2725.
+
+**What This Means for You:**
+
+All three decisions are now merged into `.squad/decisions.md` and archived from inbox. The HUD status panel pattern is ready for Phase 2/3 adoption.
+
+**For Your Phase 3 Work:**
+
+Risk game plugin (rendering phase) now has a stable HUD contract: implement `getHUDStatus()` on `RiskRenderer` to opt into the shared status panel, just like Checkers did. The optional method keeps the HUD functional for games that don't implement it yet.
+
+**Validation:**
+
+- ✅ All commits pass `npm run build && npm run lint && npm run test`
+- ✅ Lobby rendering verified with thumbnail images
+- ✅ Waiting room UX functional (copy link, auto-join)
+- ✅ Game HUD tested in Checkers player + spectator modes
+- ✅ No regressions in existing reconnect/scene/renderer flows
+
+**Session Artifacts:**
+
+- `.squad/orchestration-log/2026-03-15T21-26-56Z-{gately-9,gately-10,pemulis-11}.md` — Individual agent outcomes
+- `.squad/log/2026-03-15T21-26-56Z-features-batch-2.md` — Session summary
+
