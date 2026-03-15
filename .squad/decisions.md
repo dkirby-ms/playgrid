@@ -2094,3 +2094,123 @@ Game E2E coverage should assert `#lobby-overlay.visible`, create games through `
 
 **Impact:**
 Future game-plugin E2E coverage should treat lobby selectors as shared infrastructure and avoid stale assumptions from legacy UI patterns.
+
+---
+
+## Session: Features Batch 2 (2026-03-15)
+
+### Gately: Shared Game Status Lives in the HTML HUD Overlay
+
+**Status:** Implemented  
+**Date:** 2026-03-15  
+**Author:** Gately (Game Dev / Frontend / Rendering)
+
+## Context
+
+Checkers was showing turn state in two different places: the shared HUD overlay owned the generic waiting/timer widgets, while the renderer also painted its own in-canvas status copy. That split made the status treatment feel temporary and would force every new game to reinvent the same player/turn/timer panel.
+
+## Decision
+
+Use the shared `client/src/ui/HUD.ts` overlay as the reusable game status panel, and let renderers opt into custom copy through an optional `getHUDStatus()` method on the `GameRenderer` contract.
+
+## Why
+
+1. **One panel, one mental model** — player list, current turn, timer, and status text now live together instead of being split between overlay chrome and canvas text.
+2. **Renderer ownership stays clean** — renderers still own board-specific HUD elements, but game-state copy can be handed off to a shared panel without `GameScene` learning game rules.
+3. **Future games get a low-friction hook** — Backgammon, Risk, or later games can adopt the same panel by implementing one optional status method instead of duplicating layout work.
+
+## Consequences
+
+- ✅ Checkers status copy moved out of the Pixi canvas and into the shared HUD panel
+- ✅ `GameScene` can pass renderer-provided status metadata into the HUD without hardcoding per-game branches
+- ✅ Future renderer work has a clear split between shared overlay status and board-local counters/buttons
+
+## Files Affected
+
+- `client/src/ui/HUD.ts`
+- `client/src/scenes/GameScene.ts`
+- `client/src/renderers/GameRenderer.ts`
+- `client/src/renderers/CheckersRenderer.ts`
+
+---
+
+### Gately: Local Lobby Thumbnails from Design Prototype
+
+**Date:** 2026-03-15
+**Status:** Implemented
+**Author:** Gately (Game Dev / Frontend / Rendering)
+
+## Decision
+
+Use locally served thumbnail files in `client/public/game-thumbnails/` for lobby game tiles, sourced from the original design prototype artwork, instead of inline SVG art or runtime-hotlinked remote image URLs.
+
+## Context
+
+The shipped lobby tiles were using hand-authored SVG illustrations in `client/src/ui/LobbyScreen.ts`. The design prototype archive (`docs/designs/project.zip`) contained the intended photographic tile artwork references, but not bundled image binaries.
+
+## Rationale
+
+- Keeps the lobby visually aligned with the approved design direction.
+- Avoids runtime dependency on third-party image hosts.
+- Fits the existing Vite public asset path cleanly with no new asset-loading framework.
+- Works naturally with the existing 4:3 tile layout by pairing local files with `object-fit: cover`.
+
+## Impact
+
+- `LobbyScreen.ts` maps game types to stable local asset paths.
+- `client/index.html` remains responsible for thumbnail crop behavior and overlay readability.
+- Future tile artwork swaps only need asset replacement and path updates, not new rendering logic.
+
+---
+
+### Pemulis: Shareable Waiting-Room Links
+
+**Status:** Implemented  
+**Date:** 2026-03-15  
+**Author:** Pemulis (Systems / Server)
+
+## Context
+
+Waiting rooms already have a stable lobby-side `gameId`, and `LobbyRoom.handleJoinGame()` already understands that identifier before a real Colyseus game room exists. The feature request is to let hosts share a direct invite link that can reopen the app and send the recipient into that waiting room automatically.
+
+## Decision
+
+Use the existing lobby `gameId` as the shareable join token and encode it in the browser URL as `?join={gameId}`.
+
+- Do **not** add a new HTTP endpoint or a separate join-token service.
+- Keep the URL synced while the client is in a waiting room.
+- Clear the `join` parameter when transitioning into the live game room.
+- On lobby boot/reconnect, if `join` is present, immediately send the existing `JOIN_GAME { gameId }` message to the lobby room.
+
+## Rationale
+
+This reuses the validated server join path and preserves all current edge-case handling for missing/full/started games. It also keeps the implementation small and robust: invite links work before a Colyseus `roomId` exists, and reconnects/refreshes can re-enter the waiting room without inventing a second session model.
+
+## Impact
+
+- Server contract remains unchanged for production code.
+- Waiting-room invites become copyable and deep-linkable.
+- Host/guest refresh flows can reuse the same link semantics in pregame.
+
+---
+
+## Session: User Directive (2026-03-15)
+
+### User Directive: E2E Test Suite Required for New Games
+
+**Date:** 2026-03-15  
+**Status:** Approved  
+**By:** dkirby-ms (via Copilot)
+
+## Decision
+
+Any new game added to the project must have an accompanying end-to-end (E2E) test suite.
+
+## Why
+
+User request — captured for team memory. E2E coverage ensures shipped games work end-to-end and protects against regressions as the framework evolves.
+
+## Impact
+
+Phase 2 and Phase 3 games (Dominoes, Backgammon, Risk) must include E2E tests covering core gameplay flows.
+

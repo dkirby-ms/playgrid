@@ -396,3 +396,30 @@ Hal has triaged Risk and assigned you as the systems developer. Here's your scop
 **Verification:** All tests passed (`npm run build && npm run lint && npm run test`). The fix is minimal and surgical — only adds the broadcast call that was missing from the reconnection path.
 
 **PR #84:** Opened against `dev` branch.
+
+## Cross-Agent Update — Features Batch 2 (2026-03-15T21:26:56Z)
+
+**From:** Squad Scribe  
+**Event:** Session completed — Shareable waiting-room links feature landed
+
+**What Happened:**
+
+Your agent (agent-11) completed shareable waiting-room links feature alongside two Gately background agents (9-10) in UX polish batch:
+
+1. **Shareable waiting-room links** (your work) — Added `?join={gameId}` URL parameter with copy-link button and auto-join on boot. Commit 2dc2725.
+2. **Shared HUD status panel** (Gately agent-9) — Consolidated game status into HUD overlay for Phase 2+ games.
+3. **Design-aligned lobby thumbnails** (Gately agent-10) — Lobby now uses extracted design prototype images.
+
+**What's in Decisions:**
+
+Shareable waiting-room links decision is now merged into `.squad/decisions.md` and removed from inbox.
+
+**Team Notes:**
+
+All three features validate cleanly end-to-end with `npm run build && npm run lint && npm run test`. Host detection fix (`games.get(gameId)?.hostId === room.sessionId`) ensures refresh resilience. The decision to reuse existing `JOIN_GAME` validation path (instead of new server endpoint) keeps the implementation small and audit-safe.
+
+**Session Artifacts:**
+
+- `.squad/orchestration-log/2026-03-15T21-26-56Z-pemulis-11.md` — Your agent's outcome
+- `.squad/log/2026-03-15T21-26-56Z-features-batch-2.md` — Session summary with all three features
+
