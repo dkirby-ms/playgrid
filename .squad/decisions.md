@@ -1616,3 +1616,52 @@ Use separate optional Bicep parameters for Container App custom domains: `custom
 **Files:**
 - infra/main.bicep
 - infra/main.bicepparam
+
+---
+
+### Pemulis: Ready-Check Enforcement for Non-Host Players (2026-03-15)
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+For the current waiting-room flow, enforce that all joined non-host players must have `isReady = true` before the host can execute `start_game`.
+
+**Rationale:**
+- The waiting-room UX gives the host the Start Game control but does not expose a Ready toggle for the host
+- Treating the host as a starter/coordinator and enforcing readiness only on non-host players fixes issue #79 without introducing a larger UX change mid-stream
+- Simpler than requiring explicit "host ready" interaction
+
+**Follow-up:**
+If we later want a true "every participant explicitly readies" flow, add a separate host-ready interaction first and then tighten the server rule to match it.
+
+**Implementation:**
+- Server validation in `BaseGameRoom` or game-specific logic
+- Client: Start button disabled until ready is confirmed
+- Tests: Regression coverage added
+
+---
+
+### Marathe: ACA Bootstrap Placeholder Image (2026-03-15)
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Keep infrastructure deployment independent from image availability. Seed the Azure Container App with a public `node:22-alpine` bootstrap image and conditional startup logic:
+1. Start the real app when `/app/public/server/dist/src/index.js` exists
+2. Serve a tiny HTTP placeholder with `/health` on port `2567` when no app image has been pushed yet
+
+**Rationale:**
+- Prevents first-time ACA provisioning from failing against an empty ACR
+- Keeps probes and ingress aligned with the real runtime contract (`/health`, port `2567`)
+- Preserves the existing deploy workflow shape instead of adding extra bootstrap-only pipeline steps
+- The real PlayGrid image is CI/CD's responsibility via `deploy-dev.yml`; the placeholder is only for first-deploy bootstrap
+
+**Implementation:**
+- `infra/main.bicep` deploys the bootstrap image and health-check configuration
+- `.github/workflows/deploy-dev.yml` already handles the handoff after pushing the real image via `az containerapp update`
+- No manual redeployment needed on subsequent CI/CD image updates
+
+**Impact:**
+- Infra deploys can succeed before the first app image exists
+- Subsequent CI deploys replace the placeholder with the real application image without extra steps
+

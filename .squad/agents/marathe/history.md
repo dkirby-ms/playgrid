@@ -333,3 +333,14 @@ Bicep outputs all values needed for configuring GitHub Actions environment varia
 - Merge to `dev`
 - Test notifications on next deployment to each environment
 - Consider adding custom message field for manual workflow dispatches (future enhancement)
+
+## Cross-Agent Update — Ready-Check Enforcement Complete (2026-03-15)
+
+**From:** Pemulis (Systems Dev)  
+**Event:** Issue #79 ready-check enforcement shipped in parallel with ACA bootstrap
+
+- **Pemulis completed:** Waiting-room ready-check enforcement now blocks `start_game` until all non-host players are ready. Server validation + client UX + regression tests landed.
+- **Impact to you:** Your ACA placeholder + bootstrap logic is now compatible with Pemulis's game-start enforcement. No infra-side changes needed for ready-check feature.
+- **Decision:** Non-host players must be explicitly ready; host treated as coordinator/implicitly ready. See `.squad/decisions.md` for full context.
+- **Next:** If future UX requires explicit "every participant ready," a separate host-ready interaction should be added first.
+

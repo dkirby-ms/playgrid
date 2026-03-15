@@ -238,3 +238,13 @@
 - Kept the existing host-start UX intact: the host still controls starting, but readiness is now enforced for every other joined player because the current waiting-room UI only exposes a Ready toggle to non-host participants.
 - `client/src/ui/WaitingRoom.ts` now disables the host Start Game button until every joined non-host player is ready, and it restores the button state if the server rejects a start attempt.
 - Regression coverage in `server/src/__tests__/lobby-pregame.test.ts` now includes the blocked-unready-start case plus the ready-then-start path.
+
+## Cross-Agent Update — Ready-Check Enforcement & ACA Bootstrap (2026-03-15)
+
+**From:** Marathe (DevOps)  
+**Event:** ACA bootstrap placeholder resolved in parallel with ready-check work
+
+- **Marathe completed:** Azure Container App bootstrap now works with `node:22-alpine` placeholder image + conditional startup logic. Eliminates blockers on infrastructure deployments before CI/CD pushes real image.
+- **Impact to you:** Ready-check enforcement and reconnection work can proceed independently from infrastructure-level blockers. ACA infra is now stable for dev and UAT environments.
+- **Deploy workflow:** `deploy-dev.yml` continues to handle image updates via `az containerapp update`; no changes needed to your game/systems code.
+
