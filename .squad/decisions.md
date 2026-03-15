@@ -1852,3 +1852,81 @@ For complex game plugins like Risk (3× more complex than Checkers/Backgammon), 
 
 This balances immediate validation with practical coordination for parallel development.
 
+
+---
+
+## Session: Risk Game Plugin Phase 3 Complete (2026-03-15)
+
+### Gately: Risk Client Renderer Architecture
+
+**Status:** Implemented  
+**Date:** 2026-03-15
+
+Implemented Risk game client renderer following the established Checkers pattern with PixiJS.
+
+**Context:**
+Phase 3 of Risk game plugin (#80) required an interactive map renderer on the client side. Server-side state (RiskState) and logic (RiskPlugin) were already completed by Pemulis in Phase 1.
+
+**Key Decisions:**
+
+1. **Territory Layout:** Hardcoded procedural grid-based positioning for 42 territories
+   - Functional over geographically accurate (matches task requirement)
+   - Faster initial implementation vs. SVG import or geographic data
+   - Easy to adjust positions for visual balance
+   - Keeps bundle size small (no external map data)
+
+2. **Rendering Layers:** Three-layer Container structure: mapLayer → territoryLayer → hudLayer
+   - Follows Checkers pattern exactly (team consistency)
+   - Clean separation of concerns
+   - Easy z-ordering for overlays
+
+3. **Territory Interaction:** Two-click pattern for attack/fortify, single-click for place
+   - Setup/Reinforce: Click owned territory → place army (immediate)
+   - Attack: Click owned → click adjacent enemy (two-step)
+   - Fortify: Click owned → click adjacent owned (two-step)
+   - Consistent with card game and board game UX patterns
+
+4. **State Management:** Direct Colyseus room message sending with reactive re-rendering
+   - Messages: `placeArmy({ territoryId })`, `attack({ from, to, attackDiceCount })`, `fortify({ from, to, armyCount })`, `tradeCards({})`, `endPhase({})`
+   - Server-authoritative (client sends intents, not state changes)
+   - Re-render driven by onStateChange events
+
+5. **Simplified Game Parameters:** Attack uses max dice (3 attacker, 2 defender based on armies); Fortify moves max-1 armies
+   - Reduces UI complexity for MVP
+   - Can add detailed controls later if needed
+   - Most players use max dice anyway (optimal strategy)
+
+**Alternatives Considered:**
+- Geographic SVG Map: Rejected (overkill for Phase 3, larger bundle, more complex hit detection)
+- Three-click Attack Pattern: Rejected (extra friction, Checkers uses two-click)
+- Client-side Combat Calculation: Rejected (server must be authoritative, risk of desync)
+
+**Implementation:**
+- `client/src/renderers/RiskRenderer.ts` (23KB)
+- `client/src/games/risk/riskClientLogic.ts` (helper functions)
+- `client/src/renderers/index.ts` (registry entry)
+- Registered with key "risk", auto-loaded by GameScene
+
+**Validation:**
+- ✅ Build passes (npm run build)
+- ✅ No TypeScript errors
+- ✅ Follows GameRenderer interface
+- ✅ Consistent with Checkers pattern
+- ✅ All phases supported (setup-pick, setup-place, reinforce, attack, fortify)
+
+**Cross-Agent Impact:**
+- Hal (Architect): No architectural changes needed, adheres to GameRenderer contract
+- Pemulis (Backend): Client consumes server state schema correctly, message types match
+- Steeply (Testing): Can write client integration tests against GameRenderer interface
+- Joelle (Docs): May want to document Risk UI controls for players
+
+**Future Enhancements:**
+1. Combat animation (dice roll visualization)
+2. Territory capture animation (color transition)
+3. Card trade UI
+4. Detailed dice count selection for attack
+5. Fortify army count slider
+6. Territory name search/filter
+7. Minimap for large displays
+8. Zoom/pan controls for mobile
+

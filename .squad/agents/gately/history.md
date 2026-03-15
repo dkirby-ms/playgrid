@@ -227,3 +227,54 @@ function getContinentBonus(continent: string): number { ... }
 
 **Your Work:** Can begin procedural map generation and clickable region architecture immediately (schema locked, no blockers).
 
+
+## Learnings
+
+### Risk Game Client Renderer (Issue #80, Phase 3)
+**Date:** 2025-01-XX  
+**Files:**
+- `client/src/renderers/RiskRenderer.ts` — Main game renderer (23KB)
+- `client/src/games/risk/riskClientLogic.ts` — Client-side helper functions
+- `client/src/renderers/index.ts` — Registered Risk in renderer registry
+
+**Architecture:**
+- Followed **exact Checkers pattern** for consistency
+- Used PixiJS Container layers: mapLayer → territoryLayer → hudLayer
+- Territory layouts: Procedural grid-based positioning (42 territories, 6 continents)
+- Continent base colors with player color overlays for ownership
+- Interactive Graphics per territory with event handlers
+
+**Territory Interaction:**
+- Setup phases: Click to place armies on available territories
+- Attack phase: Two-click pattern (select owned → click enemy adjacent)
+- Fortify phase: Two-click pattern (select owned → click owned adjacent)
+- Valid target highlighting with green stroke
+
+**HUD Components:**
+- Status text (turn indicator)
+- Phase text (current game phase)
+- Armies to place counter
+- End Phase button (conditional enable)
+- Trade Cards button (visible only when ≥3 cards in reinforce phase)
+
+**State Management:**
+- Direct room message sending: `placeArmy`, `attack`, `fortify`, `tradeCards`, `endPhase`
+- State-driven re-rendering via `onStateChange`
+- Selection sync with state to handle server updates
+
+**Pattern Compliance:**
+- GameRenderer interface implementation
+- Room context for Colyseus integration
+- Resize handling with adaptive layout
+- Standard init/onStateChange/update/destroy lifecycle
+
+**Key Decisions:**
+- Territory positions hardcoded in TERRITORY_LAYOUTS array (functional, not geographically perfect)
+- Player colors cycle through 6-color palette
+- Attack/fortify dice counts and army move amounts simplified (max dice, max-1 armies)
+- No combat animation (dice results from server handled passively)
+
+**Integration:**
+- Registered in `rendererRegistry` with key "risk"
+- Automatically loaded by GameScene when joining Risk room
+- Build verified successfully (no compilation errors)
