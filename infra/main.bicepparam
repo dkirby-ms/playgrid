@@ -1,6 +1,6 @@
 using './main.bicep'
 
-param environmentName = 'prod'
+param environmentName = 'uat'
 
 param location = 'centralus'
 

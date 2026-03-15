@@ -112,6 +112,24 @@ export class TurnManager {
     return this.turnNumber;
   }
 
+  getRemainingTimeSeconds(): number {
+    if (!this.active || this.turnTimeLimitMs === undefined) {
+      return 0;
+    }
+
+    if (this.paused) {
+      return Math.ceil((this.remainingTurnTimeMs ?? 0) / 1000);
+    }
+
+    if (this.timerStartedAt !== null && this.remainingTurnTimeMs !== undefined) {
+      const elapsedMs = Date.now() - this.timerStartedAt;
+      const remaining = Math.max(0, this.remainingTurnTimeMs - elapsedMs);
+      return Math.ceil(remaining / 1000);
+    }
+
+    return Math.ceil((this.turnTimeLimitMs ?? 0) / 1000);
+  }
+
   isActive(): boolean {
     return this.active;
   }

@@ -7,7 +7,7 @@ import {
   RED_KING,
   type CheckersState,
   type GameResult,
-} from "@eschaton/playgrid-shared";
+} from "@eschaton/shared";
 import { Container, Graphics, Text } from "pixi.js";
 import {
   getPieceColor,

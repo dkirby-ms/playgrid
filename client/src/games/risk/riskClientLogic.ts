@@ -1,4 +1,4 @@
-import type { RiskState } from "@eschaton/playgrid-shared";
+import type { RiskState } from "@eschaton/shared";
 
 export function canPlaceArmy(
   state: RiskState,

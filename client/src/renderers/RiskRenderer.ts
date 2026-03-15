@@ -1,5 +1,5 @@
 import type { Room } from "@colyseus/sdk";
-import type { RiskState } from "@eschaton/playgrid-shared";
+import type { RiskState } from "@eschaton/shared";
 import { Container, Graphics, Text } from "pixi.js";
 import type { GameRenderer, GameRendererContext, RendererInputEvent } from "./GameRenderer";
 import { canPlaceArmy, canSelectForAttack, canSelectForFortify } from "../games/risk/riskClientLogic";

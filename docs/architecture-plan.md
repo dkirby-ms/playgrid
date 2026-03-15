@@ -781,8 +781,8 @@ export interface ChessMovePayload {
 
 ```typescript
 // Client/Server
-import { ChessState, CHESS_MOVE } from "@eschaton/playgrid-shared/games/chess";
-import { GAME_ENDED } from "@eschaton/playgrid-shared/gameTypes";
+import { ChessState, CHESS_MOVE } from "@eschaton/shared/games/chess";
+import { GAME_ENDED } from "@eschaton/shared/gameTypes";
 ```
 
 **Key decision:** Use path exports in package.json for clean imports:

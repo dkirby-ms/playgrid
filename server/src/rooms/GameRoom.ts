@@ -1,5 +1,5 @@
 import { Room, Client } from "colyseus";
-import { GameState, Player, TICK_RATE } from "@eschaton/playgrid-shared";
+import { GameState, Player, TICK_RATE } from "@eschaton/shared";
 
 interface GameRoomOptions {
   gameId?: string;

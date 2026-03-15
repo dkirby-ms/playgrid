@@ -128,6 +128,7 @@ jobs:
           echo "CONTAINER_APP_ENVIRONMENT_NAME=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppEnvironmentName.value')"
           echo "CONTAINER_APP_ENVIRONMENT_ID=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppEnvironmentId.value')"
           echo "CONTAINER_APP_FQDN=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppFqdn.value')"
+          echo "KEY_VAULT_URI=$(cat deployment-output.json | jq -r '.properties.outputs.keyVaultUri.value')"
           echo "RESOURCE_GROUP=${{ vars.RESOURCE_GROUP }}"
           echo ""
           echo "💡 To set these variables, go to:"

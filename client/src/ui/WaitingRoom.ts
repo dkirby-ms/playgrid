@@ -25,6 +25,7 @@ export interface GamePlayersPayload {
 export interface GameStartedPayload {
   gameId: string;
   roomId: string;
+  gameType: string;
 }
 
 export interface SetReadyPayload {
@@ -61,6 +62,7 @@ export class WaitingRoom {
   private readonly titleEl: HTMLHeadingElement;
   private readonly subtitleEl: HTMLParagraphElement;
   private readonly playerListEl: HTMLUListElement;
+  private readonly errorEl: HTMLDivElement;
   private readonly readyButton: HTMLButtonElement;
   private readonly startButton: HTMLButtonElement;
   private readonly leaveButton: HTMLButtonElement;
@@ -92,6 +94,9 @@ export class WaitingRoom {
     const rosterHeading = createElement("h3", "section-title", "Players");
     this.playerListEl = createElement("ul", "waiting-room-player-list") as HTMLUListElement;
 
+    this.errorEl = createElement("div", "waiting-room-error") as HTMLDivElement;
+    this.errorEl.style.display = "none";
+
     const controls = createElement("div", "waiting-room-controls");
     this.readyButton = createElement("button", "lobby-button lobby-button-secondary", "Ready") as HTMLButtonElement;
     this.readyButton.type = "button";
@@ -106,7 +111,7 @@ export class WaitingRoom {
     this.leaveButton.addEventListener("click", () => this.leave());
 
     controls.append(this.readyButton, this.startButton, this.leaveButton);
-    panel.append(header, rosterHeading, this.playerListEl, controls);
+    panel.append(header, rosterHeading, this.playerListEl, this.errorEl, controls);
     this.overlay.append(panel);
 
     this.renderPlayerList();
@@ -129,6 +134,7 @@ export class WaitingRoom {
         this.players = payload.players;
         const localPlayer = this.players.find((player) => player.userId === room.sessionId);
         this.isReady = localPlayer?.isReady ?? this.isReady;
+        this.clearError();
         this.renderPlayerList();
         this.updateControls();
       });
@@ -138,13 +144,12 @@ export class WaitingRoom {
           return;
         }
 
-        const gameType = this.gameInfo?.gameType ?? "checkers";
         this.hide();
         this.eventCallback?.({
           type: "game_started",
           gameId: payload.gameId,
           roomId: payload.roomId,
-          gameType,
+          gameType: payload.gameType,
         });
       });
 
@@ -153,10 +158,7 @@ export class WaitingRoom {
           return;
         }
 
-        this.startButton.textContent = payload.message.toLowerCase().includes("ready")
-          ? "Start when everyone is ready"
-          : "Start Game";
-        this.updateControls();
+        this.showError(payload.message);
       });
     }
 
@@ -185,6 +187,7 @@ export class WaitingRoom {
     this.isHost = false;
     this.isReady = false;
     this.players = [];
+    this.clearError();
     this.renderPlayerList();
     this.updateControls();
   }
@@ -278,5 +281,15 @@ export class WaitingRoom {
 
     this.hide();
     this.eventCallback?.({ type: "leave" });
+  }
+
+  private showError(message: string): void {
+    this.errorEl.textContent = message;
+    this.errorEl.style.display = "block";
+  }
+
+  private clearError(): void {
+    this.errorEl.textContent = "";
+    this.errorEl.style.display = "none";
   }
 }

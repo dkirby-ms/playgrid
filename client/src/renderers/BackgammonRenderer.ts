@@ -4,7 +4,7 @@ import {
   RED,
   type BackgammonState,
   type GameResult,
-} from "@eschaton/playgrid-shared";
+} from "@eschaton/shared";
 import { Container, Graphics, Text } from "pixi.js";
 import type { GameRenderer, GameRendererContext, RendererInputEvent } from "./GameRenderer";
 

@@ -8,6 +8,10 @@
     "skipLibCheck": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "@eschaton/shared": ["../shared/src/index.ts"]
+    },
     "composite": true,
     "declaration": true,
     "declarationMap": true

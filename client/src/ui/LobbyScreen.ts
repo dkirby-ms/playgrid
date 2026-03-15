@@ -1,4 +1,5 @@
 import type { Room } from "@colyseus/sdk";
+import { MessageLog } from "./MessageLog.js";
 
 export const CREATE_GAME = "create_game" as const;
 export const JOIN_GAME = "join_game" as const;
@@ -13,6 +14,7 @@ export const GAME_STARTED = "game_started" as const;
 export const GAME_PLAYERS = "game_players" as const;
 export const LOBBY_ERROR = "lobby_error" as const;
 export const ONLINE_PLAYERS = "online_players" as const;
+export const LOBBY_LOG_EVENT = "lobby_log_event" as const;
 
 export type GameStatus = "waiting" | "in_progress" | "ended";
 
@@ -84,6 +86,24 @@ export type LobbyEvent =
 type LobbyFilter = "all" | "waiting" | "in_progress";
 type NoticeTone = "info" | "error";
 type LobbyEventCallback = (event: LobbyEvent) => void;
+
+export type LobbyLogEventType =
+  | "player_joined"
+  | "player_left"
+  | "game_created"
+  | "game_started"
+  | "game_finished"
+  | "player_joined_game";
+
+export interface LobbyLogEntry {
+  timestamp: number;
+  type: LobbyLogEventType;
+  message: string;
+  playerName?: string;
+  gameName?: string;
+  gameType?: string;
+  winner?: string;
+}
 
 interface GameTypeOption {
   value: string;
@@ -284,6 +304,7 @@ export class LobbyScreen {
   private readonly onlinePlayers: OnlinePlayerInfo[] = [];
   private readonly onlinePlayersListEl: HTMLElement;
   private readonly onlinePlayersBadgeEl: HTMLElement;
+  private messageLog: MessageLog | null = null;
 
   private room: Room | null = null;
   private boundRoom: Room | null = null;
@@ -414,7 +435,16 @@ export class LobbyScreen {
     this.onlinePlayersListEl.append(createElement("div", "panel-empty", "No players online"));
     onlinePlayersPanel.append(onlinePlayersHeader, this.onlinePlayersListEl);
     
-    sidebar.append(activeGamesPanel, onlinePlayersPanel);
+    // Message Log Panel
+    const messageLogPanel = createElement("div", "message-log-panel");
+    const messageLogHeader = createElement("div", "panel-header");
+    const messageLogTitle = createElement("h2", "panel-title", "Activity Feed");
+    messageLogHeader.append(messageLogTitle);
+    const messageLogContent = createElement("div", "message-log-content");
+    messageLogPanel.append(messageLogHeader, messageLogContent);
+    this.messageLog = new MessageLog(messageLogContent);
+    
+    sidebar.append(activeGamesPanel, onlinePlayersPanel, messageLogPanel);
 
     grid.append(gameLibrary, sidebar);
     content.append(grid);
@@ -592,6 +622,10 @@ export class LobbyScreen {
       this.onlinePlayers.length = 0;
       this.onlinePlayers.push(...payload.players);
       this.renderOnlinePlayers();
+    });
+
+    room.onMessage(LOBBY_LOG_EVENT, (entry: LobbyLogEntry) => {
+      this.messageLog?.addMessage(entry);
     });
   }
 
@@ -860,10 +894,14 @@ export class LobbyScreen {
     const name = createElement("div", "active-game-name", game.name || "Untitled game");
     const meta = createElement("div", "active-game-meta");
     
+    const gameTypeMeta = createElement("span", "active-game-meta-item");
+    const gameTypeOption = getGameTypeOption(game.gameType);
+    gameTypeMeta.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg><span>${gameTypeOption.label}</span>`;
+    
     const playersMeta = createElement("span", "active-game-meta-item");
     playersMeta.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>${game.playerCount}/${game.maxPlayers}</span>`;
     
-    meta.append(playersMeta);
+    meta.append(gameTypeMeta, playersMeta);
     
     // Show time elapsed for in-progress games
     if (game.status === "in_progress" && game.createdAt) {

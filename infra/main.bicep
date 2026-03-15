@@ -54,7 +54,7 @@ var customDomains = empty(selectedCustomDomain)
       }
     ]
 var bootstrapPlaceholderImage = 'node:22-alpine'
-var bootstrapPlaceholderCommand = 'if [ -f /app/public/server/dist/src/index.js ]; then exec node /app/public/server/dist/src/index.js; fi; exec node -e "const http = require(\\"http\\"); const port = Number(process.env.PORT || 2567); http.createServer((req, res) => { if (req.url === \\"/health\\") { res.writeHead(200, { \\"Content-Type\\": \\"application/json\\" }); res.end(JSON.stringify({ status: \\"ok\\", mode: \\"bootstrap-placeholder\\" })); return; } res.writeHead(200, { \\"Content-Type\\": \\"text/plain\\" }); res.end(\\"PlayGrid infrastructure bootstrap placeholder\\"); }).listen(port, \\"0.0.0.0\\");"'
+var bootstrapPlaceholderCommand = 'node -e "require(\'http\').createServer((q,s)=>{s.writeHead(200,{\'Content-Type\':\'application/json\'});s.end(JSON.stringify({status:\'ok\',mode:\'placeholder\'}))}).listen(2567,\'0.0.0.0\')"'
 
 // Container App configuration based on environment
 var containerAppConfig = {
@@ -235,19 +235,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           }
         ]
       }
-      registries: [
-        {
-          server: '${acr.name}.azurecr.io'
-          identity: 'system'
-        }
-      ]
-      secrets: [
-        {
-          name: 'postgres-connection-string'
-          keyVaultUrl: '${keyVault.properties.vaultUri}secrets/postgres-connection-string'
-          identity: 'system'
-        }
-      ]
+      // Registry and secrets are configured by CI deploy workflows after RBAC propagation.
+      // Adding them here causes a bootstrap failure: the system-assigned identity needs
+      // AcrPull and Key Vault Secrets User roles, but those RBAC assignments depend on the
+      // container app's principalId (circular dependency with propagation delay).
     }
     template: {
       containers: [
@@ -274,10 +265,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'PORT'
               value: '2567'
-            }
-            {
-              name: 'DATABASE_URL'
-              secretRef: 'postgres-connection-string'
             }
           ]
           probes: [
