@@ -348,3 +348,18 @@ Added squad:pemulis and squad:gately labels. Posted triage comment with decompos
 - **Routing:** PR revision routed to Marathe due to original author lockout (Pemulis, Steeply, Gately)
 - **Impact:** Future game plugins must follow strict shared data models, explicit test implementation, and documented scope cuts
 
+## PR #83 Approved and Merged (2026-03-15)
+
+**Event:** Hal re-reviewed PR #83 after Marathe's revisions
+
+- **Outcome:** ✅ APPROVED
+- **Review scope:** Verified all four architectural standards met
+  - Tests: All 60 tests now implemented (no `it.todo()` placeholders in critical logic)
+  - Shared data: TerritoryData migrated to `shared/src/games/risk/`
+  - Scope transparency: Phase 1 limitations explicitly documented
+  - PR atomicity: Infrastructure changes separated
+- **Blocker resolution:** Flaky random test fixed using robust implementation (sufficient sample sizes per new standard)
+- **Action:** PR merged to dev (squash). Branch deleted. Issue #80 closed.
+- **Follow-up triage:** Created issues #81 (test resilience, assigned to Gately+Pemulis) and #82 (rule scope documentation, assigned to Pemulis)
+- **Impact:** Risk game plugin now ready for production. Test resilience and rule documentation standards established for future games.
+
