@@ -59,7 +59,7 @@ var bootstrapPlaceholderCommand = 'if [ -f /app/public/server/dist/src/index.js 
 // Container App configuration based on environment
 var containerAppConfig = {
   dev: {
-    minReplicas: 1
+    minReplicas: 0
     maxReplicas: 1
     cpu: '0.5'
     memory: '1.0Gi'
@@ -79,7 +79,7 @@ var containerAppConfig = {
 }
 
 // PostgreSQL SKU based on environment
-var postgresSkuName = environmentName == 'prod' ? 'Standard_D2s_v3' : 'Standard_B1ms'
+var postgresSkuName = 'Standard_B1ms'
 
 // Tags for all resources
 var tags = {
@@ -153,18 +153,18 @@ resource postgresServer 'Microsoft.DBforPostgreSQL/flexibleServers@2023-03-01-pr
   tags: tags
   sku: {
     name: postgresSkuName
-    tier: environmentName == 'prod' ? 'GeneralPurpose' : 'Burstable'
+    tier: 'Burstable'
   }
   properties: {
     version: '15'
     administratorLogin: postgresAdminUsername
     administratorLoginPassword: postgresAdminPassword
     storage: {
-      storageSizeGB: environmentName == 'prod' ? 128 : 32
+      storageSizeGB: 32
     }
     backup: {
-      backupRetentionDays: environmentName == 'prod' ? 30 : 7
-      geoRedundantBackup: environmentName == 'prod' ? 'Enabled' : 'Disabled'
+      backupRetentionDays: 7
+      geoRedundantBackup: 'Disabled'
     }
     highAvailability: {
       mode: 'Disabled'
