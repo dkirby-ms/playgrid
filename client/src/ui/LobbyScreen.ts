@@ -462,7 +462,8 @@ export class LobbyScreen {
     });
 
     room.onMessage(GAME_JOINED, (payload: GameJoinedPayload) => {
-      const isHost = this.pendingTransition === "create";
+      const joinedGame = this.games.get(payload.gameId) ?? null;
+      const isHost = joinedGame?.hostId === room.sessionId || this.pendingTransition === "create";
       this.pendingTransition = null;
       this.setCreatePending(false);
       this.clearNotice();
@@ -472,7 +473,7 @@ export class LobbyScreen {
           type: "join_game",
           gameId: payload.gameId,
           roomId: payload.roomId,
-          gameType: this.games.get(payload.gameId)?.gameType ?? "checkers",
+          gameType: joinedGame?.gameType ?? "checkers",
         });
         return;
       }
@@ -480,7 +481,7 @@ export class LobbyScreen {
       this.eventCallback?.({
         type: "waiting",
         gameId: payload.gameId,
-        gameInfo: this.games.get(payload.gameId) ?? null,
+        gameInfo: joinedGame,
         isHost,
       });
     });

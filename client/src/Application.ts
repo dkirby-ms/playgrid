@@ -3,6 +3,11 @@ import { type Room } from "@colyseus/sdk";
 import { Application as PixiApplication, Text } from "pixi.js";
 import type { GameResult } from "@eschaton/shared";
 import {
+  buildJoinGameHref,
+  clearJoinGameHref,
+  getJoinGameIdFromHref,
+} from "./joinLinks";
+import {
   ConnectionManager,
   ConnectionState,
   type ConnectionErrorEvent,
@@ -23,7 +28,7 @@ import {
 } from "./scenes/WaitingRoomScene";
 import { ReconnectOverlay } from "./ui/ReconnectOverlay";
 import { GameOverOverlay } from "./ui/GameOverOverlay";
-import type { LobbyEvent } from "./ui/LobbyScreen";
+import { JOIN_GAME, type JoinGamePayload, type LobbyEvent } from "./ui/LobbyScreen";
 
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
@@ -157,6 +162,7 @@ export class PlaygridApp {
 
   async joinGame(roomId: string, gameType?: string, spectator = false): Promise<void> {
     this.ensureInitialized();
+    this.syncWaitingRoomJoinUrl(null);
     this.setStatus("Joining game room…", { persistent: true, visibleInGame: true });
 
     try {
@@ -227,6 +233,8 @@ export class PlaygridApp {
 
         void this.handleLobbyRoomLeave(room, code);
       });
+
+      this.autoJoinWaitingRoomFromUrl(room);
     } catch (error) {
       console.error("[playgrid] Lobby connection failed:", error);
       const message =
@@ -255,6 +263,7 @@ export class PlaygridApp {
         return;
       }
 
+      this.syncWaitingRoomJoinUrl(event.gameId);
       const data: WaitingRoomSceneEnterData = {
         room: this.lobbyRoom,
         gameId: event.gameId,
@@ -272,6 +281,7 @@ export class PlaygridApp {
 
   private async handleWaitingRoomEvent(event: WaitingRoomSceneEvent): Promise<void> {
     if (event.type === "leave") {
+      this.syncWaitingRoomJoinUrl(null);
       await this.showLobby({ message: "Returned to the lobby browser.", tone: "info" });
       return;
     }
@@ -596,6 +606,7 @@ export class PlaygridApp {
         room,
         gameType: activeSession.gameType,
       } satisfies GameSceneEnterData);
+      this.syncWaitingRoomJoinUrl(null);
       this.reconnectOverlay.hide();
       this.setStatus(`Rejoined — Room: ${this.getRoomLabel(room)}`, { visibleInGame: true });
       console.log(`[playgrid] Rejoined game room: ${this.getRoomLabel(room)}`);
@@ -615,6 +626,29 @@ export class PlaygridApp {
         },
       };
     }
+  }
+
+  private autoJoinWaitingRoomFromUrl(room: ColyseusRoom): void {
+    const joinGameId = getJoinGameIdFromHref(window.location.href);
+    if (!joinGameId) {
+      return;
+    }
+
+    const payload: JoinGamePayload = { gameId: joinGameId };
+    this.setStatus("Joining shared waiting room…", { persistent: true });
+    room.send(JOIN_GAME, payload);
+  }
+
+  private syncWaitingRoomJoinUrl(gameId: string | null): void {
+    const nextHref = gameId
+      ? buildJoinGameHref(window.location.href, gameId)
+      : clearJoinGameHref(window.location.href);
+
+    if (nextHref === window.location.href) {
+      return;
+    }
+
+    window.history.replaceState(window.history.state, "", nextHref);
   }
 
   private getRoomLabel(room: ColyseusRoom | null): string {

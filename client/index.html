@@ -963,6 +963,58 @@
         color: #7ecfff;
       }
 
+      .waiting-room-share-hint {
+        margin-top: -8px;
+        color: #9aa3b2;
+        line-height: 1.5;
+      }
+
+      .waiting-room-share-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .waiting-room-share-input {
+        flex: 1;
+        min-width: 0;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(126, 207, 255, 0.22);
+        background: rgba(16, 16, 29, 0.92);
+        color: #f4f6fb;
+        font: inherit;
+      }
+
+      .waiting-room-share-input:focus {
+        outline: 2px solid rgba(126, 207, 255, 0.45);
+        outline-offset: 2px;
+      }
+
+      .waiting-room-copy-button {
+        flex-shrink: 0;
+      }
+
+      .waiting-room-share-feedback {
+        min-height: 1.25rem;
+        font-size: 0.9rem;
+        color: #9aa3b2;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+
+      .waiting-room-share-feedback.visible {
+        opacity: 1;
+      }
+
+      .waiting-room-share-feedback.success {
+        color: #8ff0b0;
+      }
+
+      .waiting-room-share-feedback.error {
+        color: #fca5a5;
+      }
+
       .waiting-room-player-list {
         list-style: none;
         display: flex;
@@ -1228,10 +1280,13 @@
           padding: 18px;
         }
 
+        .waiting-room-share-row,
         .waiting-room-controls {
           flex-direction: column;
         }
 
+        .waiting-room-share-input,
+        .waiting-room-copy-button,
         .waiting-room-controls .lobby-button {
           width: 100%;
         }

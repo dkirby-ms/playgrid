@@ -611,6 +611,41 @@ describeLobby("LobbyRoom pregame flow", () => {
     });
   });
 
+  it("re-sends GAME_JOINED when a refreshed guest uses the same waiting-room link", async () => {
+    const refreshRoom = createLobbyRoom();
+    const refreshedHost = createClient("host-session", "Host");
+    const originalGuest = createClient("original-guest-session", "Guest");
+    const refreshedGuest = createClient("refreshed-guest-session", "Guest");
+
+    refreshRoom.clients.push(refreshedHost, originalGuest, refreshedGuest);
+    refreshRoom.onJoin(refreshedHost as never, { displayName: "Host", playerId: "host-browser" });
+    const gameId = await createGame(refreshRoom, refreshedHost);
+    refreshRoom.onJoin(originalGuest as never, { displayName: "Guest", playerId: "guest-browser" });
+    await refreshRoom.handleJoinGame(originalGuest, { gameId });
+    refreshRoom.allowReconnection.mockResolvedValue(undefined);
+
+    await refreshRoom.onLeave(originalGuest as never);
+
+    refreshedGuest.send.mockClear();
+    refreshRoom.onJoin(refreshedGuest as never, {
+      displayName: "Guest",
+      playerId: "guest-browser",
+    });
+    refreshedGuest.send.mockClear();
+
+    await refreshRoom.handleJoinGame(refreshedGuest, { gameId });
+
+    expect(findPayload(refreshedGuest, GAME_JOINED)).toEqual({ gameId });
+    expect(getWaitingPlayers(refreshRoom, gameId).has(originalGuest.sessionId)).toBe(false);
+    expect(getWaitingPlayers(refreshRoom, gameId).get(refreshedGuest.sessionId)).toMatchObject({
+      userId: refreshedGuest.sessionId,
+      displayName: "Guest",
+      isReady: false,
+    });
+    expect(getWaitingPlayers(refreshRoom, gameId).size).toBe(2);
+    expect(getGame(refreshRoom, gameId)).toMatchObject({ playerCount: 2, status: "waiting" });
+  });
+
   it("keeps a host-owned waiting room reserved across an unexpected disconnect", async () => {
     const gameId = await createGame(room, host);
     room.allowReconnection.mockResolvedValue(undefined);

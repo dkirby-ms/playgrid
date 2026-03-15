@@ -1,4 +1,5 @@
 import type { Room } from "@colyseus/sdk";
+import { buildJoinGameHref } from "../joinLinks";
 import {
   GAME_PLAYERS,
   GAME_STARTED,
@@ -61,6 +62,9 @@ export class WaitingRoom {
   private readonly overlay: HTMLElement;
   private readonly titleEl: HTMLHeadingElement;
   private readonly subtitleEl: HTMLParagraphElement;
+  private readonly joinLinkInput: HTMLInputElement;
+  private readonly copyLinkButton: HTMLButtonElement;
+  private readonly copyFeedbackEl: HTMLParagraphElement;
   private readonly playerListEl: HTMLUListElement;
   private readonly errorEl: HTMLDivElement;
   private readonly readyButton: HTMLButtonElement;
@@ -75,6 +79,7 @@ export class WaitingRoom {
   private isReady = false;
   private players: PreGamePlayerInfo[] = [];
   private eventCallback: WaitingRoomEventCallback | null = null;
+  private copyFeedbackTimeoutId: number | null = null;
 
   constructor() {
     const overlay = document.getElementById("waiting-room-overlay");
@@ -90,6 +95,35 @@ export class WaitingRoom {
     this.titleEl = createElement("h2", "overlay-title", "Waiting Room") as HTMLHeadingElement;
     this.subtitleEl = createElement("p", "overlay-subtitle", "Waiting for players to join.") as HTMLParagraphElement;
     header.append(this.titleEl, this.subtitleEl);
+
+    const shareHeading = createElement("h3", "section-title", "Invite Players");
+    const shareHint = createElement(
+      "p",
+      "waiting-room-share-hint",
+      "Share this link to let other players join this waiting room directly.",
+    );
+    const shareRow = createElement("div", "waiting-room-share-row");
+    this.joinLinkInput = createElement("input", "waiting-room-share-input") as HTMLInputElement;
+    this.joinLinkInput.type = "text";
+    this.joinLinkInput.readOnly = true;
+    this.joinLinkInput.autocomplete = "off";
+    this.joinLinkInput.spellcheck = false;
+    this.joinLinkInput.setAttribute("aria-label", "Join link");
+    this.joinLinkInput.addEventListener("focus", () => this.joinLinkInput.select());
+    this.joinLinkInput.addEventListener("click", () => this.joinLinkInput.select());
+
+    this.copyLinkButton = createElement(
+      "button",
+      "lobby-button lobby-button-secondary waiting-room-copy-button",
+      "Copy Link",
+    ) as HTMLButtonElement;
+    this.copyLinkButton.type = "button";
+    this.copyLinkButton.addEventListener("click", () => {
+      void this.copyJoinLink();
+    });
+
+    shareRow.append(this.joinLinkInput, this.copyLinkButton);
+    this.copyFeedbackEl = createElement("p", "waiting-room-share-feedback") as HTMLParagraphElement;
 
     const rosterHeading = createElement("h3", "section-title", "Players");
     this.playerListEl = createElement("ul", "waiting-room-player-list") as HTMLUListElement;
@@ -111,11 +145,22 @@ export class WaitingRoom {
     this.leaveButton.addEventListener("click", () => this.leave());
 
     controls.append(this.readyButton, this.startButton, this.leaveButton);
-    panel.append(header, rosterHeading, this.playerListEl, this.errorEl, controls);
+    panel.append(
+      header,
+      shareHeading,
+      shareHint,
+      shareRow,
+      this.copyFeedbackEl,
+      rosterHeading,
+      this.playerListEl,
+      this.errorEl,
+      controls,
+    );
     this.overlay.append(panel);
 
     this.renderPlayerList();
     this.updateControls();
+    this.updateJoinLink();
   }
 
   onEvent(callback: WaitingRoomEventCallback): void {
@@ -174,6 +219,8 @@ export class WaitingRoom {
       ? "You are hosting. Start when everyone is ready."
       : "Toggle Ready when you are set to play.";
 
+    this.updateJoinLink();
+    this.clearCopyFeedback();
     this.renderPlayerList();
     this.updateControls();
     this.overlay.classList.add("visible");
@@ -188,6 +235,8 @@ export class WaitingRoom {
     this.isReady = false;
     this.players = [];
     this.clearError();
+    this.clearCopyFeedback();
+    this.updateJoinLink();
     this.renderPlayerList();
     this.updateControls();
   }
@@ -281,6 +330,75 @@ export class WaitingRoom {
 
     this.hide();
     this.eventCallback?.({ type: "leave" });
+  }
+
+  private async copyJoinLink(): Promise<void> {
+    const joinLink = this.joinLinkInput.value;
+    if (!joinLink) {
+      return;
+    }
+
+    try {
+      await this.copyText(joinLink);
+      this.setCopyFeedback("Copied!", "success");
+    } catch {
+      this.joinLinkInput.select();
+      this.setCopyFeedback("Press Ctrl+C or Cmd+C to copy the link.", "error");
+    }
+  }
+
+  private updateJoinLink(): void {
+    const joinLink = this.gameId ? buildJoinGameHref(window.location.href, this.gameId) : "";
+    this.joinLinkInput.value = joinLink;
+    this.copyLinkButton.disabled = !joinLink;
+  }
+
+  private async copyText(text: string): Promise<void> {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const fallback = document.createElement("textarea");
+    fallback.value = text;
+    fallback.setAttribute("readonly", "true");
+    fallback.style.position = "absolute";
+    fallback.style.left = "-9999px";
+    document.body.append(fallback);
+    fallback.select();
+
+    const copied = document.execCommand("copy");
+    fallback.remove();
+
+    if (!copied) {
+      throw new Error("Copy failed");
+    }
+  }
+
+  private setCopyFeedback(message: string, tone: "success" | "error"): void {
+    if (this.copyFeedbackTimeoutId !== null) {
+      window.clearTimeout(this.copyFeedbackTimeoutId);
+      this.copyFeedbackTimeoutId = null;
+    }
+
+    this.copyFeedbackEl.textContent = message;
+    this.copyFeedbackEl.className = `waiting-room-share-feedback ${tone} visible`;
+    this.copyLinkButton.textContent = tone === "success" ? "Copied!" : "Copy Link";
+
+    this.copyFeedbackTimeoutId = window.setTimeout(() => {
+      this.clearCopyFeedback();
+    }, 2200);
+  }
+
+  private clearCopyFeedback(): void {
+    if (this.copyFeedbackTimeoutId !== null) {
+      window.clearTimeout(this.copyFeedbackTimeoutId);
+      this.copyFeedbackTimeoutId = null;
+    }
+
+    this.copyFeedbackEl.textContent = "";
+    this.copyFeedbackEl.className = "waiting-room-share-feedback";
+    this.copyLinkButton.textContent = "Copy Link";
   }
 
   private showError(message: string): void {
