@@ -6,7 +6,7 @@ import {
   EMPTY,
   RED,
   RED_KING,
-} from "@eschaton/playgrid-shared";
+} from "@eschaton/shared";
 
 import {
   applyMove,

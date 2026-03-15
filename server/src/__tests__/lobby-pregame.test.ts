@@ -41,10 +41,10 @@ vi.mock("colyseus", () => ({
   matchMaker: { createRoom: mockCreateRoom },
 }));
 
-vi.mock("@eschaton/playgrid-shared", () => sharedExports);
+vi.mock("@eschaton/shared", () => sharedExports);
 vi.mock("../game/GameRegistry", () => ({ gameRegistry: mockGameRegistry }));
 
-const shared = await import("@eschaton/playgrid-shared");
+const shared = await import("@eschaton/shared");
 const lobbyModule = await import("../rooms/LobbyRoom")
   .catch(() => import("../rooms/LobbyRoom.ts"))
   .catch(() => import("../rooms/LobbyRoom.js"))

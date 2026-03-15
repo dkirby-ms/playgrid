@@ -1,9 +1,10 @@
 {
-  "name": "@eschaton/playgrid-shared",
+  "name": "@eschaton/shared",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "scripts": {
     "build": "tsc"
   },

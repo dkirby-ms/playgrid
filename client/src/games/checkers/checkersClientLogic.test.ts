@@ -1,4 +1,4 @@
-import { BLACK, EMPTY, RED } from "@eschaton/playgrid-shared";
+import { BLACK, EMPTY, RED } from "@eschaton/shared";
 import { describe, expect, it } from "vitest";
 import {
   getPlayerColorFromPlayerIndex,

@@ -24,8 +24,8 @@ import {
   type OnlinePlayersPayload,
   type PreGamePlayerInfo,
   type SetReadyPayload,
-} from "@eschaton/playgrid-shared";
-import { gameRegistry } from "../game/GameRegistry";
+} from "@eschaton/shared";
+import { gameRegistry } from "../game/GameRegistry.js";
 import { GAME_ROOM_DISPOSED_TOPIC, type GameRoomDisposedMessage } from "./lobbyPresence.js";
 
 const DEFAULT_GAME_TYPE = "checkers";

@@ -95,10 +95,10 @@ export interface IGamePlugin {
 }
 
 // server/src/rooms/ChessRoom.ts
-import { IGamePlugin } from '@eschaton/playgrid-shared';
+import { IGamePlugin } from '@eschaton/shared';
 
 // client/src/game/ChessGame.ts
-import { IGamePlugin } from '@eschaton/playgrid-shared';
+import { IGamePlugin } from '@eschaton/shared';
 ```
 
 ### Database Schema

@@ -1,4 +1,4 @@
-import { BLACK, RED } from "@eschaton/playgrid-shared";
+import { BLACK, RED } from "@eschaton/shared";
 
 const BOARD_SIZE = 24;
 const PIECES_PER_PLAYER = 15;
