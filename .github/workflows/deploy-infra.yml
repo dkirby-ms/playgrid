@@ -15,6 +15,10 @@ on:
         description: 'PostgreSQL admin password (leave empty to use existing)'
         required: false
         type: string
+      container_app_env_resource_id:
+        description: 'Existing Container Apps Environment resource ID to reuse (optional; lets prod target the shared UAT/prod CAE across resource groups)'
+        required: false
+        type: string
 
 permissions:
   id-token: write
@@ -46,16 +50,24 @@ jobs:
       - name: Run what-if deployment
         run: |
           POSTGRES_PASSWORD="${{ inputs.postgres_admin_password }}"
+          CONTAINER_APP_ENV_RESOURCE_ID="${{ inputs.container_app_env_resource_id }}"
           if [ -z "$POSTGRES_PASSWORD" ]; then
             echo "No password provided, skipping what-if (requires password parameter)"
             exit 0
           fi
-          
-          az deployment group what-if \
-            --resource-group ${{ vars.RESOURCE_GROUP }} \
-            --template-file infra/main.bicep \
-            --parameters environmentName=${{ inputs.environment }} \
+
+          DEPLOYMENT_ARGS=(
+            --resource-group "${{ vars.RESOURCE_GROUP }}"
+            --template-file infra/main.bicep
+            --parameters environmentName=${{ inputs.environment }}
             --parameters postgresAdminPassword="$POSTGRES_PASSWORD"
+          )
+
+          if [ -n "$CONTAINER_APP_ENV_RESOURCE_ID" ]; then
+            DEPLOYMENT_ARGS+=(--parameters containerAppEnvResourceId="$CONTAINER_APP_ENV_RESOURCE_ID")
+          fi
+
+          az deployment group what-if "${DEPLOYMENT_ARGS[@]}"
 
   deploy:
     runs-on: ubuntu-latest
@@ -83,13 +95,21 @@ jobs:
 
       - name: Deploy infrastructure
         run: |
-          az deployment group create \
-            --resource-group ${{ vars.RESOURCE_GROUP }} \
-            --template-file infra/main.bicep \
-            --parameters environmentName=${{ inputs.environment }} \
-            --parameters postgresAdminPassword="${{ inputs.postgres_admin_password }}" \
-            --output json \
-            > deployment-output.json
+          CONTAINER_APP_ENV_RESOURCE_ID="${{ inputs.container_app_env_resource_id }}"
+
+          DEPLOYMENT_ARGS=(
+            --resource-group "${{ vars.RESOURCE_GROUP }}"
+            --template-file infra/main.bicep
+            --parameters environmentName=${{ inputs.environment }}
+            --parameters postgresAdminPassword="${{ inputs.postgres_admin_password }}"
+            --output json
+          )
+
+          if [ -n "$CONTAINER_APP_ENV_RESOURCE_ID" ]; then
+            DEPLOYMENT_ARGS+=(--parameters containerAppEnvResourceId="$CONTAINER_APP_ENV_RESOURCE_ID")
+          fi
+
+          az deployment group create "${DEPLOYMENT_ARGS[@]}" > deployment-output.json
           
           echo "✓ Infrastructure deployed successfully"
 
@@ -105,11 +125,16 @@ jobs:
           echo ""
           echo "ACR_NAME=$(cat deployment-output.json | jq -r '.properties.outputs.acrName.value')"
           echo "CONTAINER_APP_NAME=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppName.value')"
+          echo "CONTAINER_APP_ENVIRONMENT_NAME=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppEnvironmentName.value')"
+          echo "CONTAINER_APP_ENVIRONMENT_ID=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppEnvironmentId.value')"
           echo "CONTAINER_APP_FQDN=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppFqdn.value')"
           echo "RESOURCE_GROUP=${{ vars.RESOURCE_GROUP }}"
           echo ""
           echo "💡 To set these variables, go to:"
           echo "   Settings → Environments → ${{ inputs.environment }} → Environment variables"
+          echo ""
+          echo "💡 If the other environment lives in a different resource group, rerun this workflow there with:"
+          echo "   container_app_env_resource_id=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppEnvironmentId.value')"
 
       - name: Notify Discord on success
         if: success()

@@ -4,6 +4,8 @@ param environmentName = 'dev'
 
 param location = 'centralus'
 
+param containerAppEnvResourceId = ''
+
 param postgresAdminUsername = 'pgadmin'
 
 param postgresAdminPassword = readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD', '')
