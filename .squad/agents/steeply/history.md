@@ -152,3 +152,34 @@ Full E2E suite was failing because lobby tests made order-dependent assertions. 
 Finishing agent should convert .todo() stubs to executable tests using Pemulis/Gately seams now available.
 
 **Status:** ✅ Tests pass. Contracts visible in CI without brittle timing dependencies.
+
+## Work Complete — Issue #80: Risk Game Test Suite (2026-03-15)
+
+- Created comprehensive test suite with 64 tests covering Risk game mechanics
+- 16 tests passing immediately (territory map, reinforcements, card trade-ins, initial armies)
+- 48 tests structured as `.todo()` awaiting Pemulis's plugin action implementations
+- Test file: `server/src/__tests__/risk.test.ts`
+- Follows Backgammon test pattern (root `__tests__` directory)
+- Uses actual imports from Pemulis's implementation (RiskPlugin, riskLogic, territoryData)
+
+**Coverage Areas:**
+1. **Territory & Map:** 42-territory validation, adjacency symmetry, continent bonuses
+2. **Setup Phase:** Initial army allocation (2-6 players), territory selection
+3. **Reinforce Phase:** Territory-based reinforcements, continent bonuses, card trade-ins
+4. **Attack Phase:** Validation, dice mechanics, combat resolution, territory capture
+5. **Fortify Phase:** Path validation, army movement constraints
+6. **Win Conditions:** Territory control, elimination, card transfer
+7. **Edge Cases:** Multi-player games, no valid moves, forced trades, disconnection
+
+**Key Learnings:**
+- Risk tests follow Backgammon pattern: root `__tests__` directory, not game-specific subdirectory
+- Pemulis delivered clean separation: `territoryData.ts` (static map), `riskLogic.ts` (pure functions), `RiskPlugin.ts` (actions)
+- Test strategy: validate pure logic functions first (passing), defer plugin integration tests to `.todo()` until actions complete
+- Used actual TERRITORIES, CONTINENTS, and logic functions rather than mocks—enables immediate validation
+- Combat resolution needs deterministic testing approach (stochastic dice currently uses Math.random)
+
+**Coordination:**
+- Pemulis has core logic functions ready: `calculateReinforcements`, `getCardTradeInValue`, `checkWinCondition`, attack/fortify validators
+- Plugin action handlers still in progress—48 integration tests remain as `.todo()`
+- Tests ready for incremental conversion as Pemulis completes action implementations
+

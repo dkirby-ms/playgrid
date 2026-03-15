@@ -291,3 +291,46 @@ Hal has triaged Risk and assigned you as the systems developer. Here's your scop
 
 **Precedent:** Risk is next in approved game order (Dominoes → Poker → Hearts/Spades → Chess → Risk).
 
+
+### Risk Game Plugin Implementation (2026-03-15 - Issue #80, Phase 1)
+
+**Architecture Pattern:**
+- Followed the exact IGamePlugin pattern used by Checkers and Backgammon
+- Plugin structure: `createState()` factory, lifecycle hooks (onPlayerJoin, onGameStart), action handlers, condition validators
+- Server-authoritative state with all validation in the plugin
+- Registration in `server/src/index.ts` via `gameRegistry.register(riskPlugin)`
+
+**Key Files Created:**
+- `shared/src/games/risk/RiskState.ts` - State schema with TerritoryState, RiskPlayerState, phase enums
+- `server/src/games/risk/RiskPlugin.ts` - Main plugin implementing GamePlugin<RiskState>
+- `server/src/games/risk/riskLogic.ts` - Pure game logic functions (combat, reinforcements, validation)
+- `server/src/games/risk/territoryData.ts` - Static territory graph (42 territories, 6 continents, adjacencies)
+
+**State Design:**
+- Uses Colyseus Schema classes (TerritoryState extends Schema, RiskPlayerState extends Schema)
+- MapSchema for territories and riskPlayers (keyed by territory ID and session ID)
+- Turn phases: setup-pick, setup-place, reinforce, attack, fortify
+- Game phases: setup (initial army placement), playing (standard turns)
+- Hidden information: card counts stored server-side in RiskPlayerState.cardsHeld
+
+**Game Logic:**
+- Setup: Territories distributed round-robin, initial armies calculated by player count (40/35/30/25/20 for 2-6 players)
+- Reinforce: Territory count ÷ 3 (min 3) + continent bonuses + card trade-ins (escalating 4,6,8,10,12,15,20...)
+- Attack: Dice rolling (attacker up to 3, defender up to 2), highest vs highest comparison, territory conquest
+- Fortify: Move armies between adjacent owned territories
+- Cards: Earn one card per turn if you conquered a territory, trade 3 for bonus armies
+- Win condition: Control all 42 territories
+
+**Technical Notes:**
+- Turn phases managed via string union type in shared, duplicated in server for type-checking
+- Action handlers return ActionResult with success/error/endsTurn/endsGame flags
+- Territory adjacency checked via static data lookups (areTerritoriesAdjacent)
+- Combat dice rolls use Math.random(), sorted descending for comparison
+- Plugin uses mode: "phased" with phases config for UI hints (not enforced by BaseGameRoom)
+
+**Future Work (Phase 2/3):**
+- Client UI rendering (territory map, attack/fortify interactions)
+- Card UI (currently server tracks count only, no card types/visualization)
+- Enhanced territory selection (graph connectivity validation for fortify paths)
+- AI players or bot support
+
