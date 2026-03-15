@@ -114,6 +114,19 @@
 - Added `colyseus` to `shared/package.json` because TypeScript still needs the package installed to resolve the `Client` type, even though the shared module emits no runtime plugin code.
 - Re-exported the plugin types from `shared/src/index.ts` so future game plugins and rooms can import the same shared definitions from one package entrypoint.
 
+### Session lifecycle + reconnection audit (2026-03-15)
+
+- `server/src/game/BaseGameRoom.ts` only grants a reconnection window during `phase === "playing"` for non-spectators and non-`CloseCode.CONSENTED` disconnects. It calls `allowReconnection(client, 30)` and keeps the existing `PlayerInfo` in state with `isConnected = false`; a successful reconnect only flips `isConnected` back to `true`.
+- There is **no** server-side reconnection support in `LobbyRoom`: waiting-room/browser-refresh disconnects immediately remove the lobby session, clear the player from `waitingPlayers`, and delete the whole waiting game if the host refreshes. Mid-game reconnection is the only resilience path currently implemented.
+- The shared plugin contract already defines `onPlayerReconnect`, but `BaseGameRoom.onJoin()` never calls it. Server state is preserved during the reconnection window, but reconnect-specific game/plugin hooks are currently skipped.
+- `BaseGameRoom` ends games with `disconnect()` and `LobbyRoom` does not get notified when an in-progress game room disposes, so lobby-side session lifecycle is incomplete after game shutdown.
+- On the client, `Application.ts` only persists `playgrid.display-name` in `localStorage`. It does **not** persist `room.roomId`, `room.reconnectionToken`, spectator/player role, or any active-game marker, and `bindGameRoom()` drops `this.gameRoom` and returns to the lobby as soon as the room finally emits `onLeave`.
+- The installed Colyseus SDK already has same-tab automatic socket recovery using `room.reconnectionToken` (`client/node_modules/@colyseus/sdk/src/Room.ts`), but Playgrid does not wire `room.onDrop` / `room.onReconnect` into app state or UI. That means transient network drops may self-heal inside one live page, but the app does not surface that lifecycle and browser refresh still loses the in-memory token entirely.
+- Browser refresh during a live game closes both the lobby socket and the game socket. The server will usually open the 30s `allowReconnection()` window for the game room, but the refreshed app boots as a brand-new client, reconnects only to the lobby, and has no saved reconnection token to reclaim the reserved seat. In practice, refresh makes the active match irrecoverable from the browser even though the server is briefly holding the seat open.
+- Because waiting-room state lives in `LobbyRoom` only, refreshing before game start is harsher: the guest is removed from the waiting roster immediately, and a host refresh removes the waiting game outright.
+- Recommended direction for session resilience: persist `room.reconnectionToken` + minimal active-game metadata in `sessionStorage`, attempt `client.reconnect(savedToken)` during app boot before falling back to `connectToLobby()`, clear the stored token on consented leave/game end, wire `onDrop` / `onReconnect` UI, call `plugin.lifecycle.onPlayerReconnect`, and decide whether turn timers should pause while a seat is reserved.
+- Team note: the existing decision log entry for PR #61 correctly reflects server-side `allowReconnection()` work, but its claim that players can reload mid-game is not true end-to-end until the client persists and uses the reconnection token.
+
 ## Cross-Agent Update — Issue #1 Closed, PR #47 Open (2026-03-14)
 
 **From:** Joelle (Community/DevRel)  
@@ -207,6 +220,15 @@
 - Functions accept the `pool` parameter for testability and use parameterized queries to prevent SQL injection; existing migrations already define the `games` and `game_participants` tables.
 - Verified integration with `npm run build && npm run lint && npm run test`; DB connection errors in test environment are caught and logged as expected without test failures.
 
+### Reconnection hardening follow-up (2026-03-15)
+
+- `server/src/game/BaseGameRoom.ts` now treats an existing disconnected `PlayerInfo` as a true reconnect path: `onJoin()` restores `isConnected`, fires `plugin.lifecycle.onPlayerReconnect`, and resumes the turn timer only when the returning player owns `state.currentTurn`.
+- `server/src/game/TurnManager.ts` now tracks remaining turn time so `pause()` / `resume()` preserve the active player's clock across `allowReconnection()` windows instead of letting the timer expire in the background.
+- `BaseGameRoom.onLeave()` pauses the timer before `allowReconnection()`, and `handleReconnectionTimeout()` now re-synchronizes `state.currentTurn` / `state.turnNumber` after removing an expired seat so multiplayer turn order stays coherent.
+- `server/src/rooms/LobbyRoom.ts` now gives non-consented lobby disconnects a 30-second reconnection window, keeping host/guest waiting-room membership reserved until the promise rejects and cleanup runs.
+- Room-to-lobby cleanup now uses a Colyseus presence topic instead of direct room references: `server/src/rooms/lobbyPresence.ts` defines the topic, `BaseGameRoom.onDispose()` publishes, and `LobbyRoom.onCreate()` / `onDispose()` subscribe and unsubscribe so disposed game rooms cannot linger in the lobby.
+- Regression coverage lives in `server/src/__tests__/BaseGameRoom.test.ts`, `server/src/__tests__/TurnManager.test.ts`, and `server/src/__tests__/lobby-pregame.test.ts`.
+
 ## Cross-Agent Update — Wave 1 Complete (2026-03-14T18:55:06Z)
 
 **From:** Squad Scribe  
@@ -279,3 +301,27 @@
 1. Update server/src/index.ts to initialize database connection from `DATABASE_URL` env var
 2. Verify game persistence queries (gameRepository.ts) work against the local database
 3. Document connection string in dev setup guide for new team members
+
+---
+
+## 2026-03-15: Session Resilience — Server-Side Reconnection Implementation
+
+**From:** Squad Scribe  
+**Event:** Session completed — Server-side reconnection support landed
+
+**What Changed:**
+- Implemented presence-backed cleanup via `playgrid:lobby:game-room-disposed` topic
+- BaseGameRoom wired `onPlayerReconnect` plugin hook
+- LobbyRoom clears stale entries on room disposal
+- 30s reconnection window fully integrated
+
+**Coordination Notes:**
+- **Gately (Client):** Client-side reconnect in parallel — persist token in sessionStorage, attempt startup reconnect before fresh lobby
+- **Steeply (Tester):** Server tests green now; client contracts pinned as .todo() stubs pending Gately's client seams
+
+**What Gately Needs from You:**
+- onPlayerReconnect hook available for turn timer integration
+- Presence topic stable for lobby cleanup
+- 30s window working server-side before client attempted recovery
+
+**Status:** ✅ Build + tests pass. Ready for Gately's cross-agent integration.

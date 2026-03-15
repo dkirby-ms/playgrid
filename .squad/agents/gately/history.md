@@ -8,6 +8,14 @@
 
 ## Learnings
 
+### 2026-03-15: Client reconnect session resilience
+
+- Added `client/src/ui/ReconnectOverlay.ts` plus `#reconnect-overlay` styles in `client/index.html` so game disconnects show reconnecting, reconnected, and return-to-lobby states without touching the Pixi render loop.
+- `client/src/Application.ts` now owns active-game session persistence through `sessionStorage` key `playgrid.active-session`, storing `room.reconnectionToken`, `room.roomId`, `gameType`, and a timestamp whenever a game room join or reconnect succeeds.
+- Startup recovery now happens before any fresh lobby join: `Application.ts` attempts `ConnectionManager.reconnect()` if the saved session is younger than 30 seconds, then falls back to `connectToLobby()` only after clearing stale reconnect state.
+- Active game room lifecycle should bind `room.onDrop`, `room.onReconnect`, `room.onLeave`, and the `game-end` message together: keep reconnect state during drops, refresh it after reconnect, clear it on consented leave or natural game end, and return through `connectToLobby()` when a restored session has no live lobby room.
+- Key paths for this flow: `client/src/Application.ts`, `client/src/networking/ConnectionManager.ts`, `client/src/ui/ReconnectOverlay.ts`, and `client/index.html`.
+
 ### 2026-03-14: Client Architecture Research
 
 **Current State:**
@@ -400,3 +408,27 @@ During full E2E suite run, lobby tests failed because earlier checkers E2E tests
 - `client/src/ui/LobbyScreen.ts` — 550 lines, all lobby UI logic
 - Game creation flow: Click tile → Modal opens with gameType pre-selected → Create → Room message → Scene transition
 
+
+---
+
+## 2026-03-15: Session Resilience — Client-Side Reconnection Implementation
+
+**From:** Squad Scribe  
+**Event:** Session completed — Client-side reconnect flow landed
+
+**What Changed:**
+- sessionStorage persistence under `playgrid.active-session`
+- Startup reconnect attempt before fresh lobby boot
+- ReconnectOverlay UI for drop/reconnect states
+- State cleanup on consented leave, game-end, or failed restore
+
+**Coordination Notes:**
+- **Pemulis (Server):** Server-side 30s window + presence cleanup implemented in parallel
+- **Steeply (Tester):** Server tests passing; client contracts as .todo() stubs ready for your seam availability
+
+**What Pemulis Provided:**
+- onPlayerReconnect hook wired for future turn timer integration
+- Presence topic stable for lobby cleanup
+- 30s reconnection window operational server-side
+
+**Status:** ✅ Build + lint pass. End-to-end refresh recovery enabled within 30s window.

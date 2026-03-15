@@ -18,6 +18,8 @@
 - 2026-03-14: Issue #6 adds a two-stage Node 22 Alpine Docker build; the runtime stage installs only `server` + `shared` production workspace dependencies, and exposes the built client bundle through `server/client/dist` via a symlink to keep the image lean while matching `server/src/index.ts`.
 - 2026-03-14: Dev stays local-only (no Azure dev deployment); local PostgreSQL now lives in root `docker-compose.yml` as `postgres:15-alpine` with a `postgres-data` volume and `pg_isready` health check for easy `docker compose up` startup.
 - 2026-03-14: Local DB wiring lives in `.env.example`, root `package.json` (`db:up`, `db:down`, `db:logs`), and `server/package.json`, which now loads repo-root `.env` during `npm run dev` via `node --env-file-if-exists=../.env --import tsx`.
+- 2026-03-14: On the standalone Ubuntu server, `docker`/`docker compose` were not installed and the `saitcho` user has sudo-group membership but not passwordless sudo, so Docker Engine installation via the official apt repository must be completed manually in an interactive sudo session before local `docker compose up` can be used.
+- 2026-03-14: Azure CLI (`az`) was not installed on the standalone Ubuntu server. Microsoft’s installer endpoint is reachable, but `saitcho` does not have passwordless sudo, so the official `curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash` install must be run manually in an interactive sudo session before `az --version` can succeed.
 
 ### 2026-03-14: Deployment Pipeline Analysis — Recommendations for PlayGrid
 

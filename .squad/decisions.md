@@ -1493,3 +1493,103 @@ The original lobby used an HTML table to display game sessions with inline forms
 - Learning curve for new developers
 - Additional CSS maintenance vs. table approach
 - Accessibility testing needed (keyboard navigation, screen readers)
+
+---
+
+## Session: Session Resilience — Client-Server Reconnection (2026-03-15)
+
+### Pemulis: Presence-backed Reconnect Cleanup
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Use a Colyseus presence topic (`playgrid:lobby:game-room-disposed`) for game-room → lobby cleanup, rather than keeping direct references between `BaseGameRoom` and `LobbyRoom`.
+
+**Rationale:**
+- Loose coupling: Game rooms only publish disposal facts; lobby decides how to clear stale entries
+- Compatible with Colyseus local presence today; remains compatible with Redis presence if scaled later
+- Centralizes lobby cleanup in one place: Removing a dead in-progress game also clears stale `currentGameId` assignments for connected lobby sessions
+- Extends existing plugin lifecycle contract to expose `onPlayerReconnect` hook for turn timer integration
+
+**Impact:**
+- Server-side reconnection window and cleanup fully implemented
+- LobbyRoom clears stale entries on game room disposal
+- Plugin system ready for turn timer pause/resume during reconnect window
+
+**Files Modified:**
+- server/src/rooms/lobbyPresence.ts
+- server/src/game/BaseGameRoom.ts
+- server/src/rooms/LobbyRoom.ts
+
+---
+
+### Gately: Client Reconnect UX & sessionStorage Persistence
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Persist only active game reconnect state in `sessionStorage` under `playgrid.active-session`, and restore it in `client/src/Application.ts` before booting a fresh lobby room. Drive the in-game reconnect UX from the Colyseus room lifecycle (`onDrop`, `onReconnect`, `onLeave`) while clearing stored state only on consented leave, `game-end`, or failed restore.
+
+**Rationale:**
+- Server already reserves seats for 30 seconds during active games, so the browser must try reclaiming that seat before opening a fresh lobby session
+- `sessionStorage` matches the desired lifecycle: Survives refresh, clears on tab close, avoids reviving dead sessions across future browser launches
+- Same-tab drops need visible feedback without bouncing players straight back to lobby; transient drops and final reconnect failure are separate states
+- Enables end-to-end recovery across browser refresh within the 30s reconnect window
+
+**Implementation:**
+- Persist `room.reconnectionToken` + minimal active-game metadata (gameType, spectator flag, timestamp) on room join
+- Attempt `client.reconnect(savedToken)` before creating fresh lobby session on startup
+- Clear persisted state on: consented leave, game-end, or reconnect-window expiry/failure
+- Bind `room.onDrop` and `room.onReconnect` to drive visible reconnecting/resumed states
+
+**Impact:**
+- Players can refresh mid-game and rejoin within 30s window
+- Visible reconnecting UI prevents silent SDK behavior
+- Tab close automatically clears stale session tokens
+- Works with existing 30s server-side reconnection window
+
+**Files Modified:**
+- client/src/Application.ts
+- client/src/networking/ConnectionManager.ts
+- client/src/ui/ReconnectOverlay.ts
+- client/index.html
+
+---
+
+### Steeply: Reconnect Test Strategy — Two-Layer Coverage
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Land reconnection coverage in two layers:
+1. Add concrete server-side behavioral tests where current seams already exist (`BaseGameRoom` and lobby pregame tests)
+2. Add explicit Vitest `.todo()` contracts for client startup/sessionStorage reconnect behavior and server/client edge cases
+
+**Rationale:**
+- Pemulis and Gately are landing implementation in parallel, but current branch does not expose stable client seams for session persistence or finished server reconnect lifecycle
+- Shipping green explicit TODO contracts keeps expected behavior visible in CI without forcing brittle implementation-coupled tests or breaking suite before feature lands
+- Two-layer approach allows staging: Server tests green now; client/cross-agent tests pinned as contracts for finishing agent to convert from `.todo()` to executable coverage
+
+**Coverage:**
+- **Server tests (green):** allowReconnection window, consented leave, timeout forfeits, lobby cleanup
+- **Client contracts (TODO):** sessionStorage persistence, startup reconnect attempt, reconnecting UI states, server/client edge cases covering full reconnection matrix
+
+**Impact:**
+- Server regressions around `allowReconnection`, consented leave, timeout forfeits covered now
+- Remaining reconnect requirements pinned as named tests; finishing agent can convert from `.todo()` without reinventing matrix
+- CI shows expected contracts without flaky timing-dependent tests
+
+**Files Modified:**
+- e2e/reconnection.test.ts (new)
+- e2e/lobby.test.ts (updated with reconnection contracts)
+
+---
+
+## Session: Previous — Player Reconnection Support (2026-03-14)
+
+*This session completed Phase 1 of reconnection: server-side 30s window support.*
+
+**Pemulis:** Implemented `allowReconnection(client, timeout)` in `BaseGameRoom.onLeave()` with 30s default, heartbeat config, and CONSENTED disconnect distinction.
+
+**Status:** Implemented  
+**Follow-up:** Client-side UI and end-to-end recovery (completed in 2026-03-15 session above)

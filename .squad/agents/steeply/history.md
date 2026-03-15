@@ -12,6 +12,9 @@
 - Lobby browser E2E can reliably assert against `#lobby-overlay` / `#waiting-room-overlay`, `input[name="player-name"]`, `input[name="game-name"]`, and `.waiting-room-player-name` while driving multiple isolated browser contexts against `npm run dev`.
 - The root Playwright run (`npx playwright test`) shares one server process across `e2e/checkers.spec.ts` and `e2e/lobby.spec.ts`, so lobby tests must key off their unique game row in `e2e/lobby.spec.ts` instead of assuming the table starts empty after earlier specs leave in-progress sessions visible.
 - `client/src/Application.ts` must import `ConnectionManager`/`ConnectionState` from `client/src/networking/index.ts`; if that wiring is missing, the browser dies at startup before `#lobby-overlay` ever renders and the E2E suite collapses immediately.
+- `server/src/__tests__/BaseGameRoom.test.ts` is the right seam for reconnection behavior: instantiate the room off the prototype, stub `allowReconnection`, and assert outcomes through lifecycle hooks plus room state instead of poking private helpers.
+- `server/src/__tests__/lobby-pregame.test.ts` already exposes the waiting-room seams needed for disconnect coverage (`waitingPlayers`, `sessions`, `currentGameId`), so lobby reconnection tests should stay there and assert membership preservation/removal behavior directly.
+- There is no real client-side `PlaygridApp` harness yet; for startup/sessionStorage reconnect work, Vitest `.todo()` coverage is the safe placeholder until Gately lands the application-side session persistence flow and a controllable `ConnectionManager` seam.
 
 ## Cross-Agent Update — Issue #1 Closed, PR #47 Open (2026-03-14)
 
@@ -124,3 +127,28 @@ Full E2E suite was failing because lobby tests made order-dependent assertions. 
 - All 83 backgammon tests passing
 - Follows existing test patterns from Checkers E2E tests
 - PR #69 created (draft) — squad/46-backgammon-tests
+
+---
+
+## 2026-03-15: Session Resilience — Two-Layer Test Coverage
+
+**From:** Squad Scribe  
+**Event:** Session completed — Reconnection test strategy landed
+
+**What Changed:**
+- 4 concrete server-side behavioral tests (green)
+- 14 named .todo() contract stubs (client + cross-agent)
+- Full reconnection matrix contracts pinned in CI
+
+**Coordination Notes:**
+- **Pemulis (Server):** Server-side tests passing for 30s window, cleanup, forfeit scenarios
+- **Gately (Client):** Client seams available now; contracts ready for conversion from .todo() to executable tests
+
+**Test Coverage Strategy:**
+1. **Server layer (green now):** allowReconnection window, consented leave, timeout forfeits, lobby cleanup
+2. **Client layer (pinned as contracts):** sessionStorage persistence, startup reconnect, reconnecting UI, edge cases
+
+**Action for Future Work:**
+Finishing agent should convert .todo() stubs to executable tests using Pemulis/Gately seams now available.
+
+**Status:** ✅ Tests pass. Contracts visible in CI without brittle timing dependencies.
