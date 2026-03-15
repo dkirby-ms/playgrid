@@ -20,7 +20,7 @@
 - 2026-03-14: Local DB wiring lives in `.env.example`, root `package.json` (`db:up`, `db:down`, `db:logs`), and `server/package.json`, which now loads repo-root `.env` during `npm run dev` via `node --env-file-if-exists=../.env --import tsx`.
 - 2026-03-14: On the standalone Ubuntu server, `docker`/`docker compose` were not installed and the `saitcho` user has sudo-group membership but not passwordless sudo, so Docker Engine installation via the official apt repository must be completed manually in an interactive sudo session before local `docker compose up` can be used.
 - 2026-03-14: Azure CLI (`az`) was not installed on the standalone Ubuntu server. Microsoft’s installer endpoint is reachable, but `saitcho` does not have passwordless sudo, so the official `curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash` install must be run manually in an interactive sudo session before `az --version` can succeed.
-- 2026-03-15: `infra/main.bicep` now uses environment-scoped optional `customDomainUat` and `customDomainProd` parameters, selects the domain from `environmentName`, and only emits ACA ingress `customDomains` when the chosen value is non-empty so dev/no-domain deployments stay unchanged.
+- 2026-03-15: `infra/main.bicep` now uses environment-scoped optional `customDomainUat` and `customDomainProd` parameters, selects the domain from `environmentName`, and only emits ACA ingress `customDomains` when the chosen value is non-empty so dev/no-domain deployments stay unchanged. Bicep build + repo build/lint/test all pass. (Session: 2026-03-15T01-06-23Z)
 
 ### 2026-03-14: Deployment Pipeline Analysis — Recommendations for PlayGrid
 
