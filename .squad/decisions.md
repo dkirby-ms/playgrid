@@ -2041,3 +2041,56 @@ Lobby E2E coverage should target only the unique session created by the test and
 **Context:** Issue #91 exposed lobby Playwright suite drift from shipped UI and fragility under shared-server runs.
 
 **PR:** #92 (merged)
+
+---
+
+## Session: Healthcheck Fix (2026-03-15)
+
+### Marathe: Environment Variables Include Protocol Prefix
+
+**Status:** Implemented  
+**Date:** 2026-03-15  
+
+GitHub environment variables for URLs MUST include the protocol prefix (`https://`). Workflows should use these variables directly without adding or removing protocol prefixes.
+
+**Decision:**
+- `CONTAINER_APP_FQDN` already includes `https://` protocol
+- Workflows must not prepend additional protocol
+- Environment variables should be used as-is for health checks, notifications, and logs
+
+**Rationale:**
+1. **Consistency with Infrastructure Outputs:** Bicep template outputs `containerAppFqdn` as complete URL with protocol
+2. **Reduced Error Surface:** No protocol manipulation required — variables are directly usable
+3. **Direct Usability:** Variables work in Discord notifications, logs, health checks without transformation
+4. **Fail-Safe:** Missing protocol becomes immediately obvious rather than silently malformed
+
+**Implementation:**
+- Fixed `.github/workflows/deploy-uat.yml` (commit ad8d0a8)
+- Fixed `.github/workflows/deploy-prod.yml` (commit d5ccb85)
+
+**Consequences:**
+- ✅ Health checks now construct valid URLs
+- ✅ Deployments no longer fail at verification step
+- ✅ Consistent URL handling across workflows
+- ✅ Discord notifications show clickable URLs correctly
+
+---
+
+### Steeply: Checkers E2E Selector Update
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Game-specific Playwright suites must reuse the current lobby interaction pattern instead of legacy table-era selectors.
+
+**Decision:**
+Game E2E coverage should assert `#lobby-overlay.visible`, create games through `#create-game-modal`, join through test's unique `.active-game-card`, then hand off gameplay assertions to `?e2e=1` browser harness.
+
+**Rationale:**
+- Proves the pattern from lobby.spec.ts works for game-specific assertions
+- Keeps plugin suites aligned with lobby refactors
+- Avoids duplicating stale assumptions
+- Preserves grey-box pattern for PixiJS games
+
+**Impact:**
+Future game-plugin E2E coverage should treat lobby selectors as shared infrastructure and avoid stale assumptions from legacy UI patterns.

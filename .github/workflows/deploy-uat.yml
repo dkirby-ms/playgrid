@@ -68,7 +68,7 @@ jobs:
 
       - name: Health check
         run: |
-          HEALTH_URL="https://${{ vars.CONTAINER_APP_FQDN }}/health"
+          HEALTH_URL="${{ vars.CONTAINER_APP_FQDN }}/health"
           echo "Checking health endpoint: $HEALTH_URL"
           
           MAX_ATTEMPTS=10
@@ -94,7 +94,7 @@ jobs:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
           status: ${{ job.status }}
           environment: uat
-          deployment-url: https://${{ vars.CONTAINER_APP_FQDN }}
+          deployment-url: ${{ vars.CONTAINER_APP_FQDN }}
           commit-sha: ${{ github.sha }}
           author: ${{ github.actor }}
           repository: ${{ github.repository }}

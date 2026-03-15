@@ -466,3 +466,64 @@ Added comprehensive Phase 1 limitations documentation to `server/src/games/risk/
 
 **Note:** Original PR authors (Pemulis/Steeply/Gately) were locked out per protocol; Marathe completed revision independently.
 
+
+---
+
+## 2026-03-15: Fixed Azure Container Apps Health Check Probe Failure
+
+**Root Cause:** The `CONTAINER_APP_FQDN` GitHub environment variable already included the `https://` protocol, but the deploy workflows were prepending another `https://`, resulting in a malformed URL: `https://https://playgrid-uat.orangedune-0437f62b.centralus.azurecontainerapps.io/health`
+
+**Impact:** All UAT and Prod deployments failed during the health check verification step, even though the containers were running correctly and the `/health` endpoint was functional.
+
+**Investigation:**
+1. Examined recent deployment workflow runs via `gh run list` and `gh run view`
+2. Found health check logs showing double `https://` prefix in URL
+3. Verified environment variables: `gh variable list --env uat` showed `CONTAINER_APP_FQDN` already includes protocol
+4. Confirmed same issue in both UAT and Prod environments
+
+**Fix Applied:**
+- **deploy-uat.yml**: Changed `HEALTH_URL="https://${{ vars.CONTAINER_APP_FQDN }}/health"` → `HEALTH_URL="${{ vars.CONTAINER_APP_FQDN }}/health"`
+- **deploy-prod.yml**: Same fix applied
+- **Discord notifications**: Removed duplicate `https://` from `deployment-url` parameter in both workflows
+
+**Files Changed:**
+- `.github/workflows/deploy-uat.yml`
+- `.github/workflows/deploy-prod.yml`
+
+**Verification:**
+- ✅ `npm run build` — All workspaces compile successfully
+- ✅ No other workflows have the double-prefix issue
+
+**Commit:** `ad8d0a8` - "fix: remove duplicate https:// prefix in health check URL"
+
+### Learnings:
+
+**Environment Variable Conventions:**
+- Azure Container Apps `containerApp.properties.configuration.ingress.fqdn` returns the FQDN without protocol
+- GitHub environment variables should store FQDNs **with** protocol for direct use in URLs
+- Workflow scripts should not assume protocol is missing — validate variable format first
+
+**Health Check Best Practices:**
+1. Always log the constructed URL before testing (`echo "Checking health endpoint: $HEALTH_URL"`)
+2. Use `curl -f -s` for clean failures (non-2xx exits non-zero, suppress progress)
+3. Grep for specific JSON fields rather than just checking HTTP 200 (validates response format)
+4. Implement retry logic with exponential backoff (our workflows use 10 attempts × 5s delay)
+
+**Azure Container Apps Probes:**
+- Liveness probe: Restarts container on failure (30s initial delay, 10s period, 5s timeout, 3 failures)
+- Readiness probe: Removes from load balancer on failure (30s initial delay, 5s period, 5s timeout, 6 failures)
+- No startup probe configured (ACA doesn't distinguish startup from liveness in current config)
+- Probes target `/health` on port 2567 correctly
+- Server listens before DB init to respond to probes during startup (see `server/src/index.ts:62`)
+
+**Key File Paths:**
+- Health probes: `infra/main.bicep` lines 270-295
+- Server health endpoint: `server/src/index.ts` line 38
+- Deploy workflows: `.github/workflows/deploy-{uat,prod}.yml`
+- Bootstrap placeholder: Uses `node:22-alpine` with inline HTTP server (Bicep line 56)
+
+**Architectural Decision:**
+- Environment variables include protocol (`https://`) for consistency with Bicep outputs
+- Workflows should use variables directly without protocol manipulation
+- This aligns with the pattern in `infra/main.bicep` output `containerAppFqdn` which returns the full URL
+
