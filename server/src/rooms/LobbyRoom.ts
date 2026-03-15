@@ -380,6 +380,7 @@ export class LobbyRoom extends Room {
       const startedPayload: GameStartedPayload = {
         gameId: game.id,
         roomId: room.roomId,
+        gameType: game.gameType,
       };
 
       for (const sessionId of players.keys()) {

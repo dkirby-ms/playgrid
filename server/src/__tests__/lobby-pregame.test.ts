@@ -339,8 +339,8 @@ describeLobby("LobbyRoom pregame flow", () => {
       expectedPlayers: 2,
     });
     expect(getGame(room, gameId)?.status).toBe("in_progress");
-    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
-    expect(findPayload(guest, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
+    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
+    expect(findPayload(guest, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
   });
 
   it("supports the full create → join → ready → start path", async () => {
@@ -352,8 +352,8 @@ describeLobby("LobbyRoom pregame flow", () => {
 
     expect(getWaitingPlayers(room, gameId).size).toBe(0);
     expect(getGame(room, gameId)?.status).toBe("in_progress");
-    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
-    expect(findPayload(guest, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
+    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
+    expect(findPayload(guest, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
   });
 
   it("blocks non-host players from starting a game", async () => {
@@ -610,7 +610,7 @@ describeLobby("LobbyRoom pregame flow", () => {
       maxPlayers: 4,
       expectedPlayers: 1,
     });
-    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
+    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
   });
 
   it("requires the plugin minimum player count before starting when games are registered", async () => {
