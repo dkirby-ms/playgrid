@@ -1,3 +1,31 @@
+/**
+ * Risk Game Plugin
+ * 
+ * Classic world domination strategy game implementation for Eschaton playgrid.
+ * 
+ * ## Phase 1 Limitations
+ * 
+ * This is a simplified Phase 1 implementation with the following intentional scope cuts:
+ * 
+ * - **Cards are counters only**: No card types or visual representation. Cards are tracked
+ *   as a simple integer count per player. Trade-ins follow standard Risk escalation rules.
+ * 
+ * - **Fortification is adjacency-only**: Players can only fortify between directly adjacent
+ *   territories they own. Path-based fortification (moving armies through a chain of owned
+ *   territories) is not supported in Phase 1.
+ * 
+ * - **Attack movement is forced**: When a territory is conquered, the attacking armies
+ *   automatically move into the captured territory. Manual selection of army count to move
+ *   is not supported.
+ * 
+ * - **Auto-distributed territories**: On game start, all territories are automatically
+ *   distributed among players. There is no draft/selection phase where players take turns
+ *   claiming territories.
+ * 
+ * These simplifications were made to ship a playable version quickly while maintaining
+ * core Risk gameplay mechanics (combat, reinforcements, continent bonuses, win conditions).
+ */
+
 import type { Client } from "colyseus";
 import {
   RiskState,
@@ -7,6 +35,8 @@ import {
   type ActionResult,
   type GamePlugin,
   type GameResult,
+  TERRITORIES,
+  areTerritoriesAdjacent,
 } from "@eschaton/shared";
 import {
   calculateReinforcements,
@@ -22,7 +52,6 @@ import {
   initializeSetup,
   calculateInitialArmies,
 } from "./riskLogic.js";
-import { TERRITORIES, areTerritoriesAdjacent } from "./territoryData.js";
 
 type PickTerritoryPayload = {
   territoryId: string;
