@@ -49,10 +49,12 @@ jobs:
 
       - name: Configure container app secrets
         run: |
+          KEY_VAULT_URI="${{ vars.KEY_VAULT_URI }}"
+          KEY_VAULT_URI="${KEY_VAULT_URI%/}"
           az containerapp secret set \
             --name ${{ vars.CONTAINER_APP_NAME }} \
             --resource-group ${{ vars.RESOURCE_GROUP }} \
-            --secrets "postgres-connection-string=keyvaultref:${{ vars.KEY_VAULT_URI }}secrets/postgres-connection-string,identityref:system"
+            --secrets "postgres-connection-string=keyvaultref:${KEY_VAULT_URI}/secrets/postgres-connection-string,identityref:system"
 
       - name: Deploy to Container App
         run: |
