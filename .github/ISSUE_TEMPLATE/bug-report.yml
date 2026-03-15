@@ -1,0 +1,63 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior
+labels: ['bug']
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping us improve PlayGrid! Please fill out the details below.
+
+  - type: textarea
+    id: describe_bug
+    attributes:
+      label: Describe the bug
+      description: What went wrong? Be specific and clear.
+      placeholder: |
+        Example: The game crashes when trying to join a match on mobile.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: How can we replicate this?
+      placeholder: |
+        1. Start the dev server
+        2. Open on iPhone
+        3. Click "Join Match"
+        4. Game crashes
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen instead?
+      placeholder: The game should load and connect to the match.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, OS, device, or other context
+      placeholder: |
+        - OS: macOS 14.2
+        - Browser: Chrome 121
+        - Node version: 18.17
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error logs or screenshots
+      description: Any console errors, stack traces, or screenshots?
+      placeholder: Paste error messages or attach files here.
+    validations:
+      required: false

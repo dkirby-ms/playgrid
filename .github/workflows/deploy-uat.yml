@@ -1,0 +1,83 @@
+name: Deploy UAT
+
+on:
+  push:
+    branches:
+      - uat
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-uat
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: uat
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Azure login via OIDC
+        uses: azure/login@6c251865b4e6290e7b78be643ea2d005bc51f69a # v2.1.1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push image to ACR
+        run: |
+          az acr build \
+            --registry ${{ vars.ACR_NAME }} \
+            --image playgrid:${{ github.sha }} \
+            --image playgrid:latest \
+            --file Dockerfile \
+            .
+
+      - name: Deploy to Container App
+        run: |
+          az containerapp update \
+            --name ${{ vars.CONTAINER_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --image ${{ vars.ACR_NAME }}.azurecr.io/playgrid:${{ github.sha }}
+
+      - name: Wait for deployment
+        run: sleep 15
+
+      - name: Health check
+        run: |
+          HEALTH_URL="https://${{ vars.CONTAINER_APP_FQDN }}/health"
+          echo "Checking health endpoint: $HEALTH_URL"
+          
+          MAX_ATTEMPTS=10
+          ATTEMPT=0
+          
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            if curl -f -s "$HEALTH_URL" | grep -q '"status":"ok"'; then
+              echo "✓ Health check passed"
+              exit 0
+            fi
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Health check attempt $ATTEMPT/$MAX_ATTEMPTS failed, retrying in 5s..."
+            sleep 5
+          done
+          
+          echo "✗ Health check failed after $MAX_ATTEMPTS attempts"
+          exit 1
+
+      - name: Notify Discord
+        if: always()
+        uses: ./.github/actions/discord-notify
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          status: ${{ job.status }}
+          environment: uat
+          deployment-url: https://${{ vars.CONTAINER_APP_FQDN }}
+          commit-sha: ${{ github.sha }}
+          author: ${{ github.actor }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}

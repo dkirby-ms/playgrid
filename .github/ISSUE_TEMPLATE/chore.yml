@@ -1,0 +1,45 @@
+name: 🛠️ Chore
+description: Infrastructure, maintenance, or internal improvements
+labels: ['chore']
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Maintenance work keeps the project healthy. Describe what needs attention.
+
+  - type: textarea
+    id: chore_description
+    attributes:
+      label: What needs to be done?
+      description: Describe the maintenance task or internal improvement.
+      placeholder: |
+        Example: Update TypeScript to v5.3, upgrade Colyseus to latest stable version.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Which areas of the codebase are affected?
+      placeholder: |
+        - Dependencies
+        - CI/CD pipeline
+        - Tests
+        - Documentation
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: How will we know this is done?
+      placeholder: |
+        - [ ] All tests pass with new TypeScript version
+        - [ ] No new warnings in build output
+        - [ ] Updated package.json and lock file
+    validations:
+      required: false

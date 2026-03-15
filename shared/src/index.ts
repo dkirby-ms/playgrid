@@ -33,9 +33,30 @@ defineTypes(GameState, {
   tick: "number",
 });
 
+export { BaseGameState, PlayerInfo } from "./BaseGameState.js";
+
 // Shared constants
 export const GAME_WIDTH = 800;
 export const GAME_HEIGHT = 600;
 export const TICK_RATE = 4;
 
 export * from "./lobbyTypes.js";
+export type {
+  ActionHandler,
+  ActionResult,
+  GameActionHandlers,
+  GameConditions,
+  GameLifecycle,
+  GameMetadata,
+  GameOptions,
+  GamePlugin,
+  GameResult,
+  StateFilter,
+  TurnConfiguration,
+  TurnMode,
+  TurnOrderStrategy,
+  TurnPhase,
+} from "./gamePlugin.js";
+export * from "./games/checkers/index.js";
+export { BackgammonState } from "./games/backgammon/index.js";
+export * from "./games/risk/index.js";
