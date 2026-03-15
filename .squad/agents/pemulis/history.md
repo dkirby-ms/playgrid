@@ -334,3 +334,29 @@ Hal has triaged Risk and assigned you as the systems developer. Here's your scop
 - Enhanced territory selection (graph connectivity validation for fortify paths)
 - AI players or bot support
 
+---
+
+## 2026-03-15: Cross-Agent Update — PR #83 Revision Complete (Lockout Protocol)
+
+**From:** Scribe (on behalf of Marathe)  
+**Event:** PR #83 blockers resolved; lockout protocol applied per Hal's re-review requirement
+
+**Situation:**
+- Hal identified three critical blockers in PR #83 (Risk Game Plugin): incomplete test implementation (~48 `it.todo()` placeholders), territory data duplication (server/client drift risk), missing Phase 1 scope documentation.
+- Original PR authors (you, Steeply, Gately) were locked out per protocol — revision could not proceed with original team.
+
+**Resolution:**
+- Marathe (DevOps) completed full revision: 60 executable tests, shared territory data refactored to `shared/src/games/risk/`, Phase 1 limitations documented in RiskPlugin.
+- All blockers verified: `npm run build` ✅, `npm run lint` ✅, `npm run test` ✅ (60/60 passing).
+- Commits: `816332c` (fix), `2692e8a` (docs).
+
+**Impact on Your Work:**
+- Your implementation is solid; revision was administrative (test completion + data structure move + documentation).
+- Architectural standards captured in `.squad/decisions.md`:
+  1. Shared static data in `shared/src/games/{game}/`
+  2. No `it.todo()` in production PRs (real test implementations required)
+  3. Explicit Phase 1 scope documentation
+  4. PR atomicity (infra separate from features)
+
+**Next Step:** Hal will re-review revised PR #83. Ready for merge once approved.
+

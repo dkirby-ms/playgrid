@@ -443,3 +443,24 @@ Added comprehensive Phase 1 limitations documentation to `server/src/games/risk/
 **Status:** Ready for re-review by Hal
 **Branch:** `squad/80-add-risk-game-plugin`
 
+---
+
+## 2026-03-15: PR #83 Revision Complete — Risk Blockers Resolved
+
+**Scope:** Fixed all three blockers identified in Hal's PR #83 review:
+
+1. **Test Implementation (48 → 60 tests)** — Converted all `.todo()` placeholders to executable test cases covering territory validation, combat, movement, win conditions, edge cases, and integration flows.
+2. **Shared Territory Data** — Refactored `server/src/games/risk/territoryData.ts` → `shared/src/games/risk/territoryData.ts`; eliminated duplication between client/server.
+3. **Phase 1 Scope Documentation** — Added explicit Phase 1 limitations to `RiskPlugin.ts` distinguishing intentional simplifications from bugs.
+
+**Verification:**
+- ✅ `npm run build` — All workspaces compile
+- ✅ `npm run lint` — No errors
+- ✅ `npm run test` — 60/60 tests passing
+
+**Commits:** `816332c`, `2692e8a`
+
+**Status:** Revision complete. All blockers resolved. Ready for Hal re-review.
+
+**Note:** Original PR authors (Pemulis/Steeply/Gately) were locked out per protocol; Marathe completed revision independently.
+

@@ -284,3 +284,25 @@ function getContinentBonus(continent: string): number { ... }
 - `client/src/ui/LobbyScreen.ts` now owns self-contained lobby card art via inline SVG data URLs, which is the cleanest way to ship polished card backgrounds without creating a new asset pipeline or hosting path.
 - The lobby game type config should carry both the marketing metadata (label, player-count copy) and the playable constraints (selectable max-player counts), so the create-game modal stays aligned with whatever cards the library is showing.
 - Readability for image-backed cards is preserved in `client/index.html` by treating `.game-tile-image::before` as the shared contrast layer and adding text shadow to the tile name/meta instead of baking heavy darkness into each artwork asset.
+
+---
+
+## 2026-03-15: Cross-Agent Update — PR #83 Revision Complete (Lockout Protocol)
+
+**From:** Scribe (on behalf of Marathe)  
+**Event:** PR #83 blockers resolved; lockout protocol applied per Hal's re-review requirement
+
+**Situation:**
+- Hal identified three critical blockers in PR #83 (Risk Game Plugin): incomplete test implementation (~48 `it.todo()` placeholders), territory data duplication (server/client drift risk), missing Phase 1 scope documentation.
+- Original PR authors (Pemulis, Steeply, you) were locked out per protocol — revision could not proceed with original team.
+
+**Resolution:**
+- Marathe (DevOps) completed full revision: 60 executable tests, shared territory data refactored to `shared/src/games/risk/`, Phase 1 limitations documented in RiskPlugin.
+- All blockers verified: `npm run build` ✅, `npm run lint` ✅, `npm run test` ✅ (60/60 passing).
+- Commits: `816332c` (fix), `2692e8a` (docs).
+
+**Impact on Your Work:**
+- Your Risk renderer implementation (RiskRenderer.ts) requires no changes; Marathe's revision was backend-focused (tests + data structure).
+- Architectural standard captured in `.squad/decisions.md`: "Shared Static Data: Game configuration data (maps, adjacency graphs, card decks) MUST be located in `shared/src/games/{game}/` so both client (renderer) and server (logic) use a single source of truth."
+
+**Next Step:** Hal will re-review revised PR #83. Ready for merge once approved.
