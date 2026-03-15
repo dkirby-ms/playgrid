@@ -1593,3 +1593,26 @@ Land reconnection coverage in two layers:
 
 **Status:** Implemented  
 **Follow-up:** Client-side UI and end-to-end recovery (completed in 2026-03-15 session above)
+
+---
+
+### Marathe: Dual Custom Domains by Environment (2026-03-15)
+
+**Status:** Proposed  
+**Date:** 2026-03-15  
+
+Use separate optional Bicep parameters for Container App custom domains: `customDomainUat` for UAT and `customDomainProd` for production.
+
+**Decision:**
+- Keep dev deployments domain-free by default
+- Select the active custom domain from `environmentName` inside `infra/main.bicep`
+- Only emit ACA ingress `customDomains` when the selected environment-specific value is non-empty
+
+**Rationale:**
+- Matches the repo's single-template-per-environment pattern without reintroducing duplicated Bicep
+- Avoids accidental prod-domain reuse in UAT or vice versa
+- Preserves backward compatibility for existing dev deployments and any environment with no custom domain configured
+
+**Files:**
+- infra/main.bicep
+- infra/main.bicepparam
