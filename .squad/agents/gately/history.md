@@ -278,3 +278,9 @@ function getContinentBonus(continent: string): number { ... }
 - Registered in `rendererRegistry` with key "risk"
 - Automatically loaded by GameScene when joining Risk room
 - Build verified successfully (no compilation errors)
+
+### 2026-03-15: Lobby card artwork without an asset pipeline
+
+- `client/src/ui/LobbyScreen.ts` now owns self-contained lobby card art via inline SVG data URLs, which is the cleanest way to ship polished card backgrounds without creating a new asset pipeline or hosting path.
+- The lobby game type config should carry both the marketing metadata (label, player-count copy) and the playable constraints (selectable max-player counts), so the create-game modal stays aligned with whatever cards the library is showing.
+- Readability for image-backed cards is preserved in `client/index.html` by treating `.game-tile-image::before` as the shared contrast layer and adding text shadow to the tile name/meta instead of baking heavy darkness into each artwork asset.
