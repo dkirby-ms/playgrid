@@ -1998,3 +1998,24 @@ Establish four architectural standards from PR #83 review:
 **Files:**
 - PR #83 follow-up work (routed to Marathe)
 
+---
+
+### Hal: Robust Testing for Random Mechanics
+
+**Status:** Decided  
+**Date:** 2026-03-15
+
+Tests involving randomness must be either:
+1. **Mocked:** Use `vi.spyOn(Math, 'random')` to force outcomes.
+2. **Robust:** Use sufficient sample sizes and buffers (e.g., 20 armies vs 1, not 3 vs 1) to make failure statistically impossible.
+
+Flaky tests are treated as broken code.
+
+**Context:** Combat test in PR #83 had 42% failure rate due to reliance on `Math.random` with low sample size and tight constraints. Fixed by implementing robust test with sufficient armies to make statistical failure impossible.
+
+**Rationale:**
+- Test reliability is foundational to CI/CD trust
+- Mocking forces deterministic outcomes; robustness makes randomness statistical noise
+- Tests that fail randomly waste developer time and obscure real regressions
+- Forces better test design (larger sample sizes, statistical buffers)
+

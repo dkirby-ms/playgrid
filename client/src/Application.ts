@@ -1,6 +1,7 @@
 import { CloseCode } from "@colyseus/shared-types";
 import { type Room } from "@colyseus/sdk";
 import { Application as PixiApplication, Text } from "pixi.js";
+import type { GameResult } from "@eschaton/shared";
 import {
   ConnectionManager,
   ConnectionState,
@@ -21,6 +22,7 @@ import {
   type WaitingRoomSceneEvent,
 } from "./scenes/WaitingRoomScene";
 import { ReconnectOverlay } from "./ui/ReconnectOverlay";
+import { GameOverOverlay } from "./ui/GameOverOverlay";
 import type { LobbyEvent } from "./ui/LobbyScreen";
 
 const GAME_WIDTH = 800;
@@ -79,6 +81,7 @@ export class PlaygridApp {
   private connectionManager!: ConnectionManager;
   private statusText!: Text;
   private reconnectOverlay!: ReconnectOverlay;
+  private gameOverOverlay!: GameOverOverlay;
   private statusHideTimeoutId: number | null = null;
   private reconnectOverlayHideTimeoutId: number | null = null;
   private reconnectReturnTimeoutId: number | null = null;
@@ -133,6 +136,7 @@ export class PlaygridApp {
 
     this.statusText = createStatusText(this.pixiApp);
     this.reconnectOverlay = new ReconnectOverlay();
+    this.gameOverOverlay = new GameOverOverlay();
     window.addEventListener("beforeunload", () => this.persistSessionForRefresh());
     window.addEventListener("pagehide", () => this.persistSessionForRefresh());
     this.layoutStatusText();
@@ -276,12 +280,12 @@ export class PlaygridApp {
   }
 
   private bindGameRoom(room: ColyseusRoom, gameType: string): void {
-    room.onMessage(GAME_ENDED_MESSAGE, () => {
+    room.onMessage(GAME_ENDED_MESSAGE, (result: GameResult) => {
       if (this.gameRoom !== room) {
         return;
       }
 
-      this.clearActiveSession();
+      this.handleGameEnd(result);
     });
 
     room.onDrop((code) => {
@@ -306,6 +310,18 @@ export class PlaygridApp {
       }
 
       void this.handleGameRoomLeave(room, code);
+    });
+  }
+
+  private handleGameEnd(result: GameResult): void {
+    this.clearActiveSession();
+    this.clearReconnectReturnTimeout();
+    this.reconnectOverlay.hide();
+
+    const sessionId = this.gameRoom?.sessionId ?? "";
+    this.gameOverOverlay.show(result, sessionId, () => {
+      this.gameOverOverlay.hide();
+      void this.returnToLobby({ message: "Game ended. Back in the lobby.", tone: "info" });
     });
   }
 

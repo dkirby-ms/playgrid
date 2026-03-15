@@ -285,6 +285,47 @@ function getContinentBonus(continent: string): number { ... }
 - The lobby game type config should carry both the marketing metadata (label, player-count copy) and the playable constraints (selectable max-player counts), so the create-game modal stays aligned with whatever cards the library is showing.
 - Readability for image-backed cards is preserved in `client/index.html` by treating `.game-tile-image::before` as the shared contrast layer and adding text shadow to the tile name/meta instead of baking heavy darkness into each artwork asset.
 
+### 2026-03-15: Game-over overlay implementation (Issue #81)
+
+**Problem:** Games ended with no win/loss announcement — players immediately returned to lobby. Race condition: server broadcast game-end message then immediately disconnected clients before they could render the overlay.
+
+**Solution:** Two-part fix in base game infrastructure (works for all game types):
+
+**Server (`BaseGameRoom.ts`):**
+- Added 6-second delay before disconnect in `endGame()` using `this.clock.setTimeout()`
+- Graceful fallback: if `this.clock` is undefined (e.g., in tests), disconnect immediately
+- Broadcast game-end message, persist to database, THEN schedule disconnect
+
+**Client (`Application.ts` + new `GameOverOverlay.ts`):**
+- Created `GameOverOverlay` component with result formatting (win/loss/draw/forfeit/timeout)
+- Shows personalized messages based on `GameResult.type` and player's sessionId
+- Auto-dismisses after 5 seconds with manual "Return to Lobby" button override
+- Integrated into `Application.bindGameRoom()` → `handleGameEnd()` flow
+- Clears reconnect overlay and active session before showing game-over
+
+**CSS (`client/index.html`):**
+- Game-over overlay styles (z-index 40, above reconnect at 30)
+- Purple gradient theme matching app design
+- Responsive layout with centered content panel
+
+**Key architectural decisions:**
+- Implemented at BaseGameRoom level, not per-game (universal solution)
+- Uses same message flow as existing reconnect/HUD overlays
+- Delay tuned to balance: long enough for client overlay display, short enough to feel responsive
+- Result metadata can carry `winnerName` for enhanced messages (optional extension)
+
+**Testing verified:**
+- ✅ Build passes (all workspaces)
+- ✅ Lint passes (0 errors, 15 pre-existing warnings)
+- ✅ Tests pass (259/259, 12 todo)
+- Clock fallback ensures tests don't break with immediate disconnect
+
+**Files:**
+- `server/src/game/BaseGameRoom.ts` — endGame() timing fix
+- `client/src/ui/GameOverOverlay.ts` — new overlay component
+- `client/src/Application.ts` — integration with game-end flow
+- `client/index.html` — CSS styles for overlay
+
 ---
 
 ## 2026-03-15: Cross-Agent Update — PR #83 Revision Complete (Lockout Protocol)
