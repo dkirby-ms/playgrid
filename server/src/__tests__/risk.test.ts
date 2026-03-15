@@ -549,7 +549,7 @@ describe("Risk Game — Attack Phase", () => {
     it("territory conquered when defender reaches 0 armies", () => {
       const state = createStartedGame(2);
       
-      setTerritoryState(state, "alaska", "player-1", 3);
+      setTerritoryState(state, "alaska", "player-1", 20);
       setTerritoryState(state, "kamchatka", "player-2", 1);
       
       state.gamePhase = "playing";
@@ -560,7 +560,7 @@ describe("Risk Game — Attack Phase", () => {
       expect(beforeOwner).toBe("player-2");
       
       // Attack multiple times until territory is captured
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 50; i++) {
         const territory = state.territories.get("kamchatka");
         if (!territory || territory.owner === "player-1") break;
         
@@ -579,7 +579,7 @@ describe("Risk Game — Attack Phase", () => {
     it("attacker moves armies into captured territory", () => {
       const state = createStartedGame(2);
       
-      setTerritoryState(state, "alaska", "player-1", 10);
+      setTerritoryState(state, "alaska", "player-1", 20);
       setTerritoryState(state, "kamchatka", "player-2", 1);
       
       state.gamePhase = "playing";
@@ -587,7 +587,7 @@ describe("Risk Game — Attack Phase", () => {
       state.currentTurn = "player-1";
       
       // Attack until captured
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 50; i++) {
         const territory = state.territories.get("kamchatka");
         if (!territory || territory.owner === "player-1") break;
         

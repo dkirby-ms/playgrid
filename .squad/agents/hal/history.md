@@ -131,6 +131,9 @@
 
 ## Learnings
 
+- **Randomness in Tests:** Risk combat tests failed 42% of the time due to low sample size. Random mechanics need robust buffers (20 vs 1 army) or mocks. Fixed in PR #83.
+
+
 ### Wave 4 PR Reviews (2026-03-14)
 
 **Session:** Reviewed and merged 4 draft PRs targeting dev branch in dependency-safe order
