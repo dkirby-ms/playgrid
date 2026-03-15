@@ -29,8 +29,10 @@ const MAX_RECONNECT_DELAY_MS = 30000;
 function getServerUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const host = window.location.hostname || "localhost";
-  const port = import.meta.env.VITE_SERVER_PORT ?? "2567";
-  return `${protocol}://${host}:${port}`;
+  const isLocal = host === "localhost" || host === "127.0.0.1";
+  const port = isLocal ? (import.meta.env.VITE_SERVER_PORT ?? "2567") : window.location.port;
+
+  return port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`;
 }
 
 export class ConnectionManager {

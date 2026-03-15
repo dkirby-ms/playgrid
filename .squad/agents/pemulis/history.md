@@ -33,6 +33,13 @@
 - Recommended direction for session resilience: persist `room.reconnectionToken` + minimal active-game metadata in `sessionStorage`, attempt `client.reconnect(savedToken)` during app boot before falling back to `connectToLobby()`, clear the stored token on consented leave/game end, wire `onDrop` / `onReconnect` UI, call `plugin.lifecycle.onPlayerReconnect`, and decide whether turn timers should pause while a seat is reserved.
 - Team note: the existing decision log entry for PR #61 correctly reflects server-side `allowReconnection()` work, but its claim that players can reload mid-game is not true end-to-end until the client persists and uses the reconnection token.
 
+### ACA WebSocket routing uses browser default port in production (2026-03-15)
+
+- `client/src/networking/ConnectionManager.ts#getServerUrl()` now treats only `localhost` and `127.0.0.1` as local development, applying `VITE_SERVER_PORT` there and using the browser location port elsewhere.
+- This matches the ACA ingress model documented in `.squad/decisions.md`: browsers must connect to `wss://{hostname}` on the default HTTPS port while ACA proxies internally to container port `2567`.
+- Pattern to remember for deployed Colyseus clients: when the app is served behind TLS-terminating ingress, do not hard-code the container port into the public WebSocket URL; prefer `window.location.port` so standard `443` stays implicit.
+- Validation path for networking changes remains the repo root commands: `npm run build`, `npm run lint`, and `npm run test`.
+
 ## Cross-Agent Update — Issue #1 Closed, PR #47 Open (2026-03-14)
 
 **From:** Joelle (Community/DevRel)  
