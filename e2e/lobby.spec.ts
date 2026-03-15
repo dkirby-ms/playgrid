@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
 type LobbySession = {
   context: BrowserContext;
@@ -9,16 +9,16 @@ function uniqueName(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-function lobbyOverlay(page: Page) {
+function lobbyOverlay(page: Page): Locator {
   return page.locator("#lobby-overlay.visible");
 }
 
-function waitingRoomOverlay(page: Page) {
+function waitingRoomOverlay(page: Page): Locator {
   return page.locator("#waiting-room-overlay.visible");
 }
 
-function gameRow(page: Page, gameName: string) {
-  return page.locator(".lobby-table tbody tr").filter({ hasText: gameName });
+function activeGameCard(page: Page, gameName: string): Locator {
+  return page.locator(".active-game-card").filter({ hasText: gameName });
 }
 
 async function openLobby(browser: Browser, displayName?: string): Promise<LobbySession> {
@@ -35,15 +35,22 @@ async function openLobby(browser: Browser, displayName?: string): Promise<LobbyS
 }
 
 async function savePlayerName(page: Page, displayName: string): Promise<void> {
-  await page.locator('input[name="player-name"]').fill(displayName);
-  await page.getByRole("button", { name: "Save Name" }).click();
+  const playerNameInput = page.locator('input[name="player-name"]');
+  await playerNameInput.fill(displayName);
+  await playerNameInput.blur();
   await expect(page.locator(".lobby-notice.visible")).toHaveText("Player name saved.");
+  await expect(playerNameInput).toHaveValue(displayName.trim());
   await expect(lobbyOverlay(page)).toBeVisible();
 }
 
 async function createGame(page: Page, gameName: string): Promise<void> {
-  await page.locator('input[name="game-name"]').fill(gameName);
-  await page.getByRole("button", { name: "Create Game" }).click();
+  await page.getByRole("button", { name: "Create Game", exact: true }).click();
+
+  const createGameModal = page.locator("#create-game-modal.visible");
+  await expect(createGameModal).toBeVisible();
+  await createGameModal.locator('input[name="game-name"]').fill(gameName);
+  await createGameModal.locator('select[name="game-type"]').selectOption("checkers");
+  await createGameModal.getByRole("button", { name: "Create Game", exact: true }).click();
   await expect(waitingRoomOverlay(page)).toBeVisible();
 }
 
@@ -52,8 +59,9 @@ test.describe("lobby e2e", () => {
     const { context, page } = await openLobby(browser);
 
     try {
-      await page.locator('input[name="player-name"]').fill("   ");
-      await page.getByRole("button", { name: "Save Name" }).click();
+      const playerNameInput = page.locator('input[name="player-name"]');
+      await playerNameInput.fill("   ");
+      await playerNameInput.blur();
       await expect(page.locator(".lobby-notice.visible")).toHaveText("Player name is required.");
 
       await savePlayerName(page, "  Steeply Host  ");
@@ -62,11 +70,11 @@ test.describe("lobby e2e", () => {
       await createGame(page, gameName);
 
       const hostPlayer = waitingRoomOverlay(page).locator(".waiting-room-player");
-      await expect(waitingRoomOverlay(page).locator(".waiting-room-player-name")).toHaveText("Steeply Host");
-      await expect(hostPlayer).toContainText("Host");
+      await expect(waitingRoomOverlay(page).locator(".waiting-room-player-name")).toHaveText(["Steeply Host"]);
       await expect(hostPlayer).toContainText("You");
+      await expect(page.getByRole("button", { name: "Start Game", exact: true })).toBeVisible();
     } finally {
-      await context.close();
+      await context.close().catch(() => undefined);
     }
   });
 
@@ -76,21 +84,21 @@ test.describe("lobby e2e", () => {
 
     try {
       const gameName = uniqueName("removal");
-      await expect(gameRow(spectator.page, gameName)).toHaveCount(0);
+      await expect(activeGameCard(spectator.page, gameName)).toHaveCount(0);
 
       await createGame(host.page, gameName);
 
-      const spectatorRow = gameRow(spectator.page, gameName);
-      await expect(spectatorRow).toContainText(gameName);
-      await expect(spectatorRow).toContainText("Host Remove");
-      await expect(spectatorRow).toContainText("1/2");
-      await expect(spectatorRow).toContainText("Waiting");
+      const spectatorCard = activeGameCard(spectator.page, gameName);
+      await expect(spectatorCard).toContainText(gameName);
+      await expect(spectatorCard).toContainText("1/2");
+      await expect(spectatorCard).toContainText("Waiting");
+      await expect(spectatorCard.getByRole("button", { name: "Join" })).toBeVisible();
 
       await host.page.getByRole("button", { name: "Leave" }).click();
       await expect(lobbyOverlay(host.page)).toBeVisible();
-      await expect(spectatorRow).toHaveCount(0);
+      await expect(activeGameCard(spectator.page, gameName)).toHaveCount(0);
     } finally {
-      await Promise.all([host.context.close(), spectator.context.close()]);
+      await Promise.all([host.context.close(), spectator.context.close()].map((result) => result.catch(() => undefined)));
     }
   });
 
@@ -103,12 +111,11 @@ test.describe("lobby e2e", () => {
       const gameName = uniqueName("multiplayer");
       await createGame(host.page, gameName);
 
-      const guestRow = gameRow(guest.page, gameName);
-      await expect(guestRow).toContainText(gameName);
-      await expect(guestRow).toContainText("Host Player");
-      await expect(guestRow).toContainText("1/2");
-      await expect(guestRow).toContainText("Waiting");
-      await guestRow.getByRole("button", { name: "Join" }).click();
+      const guestCard = activeGameCard(guest.page, gameName);
+      await expect(guestCard).toContainText(gameName);
+      await expect(guestCard).toContainText("1/2");
+      await expect(guestCard).toContainText("Waiting");
+      await guestCard.getByRole("button", { name: "Join" }).click();
 
       await expect(waitingRoomOverlay(guest.page)).toBeVisible();
       await expect(waitingRoomOverlay(host.page).locator(".waiting-room-player-list")).toContainText("Host Player");
@@ -116,19 +123,23 @@ test.describe("lobby e2e", () => {
       await expect(waitingRoomOverlay(guest.page).locator(".waiting-room-player-list")).toContainText("Host Player");
       await expect(waitingRoomOverlay(guest.page).locator(".waiting-room-player-list")).toContainText("Guest Player");
 
-      await expect(host.page.getByRole("button", { name: "Start Game" })).toBeVisible();
-      await expect(host.page.getByRole("button", { name: "Ready" })).toHaveCount(0);
-      await expect(guest.page.getByRole("button", { name: "Ready" })).toBeVisible();
-      await expect(guest.page.getByRole("button", { name: "Start Game" })).toHaveCount(0);
+      await expect(host.page.getByRole("button", { name: "Start when everyone is ready", exact: true })).toBeVisible();
+      await expect(host.page.getByRole("button", { name: "Start when everyone is ready", exact: true })).toBeDisabled();
+      await expect(host.page.getByRole("button", { name: "Ready", exact: true })).toBeHidden();
+      await expect(guest.page.getByRole("button", { name: "Ready", exact: true })).toBeVisible();
+      await expect(guest.page.getByRole("button", { name: "Start Game", exact: true })).toBeHidden();
 
-      const spectatorRow = gameRow(spectator.page, gameName);
-      await expect(spectatorRow).toContainText(gameName);
-      await expect(spectatorRow).toContainText("Host Player");
-      await expect(spectatorRow).toContainText("2/2");
-      await expect(spectatorRow).toContainText("Waiting");
-      await expect(spectatorRow).toContainText("Full");
+      const spectatorCard = activeGameCard(spectator.page, gameName);
+      await expect(spectatorCard).toContainText(gameName);
+      await expect(spectatorCard).toContainText("2/2");
+      await expect(spectatorCard).toContainText("Waiting");
+      await expect(spectatorCard.getByRole("button", { name: "Join" })).toHaveCount(0);
     } finally {
-      await Promise.all([host.context.close(), guest.context.close(), spectator.context.close()]);
+      await Promise.all([
+        host.context.close(),
+        guest.context.close(),
+        spectator.context.close(),
+      ].map((result) => result.catch(() => undefined)));
     }
   });
 });

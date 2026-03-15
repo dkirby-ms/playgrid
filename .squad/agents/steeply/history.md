@@ -15,6 +15,7 @@
 - `server/src/__tests__/BaseGameRoom.test.ts` is the right seam for reconnection behavior: instantiate the room off the prototype, stub `allowReconnection`, and assert outcomes through lifecycle hooks plus room state instead of poking private helpers.
 - `server/src/__tests__/lobby-pregame.test.ts` already exposes the waiting-room seams needed for disconnect coverage (`waitingPlayers`, `sessions`, `currentGameId`), so lobby reconnection tests should stay there and assert membership preservation/removal behavior directly.
 - There is no real client-side `PlaygridApp` harness yet; for startup/sessionStorage reconnect work, Vitest `.todo()` coverage is the safe placeholder until Gately lands the application-side session persistence flow and a controllable `ConnectionManager` seam.
+- Issue #91 lobby E2E failures came from stale selectors and brittle assumptions: the suite still targeted the old table UI (`.lobby-table`, `Save Name`) and assumed an empty lobby, while the current UI uses header blur-to-save, a create-game modal, active-game cards, and exact button labels that collide unless selectors are scoped. The reliable pattern is: save names by blurring `input[name="player-name"]`, create unique games through `#create-game-modal`, assert only against the unique `.active-game-card` for that test, and use exact/scoped button locators so shared server state from earlier specs cannot poison lobby assertions.
 
 ## Cross-Agent Update — Issue #1 Closed, PR #47 Open (2026-03-14)
 
