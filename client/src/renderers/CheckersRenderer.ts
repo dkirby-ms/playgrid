@@ -15,7 +15,12 @@ import {
   getValidMoves,
   type CheckersMove,
 } from "../games/checkers/checkersClientLogic";
-import type { GameRenderer, GameRendererContext, RendererInputEvent } from "./GameRenderer";
+import type {
+  GameRenderer,
+  GameRendererContext,
+  GameRendererHUDStatus,
+  RendererInputEvent,
+} from "./GameRenderer";
 
 const BOARD_DIMENSION = 8;
 const BOARD_CELL_COUNT = BOARD_DIMENSION * BOARD_DIMENSION;
@@ -42,6 +47,10 @@ const BOTTOM_HUD_SPACE = 60;
 const GAME_ENDED_MESSAGE = "game-end";
 const NO_FORCED_CAPTURE = -1;
 
+function toCssHexColor(color: number): string {
+  return `#${color.toString(16).padStart(6, "0")}`;
+}
+
 type PlayerSnapshot = {
   playerIndex: number;
   isSpectator: boolean;
@@ -55,26 +64,6 @@ export class CheckersRenderer implements GameRenderer {
   private readonly piecesLayer = new Container();
   private readonly overlayLayer = new Container();
   private readonly overlayBackground = new Graphics();
-  private readonly statusText = new Text({
-    text: "",
-    style: {
-      fontFamily: "sans-serif",
-      fontSize: 28,
-      fontWeight: "700",
-      fill: TURN_WAITING_COLOR,
-      align: "center",
-    },
-  });
-  private readonly playerColorText = new Text({
-    text: "",
-    style: {
-      fontFamily: "sans-serif",
-      fontSize: 18,
-      fontWeight: "600",
-      fill: SUBTLE_TEXT_COLOR,
-      align: "center",
-    },
-  });
   private readonly blackCountText = new Text({
     text: "",
     style: {
@@ -142,8 +131,6 @@ export class CheckersRenderer implements GameRenderer {
     this.piecesLayer.eventMode = "none";
     this.overlayLayer.eventMode = "none";
     this.overlayLayer.visible = false;
-    this.statusText.anchor.set(0.5);
-    this.playerColorText.anchor.set(0.5);
     this.blackCountText.anchor.set(0, 0.5);
     this.redCountText.anchor.set(1, 0.5);
     this.overlayTitleText.anchor.set(0.5);
@@ -162,8 +149,6 @@ export class CheckersRenderer implements GameRenderer {
     }
 
     this.container.addChild(
-      this.statusText,
-      this.playerColorText,
       this.boardLayer,
       this.piecesLayer,
       this.blackCountText,
@@ -210,6 +195,18 @@ export class CheckersRenderer implements GameRenderer {
 
   handleInput(_event: RendererInputEvent): void {}
 
+  getHUDStatus(_state: unknown): GameRendererHUDStatus {
+    const { text, color } = this.getStatusLabel();
+    const detail = this.getPlayerColorLabel();
+
+    return {
+      label: "Checkers",
+      text,
+      detail: detail.length > 0 ? detail : undefined,
+      accentColor: toCssHexColor(color),
+    };
+  }
+
   destroy(): void {
     this.unsubscribeFromRoomEvents();
     this.room = null;
@@ -228,9 +225,6 @@ export class CheckersRenderer implements GameRenderer {
     this.boardOffsetX = (this.width - this.boardSize) / 2;
     this.boardOffsetY = TOP_HUD_SPACE + ((availableHeight - this.boardSize) / 2);
 
-    const statusCenterY = Math.max(34, this.boardOffsetY * 0.36);
-    this.statusText.position.set(this.width / 2, statusCenterY);
-    this.playerColorText.position.set(this.width / 2, statusCenterY + 30);
     this.blackCountText.position.set(this.boardOffsetX, this.boardOffsetY + this.boardSize + 28);
     this.redCountText.position.set(this.boardOffsetX + this.boardSize, this.boardOffsetY + this.boardSize + 28);
     this.overlayTitleText.style.wordWrapWidth = this.boardSize * 0.75;
@@ -316,15 +310,8 @@ export class CheckersRenderer implements GameRenderer {
   }
 
   private updateHud(): void {
-    const { text: statusLabel, color: statusColor } = this.getStatusLabel();
     const { blackCount, redCount } = this.countPieces();
 
-    this.statusText.text = statusLabel;
-    this.statusText.style.fill = statusColor;
-    this.statusText.style.fontSize = Math.max(22, this.squareSize * 0.5);
-    this.playerColorText.text = this.getPlayerColorLabel();
-    this.playerColorText.visible = this.playerColorText.text.length > 0;
-    this.playerColorText.style.fontSize = Math.max(16, this.squareSize * 0.32);
     this.blackCountText.text = `⚫ Black: ${blackCount}`;
     this.blackCountText.style.fontSize = Math.max(16, this.squareSize * 0.32);
     this.blackCountText.style.fill = HUD_TEXT_COLOR;

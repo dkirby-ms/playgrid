@@ -1,4 +1,5 @@
 import type { Room } from "@colyseus/sdk";
+import type { GameRendererHUDStatus } from "../renderers/GameRenderer";
 
 export interface HUDPlayer {
   userId: string;
@@ -12,6 +13,7 @@ export interface HUDOptions {
   currentTurn?: string;
   gameTimer?: number;
   showTimer?: boolean;
+  status?: GameRendererHUDStatus;
 }
 
 export type HUDEvent = { type: "leave" } | { type: "chat_toggle" };
@@ -19,9 +21,12 @@ type HUDEventCallback = (event: HUDEvent) => void;
 
 export class HUD {
   private readonly container: HTMLElement;
-  private readonly playerInfoPanel: HTMLElement;
-  private readonly turnIndicator: HTMLElement;
+  private readonly statusPanel: HTMLElement;
+  private readonly statusEyebrow: HTMLElement;
+  private readonly statusHeadline: HTMLElement;
+  private readonly statusDetail: HTMLElement;
   private readonly timerDisplay: HTMLElement;
+  private readonly playerList: HTMLElement;
   private readonly leaveButton: HTMLButtonElement;
   private readonly chatToggle: HTMLButtonElement;
   private readonly chatPlaceholder: HTMLElement;
@@ -32,22 +37,26 @@ export class HUD {
   private currentTurn: string | null = null;
   private gameTimer: number | null = null;
   private showTimer = false;
+  private status: GameRendererHUDStatus | null = null;
   private timerIntervalId: number | null = null;
   private isChatOpen = false;
 
   constructor() {
     this.container = this.createContainer();
-    this.playerInfoPanel = this.createPlayerInfoPanel();
-    this.turnIndicator = this.createTurnIndicator();
+    this.statusPanel = this.createStatusPanel();
+    this.statusEyebrow = this.createPanelEyebrow();
+    this.statusHeadline = this.createStatusHeadline();
+    this.statusDetail = this.createStatusDetail();
     this.timerDisplay = this.createTimerDisplay();
+    this.playerList = this.createPlayerList();
     this.leaveButton = this.createLeaveButton();
     this.chatToggle = this.createChatToggle();
     this.chatPlaceholder = this.createChatPlaceholder();
 
+    this.composeStatusPanel();
+
     this.container.append(
-      this.playerInfoPanel,
-      this.turnIndicator,
-      this.timerDisplay,
+      this.statusPanel,
       this.leaveButton,
       this.chatToggle,
       this.chatPlaceholder,
@@ -66,6 +75,7 @@ export class HUD {
     this.currentTurn = options.currentTurn ?? null;
     this.gameTimer = options.gameTimer ?? null;
     this.showTimer = options.showTimer ?? false;
+    this.status = options.status ?? null;
 
     this.render();
     this.container.style.display = "block";
@@ -83,6 +93,7 @@ export class HUD {
     this.currentTurn = null;
     this.gameTimer = null;
     this.showTimer = false;
+    this.status = null;
     this.isChatOpen = false;
     this.chatPlaceholder.style.display = "none";
   }
@@ -105,6 +116,9 @@ export class HUD {
         this.stopTimer();
       }
     }
+    if (options.status !== undefined) {
+      this.status = options.status ?? null;
+    }
 
     this.render();
   }
@@ -124,9 +138,9 @@ export class HUD {
     return container;
   }
 
-  private createPlayerInfoPanel(): HTMLElement {
-    const panel = document.createElement("div");
-    panel.className = "hud-player-info-panel";
+  private createStatusPanel(): HTMLElement {
+    const panel = document.createElement("section");
+    panel.className = "hud-status-panel";
     Object.assign(panel.style, {
       position: "absolute",
       top: "16px",
@@ -134,57 +148,133 @@ export class HUD {
       display: "flex",
       flexDirection: "column",
       gap: "10px",
-      padding: "14px 16px",
+      width: "min(360px, calc(100vw - 152px))",
+      padding: "12px 14px",
       background: "rgba(16, 16, 29, 0.92)",
       border: "1px solid rgba(126, 207, 255, 0.22)",
-      borderRadius: "14px",
-      minWidth: "200px",
-      maxWidth: "280px",
+      borderRadius: "16px",
+      boxShadow: "0 18px 36px rgba(0, 0, 0, 0.28)",
+      backdropFilter: "blur(10px)",
       pointerEvents: "auto",
     });
     return panel;
   }
 
-  private createTurnIndicator(): HTMLElement {
-    const indicator = document.createElement("div");
-    indicator.className = "hud-turn-indicator";
-    Object.assign(indicator.style, {
-      position: "absolute",
-      top: "16px",
-      left: "50%",
-      transform: "translateX(-50%)",
-      padding: "12px 20px",
-      background: "rgba(16, 16, 29, 0.92)",
-      border: "1px solid rgba(126, 207, 255, 0.22)",
-      borderRadius: "999px",
-      fontSize: "0.95rem",
+  private createPanelEyebrow(): HTMLElement {
+    const eyebrow = document.createElement("div");
+    Object.assign(eyebrow.style, {
+      fontSize: "0.72rem",
+      letterSpacing: "0.14em",
+      textTransform: "uppercase",
+      color: "#7ecfff",
       fontWeight: "600",
-      textAlign: "center",
-      whiteSpace: "nowrap",
-      pointerEvents: "auto",
     });
-    return indicator;
+    return eyebrow;
+  }
+
+  private createStatusHeadline(): HTMLElement {
+    const headline = document.createElement("div");
+    Object.assign(headline.style, {
+      fontSize: "1rem",
+      fontWeight: "700",
+      lineHeight: "1.2",
+      color: "#f4f6fb",
+    });
+    return headline;
+  }
+
+  private createStatusDetail(): HTMLElement {
+    const detail = document.createElement("div");
+    Object.assign(detail.style, {
+      fontSize: "0.8rem",
+      lineHeight: "1.3",
+      color: "#9aa3b2",
+    });
+    return detail;
   }
 
   private createTimerDisplay(): HTMLElement {
     const timer = document.createElement("div");
     timer.className = "hud-timer-display";
     Object.assign(timer.style, {
-      position: "absolute",
-      top: "64px",
-      left: "50%",
-      transform: "translateX(-50%)",
-      padding: "8px 16px",
-      background: "rgba(16, 16, 29, 0.92)",
-      border: "1px solid rgba(126, 207, 255, 0.22)",
-      borderRadius: "12px",
-      fontSize: "0.88rem",
-      fontWeight: "500",
-      textAlign: "center",
       display: "none",
-      pointerEvents: "auto",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "5px 10px",
+      borderRadius: "999px",
+      background: "rgba(255, 255, 255, 0.04)",
+      border: "1px solid rgba(126, 207, 255, 0.22)",
+      fontSize: "0.8rem",
+      fontWeight: "600",
+      whiteSpace: "nowrap",
+      color: "#f4f6fb",
     });
     return timer;
+  }
+
+  private createPlayerList(): HTMLElement {
+    const list = document.createElement("div");
+    Object.assign(list.style, {
+      display: "flex",
+      flexDirection: "column",
+      gap: "6px",
+      minWidth: "132px",
+      flex: "1 1 132px",
+    });
+    return list;
+  }
+
+  private composeStatusPanel(): void {
+    const headerRow = document.createElement("div");
+    Object.assign(headerRow.style, {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: "10px",
+    });
+
+    const contentRow = document.createElement("div");
+    Object.assign(contentRow.style, {
+      display: "flex",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: "14px",
+      flexWrap: "wrap",
+    });
+
+    const statusCopy = document.createElement("div");
+    Object.assign(statusCopy.style, {
+      display: "flex",
+      flexDirection: "column",
+      gap: "4px",
+      minWidth: "0",
+      flex: "1 1 150px",
+    });
+
+    const playersSection = document.createElement("div");
+    Object.assign(playersSection.style, {
+      display: "flex",
+      flexDirection: "column",
+      gap: "6px",
+      flex: "1 1 132px",
+      minWidth: "132px",
+    });
+
+    const playersTitle = document.createElement("div");
+    Object.assign(playersTitle.style, {
+      fontSize: "0.72rem",
+      letterSpacing: "0.12em",
+      textTransform: "uppercase",
+      color: "#9aa3b2",
+      fontWeight: "600",
+    });
+    playersTitle.textContent = "Players";
+
+    headerRow.append(this.statusEyebrow, this.timerDisplay);
+    statusCopy.append(this.statusHeadline, this.statusDetail);
+    playersSection.append(playersTitle, this.playerList);
+    contentRow.append(statusCopy, playersSection);
+    this.statusPanel.append(headerRow, contentRow);
   }
 
   private createLeaveButton(): HTMLButtonElement {
@@ -290,24 +380,38 @@ export class HUD {
   }
 
   private render(): void {
+    this.renderStatusSummary();
     this.renderPlayerInfo();
-    this.renderTurnIndicator();
     this.renderTimer();
   }
 
-  private renderPlayerInfo(): void {
-    this.playerInfoPanel.textContent = "";
+  private renderStatusSummary(): void {
+    const status = this.status ?? this.getFallbackStatus();
 
-    const title = document.createElement("div");
-    Object.assign(title.style, {
-      fontSize: "0.82rem",
-      letterSpacing: "0.14em",
-      textTransform: "uppercase",
-      color: "#7ecfff",
-      marginBottom: "6px",
-    });
-    title.textContent = "Players";
-    this.playerInfoPanel.appendChild(title);
+    this.statusEyebrow.textContent = status.label ?? "Game status";
+    this.statusHeadline.textContent = status.text;
+    this.statusHeadline.style.color = status.accentColor ?? "#f4f6fb";
+
+    const detail = status.detail?.trim() ?? "";
+    this.statusDetail.textContent = detail;
+    this.statusDetail.style.display = detail.length > 0 ? "block" : "none";
+  }
+
+  private renderPlayerInfo(): void {
+    this.playerList.textContent = "";
+
+    if (this.players.length === 0) {
+      const emptyState = document.createElement("div");
+      Object.assign(emptyState.style, {
+        fontSize: "0.82rem",
+        color: "#9aa3b2",
+      });
+      emptyState.textContent = "Waiting for players";
+      this.playerList.appendChild(emptyState);
+      return;
+    }
+
+    const hasScores = this.players.some((player) => player.score !== 0);
 
     for (const player of this.players) {
       const playerEl = document.createElement("div");
@@ -315,48 +419,48 @@ export class HUD {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        padding: "8px 10px",
+        gap: "8px",
+        padding: "6px 8px",
         background: player.isCurrent ? "rgba(126, 207, 255, 0.12)" : "rgba(255, 255, 255, 0.04)",
-        border: player.isCurrent ? "1px solid rgba(126, 207, 255, 0.32)" : "1px solid transparent",
+        border: player.isCurrent ? "1px solid rgba(126, 207, 255, 0.28)" : "1px solid transparent",
         borderRadius: "10px",
       });
 
       const nameEl = document.createElement("span");
       Object.assign(nameEl.style, {
-        fontWeight: player.isCurrent ? "600" : "400",
+        fontWeight: player.isCurrent ? "600" : "500",
         color: player.isCurrent ? "#d9f3ff" : "#dce2ee",
+        fontSize: "0.88rem",
+        minWidth: "0",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
       });
       nameEl.textContent = player.displayName;
 
-      const scoreEl = document.createElement("span");
-      Object.assign(scoreEl.style, {
-        fontSize: "0.88rem",
-        color: "#9aa3b2",
+      const metaEl = document.createElement("div");
+      Object.assign(metaEl.style, {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: "6px",
+        flexWrap: "wrap",
       });
-      scoreEl.textContent = `${player.score}`;
 
-      playerEl.append(nameEl, scoreEl);
-      this.playerInfoPanel.appendChild(playerEl);
-    }
-  }
+      if (player.userId === this.room?.sessionId) {
+        metaEl.appendChild(this.createPlayerTag("You", "rgba(143, 198, 255, 0.18)", "#d9f3ff"));
+      }
 
-  private renderTurnIndicator(): void {
-    if (!this.currentTurn) {
-      this.turnIndicator.textContent = "Game in progress";
-      this.turnIndicator.style.color = "#9aa3b2";
-      return;
-    }
+      if (player.isCurrent) {
+        metaEl.appendChild(this.createPlayerTag("Turn", "rgba(143, 240, 176, 0.18)", "#8ff0b0"));
+      }
 
-    const currentPlayer = this.players.find((p) => p.userId === this.currentTurn);
-    if (currentPlayer) {
-      const isLocalPlayer = this.room?.sessionId === this.currentTurn;
-      this.turnIndicator.textContent = isLocalPlayer
-        ? "Your turn"
-        : `${currentPlayer.displayName}'s turn`;
-      this.turnIndicator.style.color = isLocalPlayer ? "#8ff0b0" : "#8fc6ff";
-    } else {
-      this.turnIndicator.textContent = "Waiting...";
-      this.turnIndicator.style.color = "#9aa3b2";
+      if (hasScores) {
+        metaEl.appendChild(this.createPlayerTag(String(player.score), "rgba(255, 255, 255, 0.06)", "#dce2ee"));
+      }
+
+      playerEl.append(nameEl, metaEl);
+      this.playerList.appendChild(playerEl);
     }
   }
 
@@ -366,10 +470,10 @@ export class HUD {
       return;
     }
 
-    this.timerDisplay.style.display = "block";
+    this.timerDisplay.style.display = "inline-flex";
     const minutes = Math.floor(this.gameTimer / 60);
     const seconds = this.gameTimer % 60;
-    this.timerDisplay.textContent = `⏱️ ${minutes}:${seconds.toString().padStart(2, "0")}`;
+    this.timerDisplay.textContent = `Turn clock ${minutes}:${seconds.toString().padStart(2, "0")}`;
 
     if (this.gameTimer < 30) {
       this.timerDisplay.style.color = "#ff6b6b";
@@ -378,6 +482,50 @@ export class HUD {
       this.timerDisplay.style.color = "#f4f6fb";
       this.timerDisplay.style.borderColor = "rgba(126, 207, 255, 0.22)";
     }
+  }
+
+  private getFallbackStatus(): GameRendererHUDStatus {
+    if (!this.currentTurn) {
+      return {
+        label: "Game status",
+        text: "Waiting for players",
+        accentColor: "#9aa3b2",
+      };
+    }
+
+    const currentPlayer = this.players.find((player) => player.userId === this.currentTurn);
+    if (!currentPlayer) {
+      return {
+        label: "Game status",
+        text: "Game in progress",
+        accentColor: "#9aa3b2",
+      };
+    }
+
+    const isLocalPlayer = this.room?.sessionId === this.currentTurn;
+    return {
+      label: "Game status",
+      text: isLocalPlayer ? "Your turn" : `${currentPlayer.displayName}'s turn`,
+      accentColor: isLocalPlayer ? "#8ff0b0" : "#8fc6ff",
+    };
+  }
+
+  private createPlayerTag(text: string, background: string, color: string): HTMLElement {
+    const tag = document.createElement("span");
+    Object.assign(tag.style, {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "3px 8px",
+      borderRadius: "999px",
+      background,
+      color,
+      fontSize: "0.72rem",
+      fontWeight: "600",
+      lineHeight: "1",
+    });
+    tag.textContent = text;
+    return tag;
   }
 
   private startTimer(): void {

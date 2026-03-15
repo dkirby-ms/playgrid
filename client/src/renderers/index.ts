@@ -7,7 +7,7 @@ rendererRegistry.register("checkers", () => new CheckersRenderer());
 rendererRegistry.register("backgammon", () => new BackgammonRenderer());
 rendererRegistry.register("risk", () => new RiskRenderer());
 
-export type { GameRenderer, RendererInputEvent } from "./GameRenderer";
+export type { GameRenderer, GameRendererHUDStatus, RendererInputEvent } from "./GameRenderer";
 export { BackgammonRenderer } from "./BackgammonRenderer";
 export { CheckersRenderer } from "./CheckersRenderer";
 export { RiskRenderer } from "./RiskRenderer";

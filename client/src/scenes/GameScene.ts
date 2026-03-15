@@ -1,6 +1,6 @@
 import type { Room } from "@colyseus/sdk";
 import { Container, Text } from "pixi.js";
-import { RendererRegistry, type GameRenderer } from "../renderers";
+import { RendererRegistry, type GameRenderer, type GameRendererHUDStatus } from "../renderers";
 import type { Scene } from "./Scene";
 import { HUD, type HUDEvent, type HUDPlayer } from "../ui/HUD";
 
@@ -124,12 +124,14 @@ export class GameScene implements Scene {
     const currentTurn = this.extractCurrentTurn(this.room.state);
     const turnTimeRemaining = this.extractTurnTimeRemaining(this.room.state);
     const showTimer = turnTimeRemaining > 0;
+    const status = this.extractHUDStatus(this.room.state);
 
     this.hud.show(this.room, {
       players,
       currentTurn,
       gameTimer: turnTimeRemaining,
       showTimer,
+      status,
     });
   }
 
@@ -142,12 +144,14 @@ export class GameScene implements Scene {
     const currentTurn = this.extractCurrentTurn(state);
     const turnTimeRemaining = this.extractTurnTimeRemaining(state);
     const showTimer = turnTimeRemaining > 0;
+    const status = this.extractHUDStatus(state);
 
     this.hud.update({
       players,
       currentTurn,
       gameTimer: turnTimeRemaining,
       showTimer,
+      status,
     });
   }
 
@@ -201,6 +205,10 @@ export class GameScene implements Scene {
 
     const stateObj = state as Record<string, unknown>;
     return typeof stateObj.turnTimeRemaining === "number" ? stateObj.turnTimeRemaining : 0;
+  }
+
+  private extractHUDStatus(state: unknown): GameRendererHUDStatus | undefined {
+    return this.renderer?.getHUDStatus?.(state) ?? undefined;
   }
 
   private handleHUDEvent(event: HUDEvent): void {
