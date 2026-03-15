@@ -219,11 +219,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   identity: {
     type: 'SystemAssigned'
   }
-  dependsOn: createContainerAppEnv ? [
-    containerAppEnv
-  ] : []
   properties: {
-    managedEnvironmentId: containerAppEnvId
+    managedEnvironmentId: createContainerAppEnv ? containerAppEnv.id : containerAppEnvResourceId
     configuration: {
       ingress: {
         external: true
