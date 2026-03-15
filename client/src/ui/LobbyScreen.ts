@@ -138,137 +138,11 @@ function getGameTypeOption(gameType: string): GameTypeOption {
   return GAME_TYPE_OPTIONS.find((option) => option.value === gameType) ?? GAME_TYPE_OPTIONS[0];
 }
 
-function svgToDataUrl(svg: string): string {
-  return `url("data:image/svg+xml,${encodeURIComponent(svg.replace(/\s{2,}/g, " ").trim())}")`;
-}
-
 const GAME_TILE_ARTWORK: Record<string, string> = {
-  checkers: svgToDataUrl(`
-    <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 480'>
-      <defs>
-        <linearGradient id='bg' x1='0%' y1='0%' x2='100%' y2='100%'>
-          <stop offset='0%' stop-color='#170f2c'/>
-          <stop offset='100%' stop-color='#312054'/>
-        </linearGradient>
-        <pattern id='board' width='96' height='96' patternUnits='userSpaceOnUse'>
-          <rect width='96' height='96' fill='#33213f'/>
-          <rect width='48' height='48' fill='#d97745'/>
-          <rect x='48' y='48' width='48' height='48' fill='#d97745'/>
-        </pattern>
-        <radialGradient id='pieceRed' cx='35%' cy='30%' r='70%'>
-          <stop offset='0%' stop-color='#fca5a5'/>
-          <stop offset='55%' stop-color='#ef4444'/>
-          <stop offset='100%' stop-color='#7f1d1d'/>
-        </radialGradient>
-        <radialGradient id='pieceDark' cx='35%' cy='30%' r='70%'>
-          <stop offset='0%' stop-color='#d4d4d8'/>
-          <stop offset='45%' stop-color='#27272a'/>
-          <stop offset='100%' stop-color='#09090b'/>
-        </radialGradient>
-      </defs>
-      <rect width='640' height='480' fill='url(#bg)'/>
-      <circle cx='554' cy='112' r='92' fill='#8b5cf6' opacity='.2'/>
-      <circle cx='122' cy='408' r='112' fill='#fb7185' opacity='.14'/>
-      <g transform='translate(92 54) rotate(-8 224 158)'>
-        <rect x='0' y='0' width='448' height='316' rx='30' fill='#f7d8aa'/>
-        <rect x='18' y='18' width='412' height='280' rx='20' fill='url(#board)'/>
-        <ellipse cx='156' cy='218' rx='70' ry='18' fill='#0f172a' opacity='.28'/>
-        <ellipse cx='292' cy='116' rx='72' ry='18' fill='#0f172a' opacity='.24'/>
-        <circle cx='156' cy='206' r='48' fill='url(#pieceRed)'/>
-        <circle cx='156' cy='206' r='30' fill='none' stroke='#fee2e2' stroke-width='6' opacity='.72'/>
-        <circle cx='292' cy='104' r='48' fill='url(#pieceDark)'/>
-        <circle cx='292' cy='104' r='30' fill='none' stroke='#e4e4e7' stroke-width='6' opacity='.45'/>
-        <circle cx='226' cy='158' r='34' fill='url(#pieceRed)' opacity='.9'/>
-      </g>
-    </svg>
-  `),
-  backgammon: svgToDataUrl(`
-    <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 480'>
-      <defs>
-        <linearGradient id='bg' x1='0%' y1='0%' x2='100%' y2='100%'>
-          <stop offset='0%' stop-color='#34123c'/>
-          <stop offset='100%' stop-color='#7c2d5b'/>
-        </linearGradient>
-        <linearGradient id='frame' x1='0%' y1='0%' x2='100%' y2='100%'>
-          <stop offset='0%' stop-color='#f4c27a'/>
-          <stop offset='100%' stop-color='#8a4b1f'/>
-        </linearGradient>
-      </defs>
-      <rect width='640' height='480' fill='url(#bg)'/>
-      <circle cx='110' cy='82' r='82' fill='#fb7185' opacity='.15'/>
-      <circle cx='546' cy='386' r='118' fill='#f59e0b' opacity='.13'/>
-      <g transform='translate(68 42)'>
-        <rect x='0' y='0' width='504' height='356' rx='28' fill='url(#frame)'/>
-        <rect x='26' y='26' width='452' height='304' rx='18' fill='#5b2d0f'/>
-        <rect x='220' y='26' width='64' height='304' rx='14' fill='#2f1322' opacity='.7'/>
-        <g fill='#f8d6a0'>
-          <polygon points='42,44 78,44 60,166'/><polygon points='78,44 114,44 96,166'/><polygon points='114,44 150,44 132,166'/><polygon points='150,44 186,44 168,166'/><polygon points='186,44 222,44 204,166'/><polygon points='284,44 320,44 302,166'/><polygon points='320,44 356,44 338,166'/><polygon points='356,44 392,44 374,166'/><polygon points='392,44 428,44 410,166'/><polygon points='428,44 464,44 446,166'/>
-        </g>
-        <g fill='#b91c1c'>
-          <polygon points='42,312 78,312 60,190'/><polygon points='78,312 114,312 96,190'/><polygon points='114,312 150,312 132,190'/><polygon points='150,312 186,312 168,190'/><polygon points='186,312 222,312 204,190'/><polygon points='284,312 320,312 302,190'/><polygon points='320,312 356,312 338,190'/><polygon points='356,312 392,312 374,190'/><polygon points='392,312 428,312 410,190'/><polygon points='428,312 464,312 446,190'/>
-        </g>
-        <g>
-          <ellipse cx='124' cy='266' rx='30' ry='9' fill='#12070e' opacity='.24'/>
-          <ellipse cx='378' cy='104' rx='30' ry='9' fill='#12070e' opacity='.24'/>
-          <circle cx='124' cy='252' r='24' fill='#fff8e7'/><circle cx='124' cy='218' r='24' fill='#fff8e7'/><circle cx='124' cy='184' r='24' fill='#fff8e7'/>
-          <circle cx='378' cy='118' r='24' fill='#1f2937'/><circle cx='378' cy='152' r='24' fill='#1f2937'/><circle cx='378' cy='186' r='24' fill='#1f2937'/>
-        </g>
-        <g transform='translate(338 210) rotate(12)'>
-          <rect x='0' y='0' width='60' height='60' rx='12' fill='#fffaf0'/>
-          <circle cx='19' cy='19' r='5' fill='#7c2d12'/><circle cx='41' cy='41' r='5' fill='#7c2d12'/>
-          <rect x='72' y='0' width='60' height='60' rx='12' fill='#fffaf0'/>
-          <circle cx='91' cy='19' r='5' fill='#7c2d12'/><circle cx='91' cy='41' r='5' fill='#7c2d12'/><circle cx='113' cy='19' r='5' fill='#7c2d12'/><circle cx='113' cy='41' r='5' fill='#7c2d12'/>
-        </g>
-      </g>
-    </svg>
-  `),
-  risk: svgToDataUrl(`
-    <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 480'>
-      <defs>
-        <linearGradient id='bg' x1='0%' y1='0%' x2='100%' y2='100%'>
-          <stop offset='0%' stop-color='#082032'/>
-          <stop offset='100%' stop-color='#111827'/>
-        </linearGradient>
-      </defs>
-      <rect width='640' height='480' fill='url(#bg)'/>
-      <g stroke='#60a5fa' stroke-opacity='.12'>
-        <path d='M0 96h640M0 192h640M0 288h640M0 384h640'/>
-        <path d='M106 0v480M214 0v480M320 0v480M426 0v480M534 0v480'/>
-      </g>
-      <path d='M90 120 C130 78 200 74 236 114 C250 142 248 176 214 194 C188 208 170 234 150 248 C114 236 84 210 72 176 C66 154 72 132 90 120 Z' fill='#22c55e' opacity='.24'/>
-      <path d='M250 118 C286 88 338 90 372 126 C394 148 402 182 388 210 C364 216 336 214 312 224 C286 220 256 196 242 166 C236 148 238 128 250 118 Z' fill='#a855f7' opacity='.24'/>
-      <path d='M378 206 C414 176 468 180 506 214 C540 246 544 292 512 320 C480 326 454 338 432 360 C398 350 366 328 352 296 C344 268 352 230 378 206 Z' fill='#f97316' opacity='.24'/>
-      <path d='M184 292 C218 266 270 270 300 304 C324 332 324 372 294 396 C264 402 232 404 206 392 C178 378 160 352 158 324 C156 312 164 300 184 292 Z' fill='#eab308' opacity='.24'/>
-      <g stroke='#93c5fd' stroke-width='4' stroke-linecap='round' opacity='.36'>
-        <path d='M172 170 L286 158 L412 238 L262 338'/>
-        <path d='M286 158 L482 258'/>
-        <path d='M412 238 L480 312'/>
-      </g>
-      <g>
-        <circle cx='172' cy='170' r='22' fill='#ef4444'/><circle cx='172' cy='170' r='10' fill='#fee2e2'/>
-        <circle cx='286' cy='158' r='22' fill='#3b82f6'/><circle cx='286' cy='158' r='10' fill='#dbeafe'/>
-        <circle cx='412' cy='238' r='22' fill='#10b981'/><circle cx='412' cy='238' r='10' fill='#d1fae5'/>
-        <circle cx='482' cy='258' r='22' fill='#f59e0b'/><circle cx='482' cy='258' r='10' fill='#fef3c7'/>
-        <circle cx='480' cy='312' r='22' fill='#8b5cf6'/><circle cx='480' cy='312' r='10' fill='#ede9fe'/>
-        <circle cx='262' cy='338' r='22' fill='#ec4899'/><circle cx='262' cy='338' r='10' fill='#fce7f3'/>
-      </g>
-      <path d='M546 74 l18 48 52 4 -40 32 12 50 -42 -28 -42 28 12 -50 -40 -32 52 -4z' fill='#f8fafc' opacity='.16'/>
-    </svg>
-  `),
-  default: svgToDataUrl(`
-    <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 480'>
-      <defs>
-        <linearGradient id='bg' x1='0%' y1='0%' x2='100%' y2='100%'>
-          <stop offset='0%' stop-color='#4c1d95'/>
-          <stop offset='100%' stop-color='#7e22ce'/>
-        </linearGradient>
-      </defs>
-      <rect width='640' height='480' fill='url(#bg)'/>
-      <circle cx='120' cy='110' r='94' fill='#c084fc' opacity='.22'/>
-      <circle cx='500' cy='352' r='124' fill='#f472b6' opacity='.18'/>
-      <path d='M104 348 L224 136 L336 280 L456 92 L560 348' fill='none' stroke='#f5d0fe' stroke-width='18' stroke-linecap='round' opacity='.34'/>
-    </svg>
-  `),
+  checkers: "/game-thumbnails/checkers.jpg",
+  backgammon: "/game-thumbnails/backgammon.jpg",
+  risk: "/game-thumbnails/risk.jpg",
+  default: "/game-thumbnails/checkers.jpg",
 };
 
 function createElement<K extends keyof HTMLElementTagNameMap>(
@@ -588,7 +462,8 @@ export class LobbyScreen {
     });
 
     room.onMessage(GAME_JOINED, (payload: GameJoinedPayload) => {
-      const isHost = this.pendingTransition === "create";
+      const joinedGame = this.games.get(payload.gameId) ?? null;
+      const isHost = joinedGame?.hostId === room.sessionId || this.pendingTransition === "create";
       this.pendingTransition = null;
       this.setCreatePending(false);
       this.clearNotice();
@@ -598,7 +473,7 @@ export class LobbyScreen {
           type: "join_game",
           gameId: payload.gameId,
           roomId: payload.roomId,
-          gameType: this.games.get(payload.gameId)?.gameType ?? "checkers",
+          gameType: joinedGame?.gameType ?? "checkers",
         });
         return;
       }
@@ -606,7 +481,7 @@ export class LobbyScreen {
       this.eventCallback?.({
         type: "waiting",
         gameId: payload.gameId,
-        gameInfo: this.games.get(payload.gameId) ?? null,
+        gameInfo: joinedGame,
         isHost,
       });
     });
@@ -797,15 +672,11 @@ export class LobbyScreen {
     tile.type = "button";
 
     const imageArea = createElement("div", "game-tile-image");
-    const imageInner = createElement("div", "game-tile-image-inner");
-    const artwork = GAME_TILE_ARTWORK[gameType] || GAME_TILE_ARTWORK.default;
-    imageInner.style.backgroundImage = [
-      "linear-gradient(135deg, rgba(15, 23, 42, 0.1), rgba(15, 23, 42, 0.55))",
-      artwork,
-    ].join(", ");
-    imageInner.style.backgroundPosition = "center, center";
-    imageInner.style.backgroundRepeat = "no-repeat, no-repeat";
-    imageInner.style.backgroundSize = "cover, cover";
+    const imageInner = createElement("img", "game-tile-image-inner") as HTMLImageElement;
+    imageInner.src = GAME_TILE_ARTWORK[gameType] || GAME_TILE_ARTWORK.default;
+    imageInner.alt = "";
+    imageInner.loading = "lazy";
+    imageInner.decoding = "async";
 
     imageArea.append(imageInner);
 

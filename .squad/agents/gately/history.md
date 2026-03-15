@@ -328,6 +328,14 @@ function getContinentBonus(continent: string): number { ... }
 
 ---
 
+
+### 2026-03-15: Lobby game tiles now use local design-photo thumbnails
+
+- The provided Figma export archive lives at `docs/designs/project.zip`; it did not bundle binary images, but it did preserve the original tile photo URLs in `src/app/App.tsx`.
+- For lobby reliability, the design photos were captured into local 1200x900 JPEG thumbnails under `client/public/game-thumbnails/` so the card art no longer depends on external hosts at runtime.
+- `client/src/ui/LobbyScreen.ts` should keep game tile imagery as simple path mapping (`/game-thumbnails/*.jpg`) and render real `<img>` elements, while `client/index.html` owns the sizing contract with `object-fit: cover` for consistent 4:3 crops.
+- The existing `.game-tile-image::before` gradient remains the right place for text contrast, so artwork can change without re-tuning every image.
+
 ## 2026-03-15: Cross-Agent Update — PR #83 Revision Complete (Lockout Protocol)
 
 **From:** Scribe (on behalf of Marathe)  
@@ -930,3 +938,10 @@ This pattern avoids custom message protocols and leverages Colyseus's built-in s
 - `server/src/__tests__/lobby-pregame.test.ts` — Updated mock for new constant
 
 **Status:** ✅ Feature complete, PR created to dev branch
+
+### 2026-03-15: Shared in-game status panel for renderer HUDs
+
+- Refactored `client/src/ui/HUD.ts` into a single reusable status panel pattern that groups status copy, the turn clock, and player roster in one card instead of scattering them across separate overlay widgets.
+- Added optional `getHUDStatus()` support to the `GameRenderer` contract so individual renderers can feed game-specific status copy and accents into the shared panel without coupling `GameScene` to per-game rules.
+- `client/src/renderers/CheckersRenderer.ts` is the first adopter: the old canvas status copy moved into the shared HUD while the board keeps only board-specific counters and the game-over overlay.
+- Adoption path for future games is now: keep roster/timer in `HUD`, implement `getHUDStatus()` in the renderer when a game needs custom turn/state text, and leave renderer-owned canvas HUD elements for board-specific info only.

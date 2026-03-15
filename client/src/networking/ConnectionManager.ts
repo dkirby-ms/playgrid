@@ -63,12 +63,17 @@ export class ConnectionManager {
     };
   }
 
-  async joinLobby(options?: { displayName?: string }): Promise<ColyseusRoom> {
+  async joinLobby(options?: { displayName?: string; playerId?: string }): Promise<ColyseusRoom> {
     this.setState(ConnectionState.CONNECTING);
     this.cancelReconnect();
 
     try {
-      const joinOptions = options?.displayName ? { displayName: options.displayName } : undefined;
+      const joinOptions = options?.displayName || options?.playerId
+        ? {
+            ...(options?.displayName ? { displayName: options.displayName } : {}),
+            ...(options?.playerId ? { playerId: options.playerId } : {}),
+          }
+        : undefined;
       const room = (await this.client.joinOrCreate(LOBBY_ROOM_NAME, joinOptions)) as ColyseusRoom;
       this.setState(ConnectionState.CONNECTED);
       this.reconnectAttempts = 0;

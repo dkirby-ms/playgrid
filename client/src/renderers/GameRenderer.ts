@@ -12,6 +12,13 @@ export interface GameRendererContext {
   room?: Room;
 }
 
+export interface GameRendererHUDStatus {
+  label?: string;
+  text: string;
+  detail?: string;
+  accentColor?: string;
+}
+
 export interface GameRenderer {
   readonly gameType: string;
   readonly container: Container;
@@ -20,5 +27,6 @@ export interface GameRenderer {
   update(deltaTime: number): void;
   resize(width: number, height: number): void;
   handleInput(event: RendererInputEvent): void;
+  getHUDStatus?(state: unknown): GameRendererHUDStatus | null;
   destroy(): void;
 }

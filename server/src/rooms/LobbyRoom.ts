@@ -35,9 +35,11 @@ const DEFAULT_MAX_PLAYERS = 4;
 const LOBBY_RECONNECTION_TIMEOUT_SECONDS = 30;
 const MAX_GAME_NAME_LENGTH = 32;
 const MAX_DISPLAY_NAME_LENGTH = 24;
+const MAX_PLAYER_ID_LENGTH = 64;
 
 interface LobbySession {
   sessionId: string;
+  playerId: string;
   displayName: string;
   currentGameId?: string;
 }
@@ -48,6 +50,7 @@ interface LobbyGameEntry extends GameSessionInfo {
 
 export class LobbyRoom extends Room {
   private readonly sessions = new Map<string, LobbySession>();
+  private readonly sessionIdByPlayerId = new Map<string, string>();
   private readonly games = new Map<string, LobbyGameEntry>();
   private readonly waitingPlayers = new Map<string, Map<string, PreGamePlayerInfo>>();
   private readonly handleDisposedGameRoom = (message: GameRoomDisposedMessage) => {
@@ -105,8 +108,19 @@ export class LobbyRoom extends Room {
   }
 
   override onJoin(client: Client, options?: Record<string, unknown>) {
+    const displayName = this.normalizeDisplayName(options?.displayName, client.sessionId);
+    const playerId = this.normalizePlayerId(options?.playerId, client.sessionId);
     const existingSession = this.sessions.get(client.sessionId);
+
     if (existingSession) {
+      if (existingSession.playerId !== playerId
+        && this.sessionIdByPlayerId.get(existingSession.playerId) === client.sessionId) {
+        this.sessionIdByPlayerId.delete(existingSession.playerId);
+      }
+
+      existingSession.playerId = playerId;
+      existingSession.displayName = displayName;
+      this.sessionIdByPlayerId.set(playerId, client.sessionId);
       client.send(GAME_LIST, {
         games: Array.from(this.games.values(), (game) => this.toGameSessionInfo(game)),
       });
@@ -117,12 +131,28 @@ export class LobbyRoom extends Room {
       return;
     }
 
-    const displayName = this.normalizeDisplayName(options?.displayName, client.sessionId);
+    const previousSessionId = this.sessionIdByPlayerId.get(playerId);
+    if (previousSessionId && previousSessionId !== client.sessionId) {
+      const reclaimedSession = this.reclaimSession(previousSessionId, client.sessionId, playerId, displayName);
+      if (reclaimedSession) {
+        client.send(GAME_LIST, {
+          games: Array.from(this.games.values(), (game) => this.toGameSessionInfo(game)),
+        });
+
+        this.broadcastOnlinePlayers();
+        console.log(
+          `[LobbyRoom] ${displayName} resumed the lobby on a new session (${previousSessionId} → ${client.sessionId})`,
+        );
+        return;
+      }
+    }
 
     this.sessions.set(client.sessionId, {
       sessionId: client.sessionId,
+      playerId,
       displayName,
     });
+    this.sessionIdByPlayerId.set(playerId, client.sessionId);
 
     client.send(GAME_LIST, {
       games: Array.from(this.games.values(), (game) => this.toGameSessionInfo(game)),
@@ -492,6 +522,62 @@ export class LobbyRoom extends Room {
     }
   }
 
+  private reclaimSession(
+    previousSessionId: string,
+    nextSessionId: string,
+    playerId: string,
+    displayName: string,
+  ) {
+    const previousSession = this.sessions.get(previousSessionId);
+    if (!previousSession) {
+      this.sessionIdByPlayerId.delete(playerId);
+      return null;
+    }
+
+    const reclaimedSession: LobbySession = {
+      ...previousSession,
+      sessionId: nextSessionId,
+      playerId,
+      displayName,
+    };
+
+    this.sessions.delete(previousSessionId);
+    this.sessions.set(nextSessionId, reclaimedSession);
+    this.sessionIdByPlayerId.set(playerId, nextSessionId);
+
+    const waitingGamesToRefresh = new Set<string>();
+    for (const [gameId, players] of this.waitingPlayers.entries()) {
+      const existingPlayer = players.get(previousSessionId);
+      if (!existingPlayer) {
+        continue;
+      }
+
+      players.delete(previousSessionId);
+      players.set(nextSessionId, {
+        ...existingPlayer,
+        userId: nextSessionId,
+        displayName,
+      });
+      waitingGamesToRefresh.add(gameId);
+    }
+
+    for (const game of this.games.values()) {
+      if (game.hostId !== previousSessionId) {
+        continue;
+      }
+
+      game.hostId = nextSessionId;
+      game.hostName = displayName;
+      this.broadcast(GAME_UPDATED, { game: this.toGameSessionInfo(game) });
+    }
+
+    for (const gameId of waitingGamesToRefresh) {
+      this.broadcastGamePlayers(gameId);
+    }
+
+    return reclaimedSession;
+  }
+
   private removeSession(sessionId: string) {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -507,6 +593,9 @@ export class LobbyRoom extends Room {
 
     this.handleLeaveGame(sessionId);
     this.sessions.delete(sessionId);
+    if (this.sessionIdByPlayerId.get(session.playerId) === sessionId) {
+      this.sessionIdByPlayerId.delete(session.playerId);
+    }
     this.broadcastOnlinePlayers();
     this.broadcastLobbyEvent({
       type: "player_left",
@@ -582,6 +671,15 @@ export class LobbyRoom extends Room {
 
     const trimmed = value.trim().slice(0, MAX_DISPLAY_NAME_LENGTH);
     return trimmed || `Player ${fallbackSessionId.slice(0, 6)}`;
+  }
+
+  private normalizePlayerId(value: unknown, fallbackSessionId: string) {
+    if (typeof value !== "string") {
+      return fallbackSessionId;
+    }
+
+    const trimmed = value.trim().slice(0, MAX_PLAYER_ID_LENGTH);
+    return trimmed || fallbackSessionId;
   }
 
   private normalizeGameType(value: unknown) {
