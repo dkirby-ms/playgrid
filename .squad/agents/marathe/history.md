@@ -352,3 +352,15 @@ Bicep outputs all values needed for configuring GitHub Actions environment varia
 - **Bicep Update:** `infra/main.bicep` now accepts optional `containerAppEnvResourceId` parameter to allow cross-resource-group CAE sharing when needed
 - **Impact:** UAT/prod deployments now converge on deterministic shared resource names, preventing CAE drift and simplifying repeated deployments
 - **Related Directive:** User requested shared CAE for cost optimization (2026-03-15T01:20:26Z)
+
+## Cross-Agent Update — PR #83 Revision Routed (2026-03-15)
+
+**From:** Hal (Lead)  
+**Event:** PR #83 review completed; revision work routed to Marathe due to author lockout
+
+- **Hal reviewed:** Risk game plugin PR and identified architectural issues (missing tests, duplicated data structures, undocumented scope cuts)
+- **Original authors locked:** Pemulis, Steeply, Gately cannot approve further changes
+- **Your assignment:** Address PR #83 revision work (refactor shared data, implement missing tests, document scope cuts)
+- **Decisions established:** Four new architectural standards recorded in `.squad/decisions.md` for all future games
+- **Timeline:** Standard PR review cycle
+

@@ -1930,3 +1930,71 @@ Phase 3 of Risk game plugin (#80) required an interactive map renderer on the cl
 7. Minimap for large displays
 8. Zoom/pan controls for mobile
 
+
+---
+
+## Session: Post-Work Review and Fixes (2026-03-15)
+
+### Gately: Lobby Card Backgrounds via Inline SVG Data URLs
+
+**Status:** Approved  
+**Date:** 2026-03-15
+
+Use inline SVG data URLs generated in `client/src/ui/LobbyScreen.ts` for lobby game library card artwork, with CSS overlay/shadow treatment in `client/index.html` to keep labels readable.
+
+**Rationale:**
+- Keeps artwork fully self-contained in lobby UI code; no new asset pipeline required
+- Lightweight and easy to tweak with bespoke art direction per card
+- One shared CSS contrast layer instead of duplicating overlays inside assets
+- Fits existing HTML/CSS lobby architecture
+
+**Files:**
+- `client/src/ui/LobbyScreen.ts`
+- `client/index.html`
+
+---
+
+### Marathe: Fix Shared CAE Dependency and PostgreSQL Password Requirement
+
+**Status:** Approved  
+**Date:** 2026-03-15
+
+Keep shared UAT/prod Container Apps Environment (CAE) architecture, but make `Microsoft.App/containerApps` explicitly depend on the conditionally created `Microsoft.App/managedEnvironments` resource when `containerAppEnvResourceId` is empty. Require PostgreSQL administrator password at deployment time with no empty default.
+
+**Rationale:**
+- Template was computing CAE resource ID as string without creating ARM dependency edge
+- First-time deployments could attempt container app before managed environment existed, causing `ManagedEnvironmentNotFound`
+- Empty password fallback caused late deployment failures instead of fast validation
+- First-time deployments can now create shared CAE and dependent container app in one run
+
+**Impact:**
+- Cross-resource-group reuse still works via `containerAppEnvResourceId`
+- Manual deploys must provide `POSTGRES_ADMIN_PASSWORD`, avoiding accidental empty passwords
+
+**Files:**
+- `infra/main.bicep`
+- `infra/main.bicepparam`
+
+---
+
+### Hal: Risk Game Implementation Standards
+
+**Status:** Approved  
+**Date:** 2026-03-15
+
+Establish four architectural standards from PR #83 review:
+
+1. **Shared Static Data:** Game configuration data (maps, adjacency graphs, card decks) MUST be located in `shared/src/games/{game}/` so both client (renderer) and server (logic) use a single source of truth.
+2. **Test Implementation:** PR descriptions must accurately reflect test coverage. `it.todo()` placeholders do not count as implemented tests. Critical game logic (combat, movement, win conditions) must be tested before merge.
+3. **Scope Transparency:** Intentional simplifications of game rules MUST be explicitly documented as "Phase 1 Limitations" in the PR description to distinguish from bugs.
+4. **PR Atomicity:** Infrastructure changes should be in separate PRs from feature work to keep reviews focused.
+
+**Rationale:**
+- Prevents client/server state drift through shared data models
+- Test metrics in PRs require verification; unclear coverage masks incomplete implementation
+- Scope cuts need explicit documentation to prevent confusion with bugs or incomplete features
+- Bundled unrelated changes degrade review quality and increase risk of regression
+
+**Files:**
+- PR #83 follow-up work (routed to Marathe)
+

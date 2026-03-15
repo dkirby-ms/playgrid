@@ -312,3 +312,36 @@ Suggestion: Implement server-side validation, show card count only in Phase 1.
 ### Decision: Triage Completed
 
 Added squad:pemulis and squad:gately labels. Posted triage comment with decomposition + scope recommendations. Ready for sprint assignment.
+
+### PR #83 Review — Risk Game Plugin (2026-03-15)
+
+**Session:** Reviewed "feat: Add Risk game plugin" (PR #83)
+
+**Outcome:** ❌ Changes Requested
+
+**Key Issues Identified:**
+1.  **Missing Tests:** PR claimed 64 tests, but ~48 were `it.todo()` placeholders. Critical logic (combat, win conditions) untested.
+2.  **Architectural Duplication:** `TerritoryData` existed in both Server (logic) and Client (renderer), risking desync.
+3.  **Logic Simplifications:** Found 3 major deviations from Standard Risk (Card sets, Fortify paths, Attack movement) not explicitly documented as scope cuts.
+4.  **Bundled Changes:** PR included unrelated Local PostgreSQL infrastructure (Marathe's work), complicating the review.
+
+**Action Items:**
+- Pemulis/Steeply: Implement missing tests for combat & movement.
+- Pemulis/Gately: Refactor `territoryData.ts` to `shared/`.
+- Hal: Clarify scope on Card mechanics and Fortify rules.
+
+**Learnings:**
+- Complex games like Risk require strict shared data models to prevent client/server drift.
+- "Test count" metrics in PRs need verification against actual implementation (checking for TODOs).
+- PRs bundling unrelated infra changes degrade review quality; enforce atomicity where possible.
+
+## Cross-Agent Update — PR #83 Review Completed and Routed (2026-03-15)
+
+**Event:** Risk game plugin review (PR #83) completed and revision work routed to Marathe
+
+- **Review outcome:** Changes requested — identified 4 architectural gaps
+- **Issues found:** Missing tests (48 of 64 were `it.todo()` placeholders), duplicated territory data, undocumented scope cuts, bundled infrastructure changes
+- **Decisions created:** Four new game implementation standards for Risk and future games recorded in `.squad/decisions.md`
+- **Routing:** PR revision routed to Marathe due to original author lockout (Pemulis, Steeply, Gately)
+- **Impact:** Future game plugins must follow strict shared data models, explicit test implementation, and documented scope cuts
+
