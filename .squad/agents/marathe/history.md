@@ -466,3 +466,139 @@ Added comprehensive Phase 1 limitations documentation to `server/src/games/risk/
 
 **Note:** Original PR authors (Pemulis/Steeply/Gately) were locked out per protocol; Marathe completed revision independently.
 
+
+---
+
+## 2026-03-15: Fixed Azure Container Apps Health Check Probe Failure
+
+**Root Cause:** The `CONTAINER_APP_FQDN` GitHub environment variable already included the `https://` protocol, but the deploy workflows were prepending another `https://`, resulting in a malformed URL: `https://https://playgrid-uat.orangedune-0437f62b.centralus.azurecontainerapps.io/health`
+
+**Impact:** All UAT and Prod deployments failed during the health check verification step, even though the containers were running correctly and the `/health` endpoint was functional.
+
+**Investigation:**
+1. Examined recent deployment workflow runs via `gh run list` and `gh run view`
+2. Found health check logs showing double `https://` prefix in URL
+3. Verified environment variables: `gh variable list --env uat` showed `CONTAINER_APP_FQDN` already includes protocol
+4. Confirmed same issue in both UAT and Prod environments
+
+**Fix Applied:**
+- **deploy-uat.yml**: Changed `HEALTH_URL="https://${{ vars.CONTAINER_APP_FQDN }}/health"` → `HEALTH_URL="${{ vars.CONTAINER_APP_FQDN }}/health"`
+- **deploy-prod.yml**: Same fix applied
+- **Discord notifications**: Removed duplicate `https://` from `deployment-url` parameter in both workflows
+
+**Files Changed:**
+- `.github/workflows/deploy-uat.yml`
+- `.github/workflows/deploy-prod.yml`
+
+**Verification:**
+- ✅ `npm run build` — All workspaces compile successfully
+- ✅ No other workflows have the double-prefix issue
+
+**Commit:** `ad8d0a8` - "fix: remove duplicate https:// prefix in health check URL"
+
+### Learnings:
+
+**Environment Variable Conventions:**
+- Azure Container Apps `containerApp.properties.configuration.ingress.fqdn` returns the FQDN without protocol
+- GitHub environment variables should store FQDNs **with** protocol for direct use in URLs
+- Workflow scripts should not assume protocol is missing — validate variable format first
+
+**Health Check Best Practices:**
+1. Always log the constructed URL before testing (`echo "Checking health endpoint: $HEALTH_URL"`)
+2. Use `curl -f -s` for clean failures (non-2xx exits non-zero, suppress progress)
+3. Grep for specific JSON fields rather than just checking HTTP 200 (validates response format)
+4. Implement retry logic with exponential backoff (our workflows use 10 attempts × 5s delay)
+
+**Azure Container Apps Probes:**
+- Liveness probe: Restarts container on failure (30s initial delay, 10s period, 5s timeout, 3 failures)
+- Readiness probe: Removes from load balancer on failure (30s initial delay, 5s period, 5s timeout, 6 failures)
+- No startup probe configured (ACA doesn't distinguish startup from liveness in current config)
+- Probes target `/health` on port 2567 correctly
+- Server listens before DB init to respond to probes during startup (see `server/src/index.ts:62`)
+
+**Key File Paths:**
+- Health probes: `infra/main.bicep` lines 270-295
+- Server health endpoint: `server/src/index.ts` line 38
+- Deploy workflows: `.github/workflows/deploy-{uat,prod}.yml`
+- Bootstrap placeholder: Uses `node:22-alpine` with inline HTTP server (Bicep line 56)
+
+**Architectural Decision:**
+- Environment variables include protocol (`https://`) for consistency with Bicep outputs
+- Workflows should use variables directly without protocol manipulation
+- This aligns with the pattern in `infra/main.bicep` output `containerAppFqdn` which returns the full URL
+
+
+---
+
+## 2026-03-15: Fixed Container App Bootstrap Command Override
+
+**Root Cause:** After deploying to UAT, the browser showed `{"status":"ok","mode":"placeholder"}` instead of the actual app. The Bicep template (`infra/main.bicep`) bootstraps Container Apps with a placeholder Node.js image and explicit `command`/`args` override that runs an inline HTTP server. The deploy workflows used `az containerapp update --image` to swap in the real ACR image, but **did not clear the command/args override** — so the container kept running the placeholder script even with the real image.
+
+**Bootstrap Configuration (Bicep lines 249-255):**
+```bicep
+image: 'node:22-alpine'
+command: ['/bin/sh', '-c']
+args: ['node -e "require(\'http\').createServer((q,s)=>{s.writeHead(200,{\'Content-Type\':\'application/json\'});s.end(JSON.stringify({status:\'ok\',mode:\'placeholder\'}))}).listen(2567,\'0.0.0.0\')"']
+```
+
+**Investigation:**
+1. Confirmed `az containerapp update` does NOT automatically clear command/args when changing images
+2. Checked Azure CLI documentation: `--command ""` and `--args ""` explicitly clear existing values
+3. The Bicep bootstrap command/args are intentional and correct — they allow infra deployment before CI has pushed the real image
+
+**Fix Applied:**
+Added `--command ""` and `--args ""` to the "Deploy to Container App" step in both workflows:
+
+**deploy-uat.yml:**
+```bash
+az containerapp update \
+  --name ${{ vars.CONTAINER_APP_NAME }} \
+  --resource-group ${{ vars.RESOURCE_GROUP }} \
+  --image ${{ vars.ACR_NAME }}.azurecr.io/playgrid:${{ github.sha }} \
+  --command "" \
+  --args "" \
+  --set-env-vars "NODE_ENV=development" "PORT=2567" "DATABASE_URL=secretref:postgres-connection-string"
+```
+
+**deploy-prod.yml:** Same fix with `NODE_ENV=production`
+
+**Files Changed:**
+- `.github/workflows/deploy-uat.yml` (line 63-64)
+- `.github/workflows/deploy-prod.yml` (line 63-64)
+
+**Verification:**
+- ✅ `npm run build` — All workspaces compile successfully
+
+### Learnings:
+
+**Azure Container Apps Command Override Behavior:**
+- `az containerapp update --image` does NOT clear existing command/args from previous revisions
+- Explicit `--command ""` and `--args ""` are required to remove overrides and use the image's default CMD/ENTRYPOINT
+- Bootstrap placeholder commands in Bicep are **correct and intentional** — they're only for initial infra deployment
+
+**Bootstrap Strategy:**
+- Bicep templates use public bootstrap images (e.g., `node:22-alpine`) with placeholder servers so initial `az deployment group create` succeeds before CI has pushed the real app image into ACR
+- CI workflows must explicitly clear bootstrap command/args when deploying the real image
+- This two-phase approach avoids circular dependencies: infra creates the container app → RBAC propagates → CI pushes image → CI updates container app
+
+**Azure CLI Command/Args Syntax:**
+```bash
+# Clear command/args (use image's default)
+--command "" --args ""
+
+# Set custom command (array syntax)
+--command "/bin/sh" "-c"
+
+# Set custom args (array syntax)
+--args "npm start"
+```
+
+**Key File Paths:**
+- Deploy workflows: `.github/workflows/deploy-{uat,prod}.yml`
+- Bicep bootstrap config: `infra/main.bicep` lines 56-57 (variables), 249-255 (container template)
+- Dockerfile CMD: `Dockerfile` line 34 (`CMD ["node", "dist/index.js"]`)
+
+**Related Issues:**
+- Previous fix (2026-03-15): Health check URL double-prefix
+- Root cause: Environment variables included protocol, workflows prepended another `https://`
+- Resolution: Use `CONTAINER_APP_FQDN` variable directly without protocol manipulation
