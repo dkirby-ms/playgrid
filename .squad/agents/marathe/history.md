@@ -364,3 +364,82 @@ Bicep outputs all values needed for configuring GitHub Actions environment varia
 - **Decisions established:** Four new architectural standards recorded in `.squad/decisions.md` for all future games
 - **Timeline:** Standard PR review cycle
 
+
+## PR #83 Revision Complete (2026-03-15)
+
+**Task:** Address Hal's review feedback on Risk game plugin PR #83
+**Commit:** `816332c` - "fix: address PR #83 review — tests + shared territory data"
+
+### Work Completed:
+
+**1. Implemented All Test Cases (60/60 passing):**
+- Territory & map validation (5 tests)
+  - 42 territories with correct continent assignments
+  - Symmetric adjacency graph validation
+  - Cross-continent connections
+- Setup phase (8 tests)
+  - Auto-distribution verification
+  - Initial army allocation (2-6 players)
+- Reinforce phase (10 tests)
+  - Reinforcement calculation with continent bonuses
+  - Card trade-in escalation (4, 6, 8, 10, 12, 15, +5 each)
+  - Forced trade-in at 5+ cards
+  - Army placement validation
+- Attack phase (12 tests)
+  - Attack validation (adjacency, army count, ownership)
+  - Combat resolution (with probabilistic dice rolling)
+  - Territory capture mechanics
+  - Card earning on first capture per turn
+- Fortify phase (7 tests)
+  - Fortify validation (adjacency-only in Phase 1)
+  - Army movement mechanics
+  - Optional fortify phase
+- Win conditions (5 tests)
+  - Victory when controlling all 42 territories
+  - Territory count updates on capture/loss
+  - Player elimination detection
+- Edge cases (9 tests)
+  - Multi-player initialization (2-6 players)
+  - No valid moves handling
+  - Turn progression
+  - Connection handling
+- Integration tests (4 tests)
+  - Full game lifecycle
+  - Phase transitions
+
+**2. Refactored Territory Data to Shared Package:**
+- **Moved:** `server/src/games/risk/territoryData.ts` → `shared/src/games/risk/territoryData.ts`
+- **Impact:** Single source of truth for territory adjacency graph
+- **Updated:** All server imports now reference `@eschaton/shared`
+- **Client-ready:** Client can now import territory data from shared package (no duplication needed)
+- **Types exported:** `Territory`, `Continent`, adjacency helpers
+
+**3. Documented Phase 1 Scope Cuts:**
+Added comprehensive Phase 1 limitations documentation to `server/src/games/risk/RiskPlugin.ts`:
+- **Cards are counters only:** No card types/visuals, integer count with standard escalation
+- **Fortification is adjacency-only:** Direct neighbors only, no path-based movement
+- **Attack movement is forced:** Attacking armies automatically move to captured territory
+- **Auto-distributed territories:** No draft/selection phase on game start
+
+### Learnings:
+- **Test Helper Pattern:** `createStartedGame(playerCount)` utility simplifies test setup by invoking lifecycle hooks properly
+- **Probabilistic Testing:** Combat tests use loops to account for random dice rolls rather than mocking Math.random()
+- **State Tracking:** Risk uses dual state tracking (`RiskState.territories` for game board, `RiskState.riskPlayers` for player-specific data)
+- **Territory Count Updates:** `updatePlayerTerritoryCount()` must be called after any territory ownership change
+- **Phase Transitions:** Setup → Playing phase requires all players to place their initial armies via `endPhase` action
+- **Shared Package Structure:** Game configuration data (maps, adjacency graphs) belongs in `shared/src/games/{game}/` for client+server access
+
+### Architectural Decisions Followed:
+1. ✅ Shared static data in `shared/src/games/{game}/`
+2. ✅ Real test implementations (no `it.todo()` placeholders)
+3. ✅ Scope transparency via Phase 1 documentation
+4. ✅ PR atomicity (infrastructure kept separate from features)
+
+### Verification:
+- `npm run build` — ✅ All workspaces compile
+- `npm run lint` — ✅ No errors (15 warnings, all non-blocking)
+- `npm run test -- server/src/__tests__/risk.test.ts` — ✅ 60/60 tests passing
+
+**Status:** Ready for re-review by Hal
+**Branch:** `squad/80-add-risk-game-plugin`
+
