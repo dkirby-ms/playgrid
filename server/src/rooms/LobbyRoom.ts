@@ -103,6 +103,8 @@ export class LobbyRoom extends Room {
         games: Array.from(this.games.values(), (game) => this.toGameSessionInfo(game)),
       });
 
+      this.broadcastOnlinePlayers();
+
       console.log(`[LobbyRoom] ${existingSession.displayName} rejoined the lobby`);
       return;
     }
