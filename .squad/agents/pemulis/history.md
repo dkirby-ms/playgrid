@@ -1113,3 +1113,76 @@ Hal has triaged Risk and assigned you as the systems developer. Here's your scop
 **Verification:** All tests passed (`npm run build && npm run lint && npm run test`). The fix is minimal and surgical — only adds the broadcast call that was missing from the reconnection path.
 
 **PR #84:** Opened against `dev` branch.
+
+### PR #104: Merge Conflicts Resolution (dev → uat) - 2026-03-15
+
+**Situation:** The `uat` branch was significantly behind `dev` by multiple PRs (#98, #99, #101, #102, #103). These PRs included:
+- Checkers logic fixes and tests
+- Backgammon double dice logic
+- Risk game implementation
+- Lobby duplicate player fix
+- Various renderer and UI updates
+- Infrastructure updates (GitHub Actions workflows, Bicep configs)
+
+**Conflict Resolution Strategy:** Since `dev` is the source of truth and `uat` is a promotion branch, all conflicts were resolved by accepting `dev`'s version. The `uat` branch should mirror `dev` exactly.
+
+**Conflicting Files (30 total):**
+- GitHub Actions workflows: deploy-infra.yml, deploy-prod.yml, deploy-uat.yml
+- Infrastructure: Dockerfile, infra/main.bicep, infra/main.bicepparam
+- Client code: Multiple game logic files (checkers, risk), renderers (Backgammon, Checkers, Risk), UI components (LobbyScreen, WaitingRoom, GameScene), configs (package.json, vite.config.ts, index.html)
+- Server code: BaseGameRoom, TurnManager, game logic files (checkers, backgammon), LobbyRoom, test files
+- Shared: BaseGameState, lobbyTypes
+- Lock files: package-lock.json
+
+**Resolution Process:**
+1. `git fetch origin` - Updated remote refs
+2. `git checkout uat && git pull origin uat` - Ensured uat was up to date
+3. `git merge origin/dev` - Initiated merge, identified 30 conflicts
+4. `git checkout origin/dev -- <files>` - Accepted dev's version for all conflicting files
+5. `npm install` - Regenerated package-lock.json dependencies
+6. `git add . && git commit` - Committed merge with proper co-author trailer
+7. `npm run build && npm run test` - Verified integrity (all passed: 259 tests, build successful)
+8. `git push origin uat` - Pushed resolved merge to remote
+
+**Verification Results:**
+- ✅ Build: All workspaces compiled successfully (shared, server, client)
+- ✅ Tests: 259 passed, 12 todo (expected state)
+- ✅ Push: Successful to origin/uat
+
+**Note on .gitattributes:** The `.squad/` files have `merge=union` strategy configured, which should prevent conflicts by appending both sides. Some conflicts still appeared but were resolved by taking dev's version consistently.
+
+**Outcome:** PR #104 merge conflicts fully resolved. The `uat` branch now contains all work from PRs #98-103 and is ready for UAT environment deployment.
+
+
+### PR #105: Merge Conflicts Resolution (uat → prod) - 2026-03-15
+
+**Situation:** The `prod` branch was behind `uat` after PR #104 merged all dev changes into uat. The uat branch contained all changes from dev PRs #98-103, which needed to be promoted to production.
+
+**Conflict Resolution Strategy:** Since `uat` is the source of truth for production promotion, all conflicts were resolved by accepting `uat`'s version. The `prod` branch should mirror `uat` exactly for this promotion.
+
+**Conflicting Files (30 total):**
+- GitHub Actions workflows: deploy-infra.yml, deploy-prod.yml, deploy-uat.yml
+- Infrastructure: Dockerfile, infra/main.bicep, infra/main.bicepparam, docs/architecture.md
+- Client code: Multiple game logic files (checkers, risk), renderers (Backgammon, Checkers, Risk), UI components (LobbyScreen, WaitingRoom, GameScene), configs (package.json, vite.config.ts, index.html)
+- Server code: BaseGameRoom, TurnManager, game logic files (checkers, backgammon), LobbyRoom, test files (lobby-pregame.test.ts, checkersLogic.test.ts)
+- Shared: BaseGameState, lobbyTypes
+- Lock files: package-lock.json
+
+**Resolution Process:**
+1. `git fetch origin` - Updated remote refs
+2. `git checkout prod && git pull origin prod` - Ensured prod was up to date
+3. `git merge origin/uat` - Initiated merge, identified 30 conflicts
+4. `git checkout --theirs <files>` - Accepted uat's version (theirs) for all conflicting files
+5. `npm install` - Regenerated package-lock.json dependencies
+6. `git add . && git commit` - Committed merge with proper co-author trailer
+7. `npm run build && npm run test` - Verified integrity (all passed: 259 tests, build successful)
+8. `git push origin prod` - Pushed resolved merge to remote
+
+**Verification Results:**
+- ✅ Build: All workspaces compiled successfully (shared, server, client)
+- ✅ Tests: 259 passed, 12 todo (expected state)
+- ✅ Push: Successful to origin/prod (commit e397e7a)
+
+**Note:** Used `git checkout --theirs` for merge resolution since in the context of merging `origin/uat` into `prod`, "theirs" refers to the uat branch (the source we're merging from), which is the desired version for production promotion.
+
+**Outcome:** PR #105 merge conflicts fully resolved. The `prod` branch now contains all work from PRs #98-103 via the uat promotion path and is ready for production deployment.
