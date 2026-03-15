@@ -645,3 +645,67 @@ Risk game plugin (rendering phase) now has a stable HUD contract: implement `get
 - `.squad/orchestration-log/2026-03-15T21-26-56Z-{gately-9,gately-10,pemulis-11}.md` — Individual agent outcomes
 - `.squad/log/2026-03-15T21-26-56Z-features-batch-2.md` — Session summary
 
+
+---
+
+## Learnings
+
+### Checkers Piece Visual Enhancement (2025)
+
+**File Path:** `client/src/renderers/CheckersRenderer.ts`
+
+**Architecture Pattern: PixiJS v8 FillGradient for 3D Effects**
+
+Replaced flat-colored checkers pieces with polished tactile-looking pieces using PixiJS v8 `FillGradient` API with radial gradients. Key implementation details:
+
+1. **Gradient Creation Efficiency:** Created gradients ONCE before the piece loop, then selected the appropriate gradient (black or red) inside the loop based on piece type. This avoids recreating gradient objects for every piece.
+
+2. **3D Dome Effect:** Used radial gradients with offset center point `{ x: 0.42, y: 0.38 }` to simulate lighting from upper-left, creating a dome/sphere appearance. Three color stops: highlight (offset 0), base color (offset 0.5), shadow (offset 1).
+
+3. **Drop Shadow:** Added subtle drop shadow by drawing a slightly offset (centerX + 2, centerY + 3) and larger (radius * 1.05) dark circle behind each piece with 35% alpha.
+
+4. **Specular Highlight Ring:** Added white semi-transparent ring at top of piece (centerY - pieceRadius * 0.15) with 60% of piece radius for specular highlight effect.
+
+5. **King Marker Enhancement:** Replaced plain "K" text with crown emoji "♛" and added drop shadow effect to the text for better visual depth.
+
+6. **Color Constants:** Used existing constants (`BLACK_PIECE_COLOR`, `BLACK_PIECE_HIGHLIGHT`, `BLACK_PIECE_SHADOW`, etc.) and converted to CSS hex strings via `toCssHexColor()` helper for gradient colorStops compatibility.
+
+**User Preference:** Prioritize visual polish and tactile feel in game pieces. Gradient effects and drop shadows preferred over flat colors.
+
+**Pattern Reusability:** This FillGradient radial gradient pattern can be applied to other game pieces (Risk armies, Connect4 pieces, etc.) for consistent visual quality across games.
+
+## Cross-Agent Update — Checkers Piece Visual Polish (2026-03-15T23:36:21Z)
+
+**From:** Squad Scribe  
+**Event:** Agent completed — CheckersRenderer enhanced with 3D gradient pieces
+
+**What Happened:**
+
+Gately (Game Dev) completed visual enhancement to checkers pieces:
+
+- Replaced flat-colored pieces with PixiJS v8 `FillGradient` radial gradients
+- Added 3D dome effect with offset center `{ x: 0.42, y: 0.38 }`
+- Added drop shadow layer for depth perception
+- Added specular highlight ring for shininess
+- Replaced "K" text king markers with crown emoji (♛)
+- Pattern optimized: gradients created once outside loop, selected inside
+
+**Decision Captured:**
+
+**PixiJS FillGradient Pattern for Game Piece Rendering** — Approved. This pattern is now the standard for all circular game pieces (Risk armies, Connect4, Go stones, Poker chips).
+
+**Validation:**
+
+- ✅ Build passes (`npm run build && npm run lint && npm run test`)
+- ✅ Pieces render with 3D tactile appearance
+- ✅ No performance regressions
+
+**For Your Future Work:**
+
+Risk renderer rendering phase can now adopt this pattern for armies/territories. Geometry applies to any circular game element.
+
+**Session Artifacts:**
+
+- `.squad/orchestration-log/2026-03-15T23-36-21Z-gately.md` — Orchestration outcome
+- `.squad/log/2026-03-15T23-36-21Z-checkers-piece-gradients.md` — Session summary
+- `.squad/decisions.md` — FillGradient pattern decision merged

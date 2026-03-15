@@ -2214,3 +2214,38 @@ User request — captured for team memory. E2E coverage ensures shipped games wo
 
 Phase 2 and Phase 3 games (Dominoes, Backgammon, Risk) must include E2E tests covering core gameplay flows.
 
+
+---
+
+## Session: Checkers Piece Visual Polish (2026-03-15)
+
+### Gately: PixiJS FillGradient Pattern for Game Piece Rendering
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Adopted PixiJS v8 `FillGradient` with radial gradients as the standard pattern for rendering game pieces with 3D depth effects.
+
+**Implementation Pattern:**
+1. **Radial gradient with offset center** — Center point at `{ x: 0.42, y: 0.38 }` simulates lighting from upper-left
+2. **Three-stop gradient** — Highlight (0), base color (0.5), shadow (1) for dome effect
+3. **Drop shadow layer** — Slight offset behind main piece for depth
+4. **Specular highlight ring** — White semi-transparent circle at top for shininess
+5. **Gradient reuse** — Create gradients once outside loops for performance
+
+**Rationale:**
+- Visual polish improves user experience and perceived quality
+- Pattern is reusable across all game types (Risk, Connect4, etc.)
+- PixiJS v8 native support ensures good performance
+- Consistent visual language across game pieces
+
+**Implications:**
+- Risk armies/territories can adopt this pattern
+- Connect4 pieces, Go stones, Poker chips benefit from same approach
+- Pattern should be documented in rendering guidelines for future consistency
+- Could extract to shared utility function if widely adopted
+
+**Related Files:**
+- `client/src/renderers/CheckersRenderer.ts` — Reference implementation
+
+**Tags:** #rendering #pixi-js #game-pieces #visual-polish #pattern

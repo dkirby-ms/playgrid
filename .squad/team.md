@@ -20,6 +20,8 @@
 | Joelle | Community / DevRel | `.squad/agents/joelle/charter.md` | ✅ Active |
 | Scribe | Session Logger | `.squad/agents/scribe/charter.md` | 📋 Silent |
 | Ralph | Work Monitor | — | 🔄 Monitor |
+| @copilot | Coding Agent | `copilot-instructions.md` | 🤖 Autonomous |
+<!-- copilot-auto-assign: true -->
 
 ## Project Context
 
