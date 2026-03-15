@@ -29,6 +29,7 @@ export class BaseGameState extends Schema {
   declare currentTurn: string;
   declare turnNumber: number;
   declare players: MapSchema<PlayerInfo>;
+  declare turnTimeRemaining: number;
 
   constructor() {
     super();
@@ -36,6 +37,7 @@ export class BaseGameState extends Schema {
     this.currentTurn = "";
     this.turnNumber = 0;
     this.players = new MapSchema<PlayerInfo>();
+    this.turnTimeRemaining = 0;
   }
 }
 defineTypes(BaseGameState, {
@@ -43,4 +45,5 @@ defineTypes(BaseGameState, {
   currentTurn: "string",
   turnNumber: "number",
   players: { map: PlayerInfo },
+  turnTimeRemaining: "number",
 });

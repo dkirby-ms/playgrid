@@ -12,6 +12,7 @@ export const GAME_STARTED = "game_started" as const;
 export const GAME_PLAYERS = "game_players" as const;
 export const LOBBY_ERROR = "lobby_error" as const;
 export const ONLINE_PLAYERS = "online_players" as const;
+export const LOBBY_LOG_EVENT = "lobby_log_event" as const;
 
 export type GameStatus = "waiting" | "in_progress";
 
@@ -62,6 +63,7 @@ export interface GamePlayersPayload {
 export interface GameStartedPayload {
   gameId: string;
   roomId: string;
+  gameType: string;
 }
 
 export interface LobbyErrorPayload {
@@ -76,4 +78,22 @@ export interface OnlinePlayerInfo {
 
 export interface OnlinePlayersPayload {
   players: OnlinePlayerInfo[];
+}
+
+export type LobbyLogEventType =
+  | "player_joined"
+  | "player_left"
+  | "game_created"
+  | "game_started"
+  | "game_finished"
+  | "player_joined_game";
+
+export interface LobbyLogEntry {
+  timestamp: number;
+  type: LobbyLogEventType;
+  message: string;
+  playerName?: string;
+  gameName?: string;
+  gameType?: string;
+  winner?: string;
 }

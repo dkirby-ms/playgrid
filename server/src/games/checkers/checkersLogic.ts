@@ -4,7 +4,7 @@ import {
   EMPTY,
   RED,
   RED_KING,
-} from "@eschaton/playgrid-shared";
+} from "@eschaton/shared";
 
 const BOARD_WIDTH = 8;
 const NO_FORCED_CAPTURE = -1;

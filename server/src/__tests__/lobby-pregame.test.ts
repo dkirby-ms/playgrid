@@ -25,6 +25,7 @@ const { mockCreateRoom, mockGameRegistry, mockedCloseCode, sharedExports } = vi.
     GAME_PLAYERS: "game_players",
     LOBBY_ERROR: "lobby_error",
     ONLINE_PLAYERS: "online_players",
+    LOBBY_LOG_EVENT: "lobby_log_event",
     DEFAULT_MAP_SIZE: 128,
     LOBBY_DEFAULTS: {
       MIN_PLAYERS: 1,
@@ -41,10 +42,10 @@ vi.mock("colyseus", () => ({
   matchMaker: { createRoom: mockCreateRoom },
 }));
 
-vi.mock("@eschaton/playgrid-shared", () => sharedExports);
+vi.mock("@eschaton/shared", () => sharedExports);
 vi.mock("../game/GameRegistry", () => ({ gameRegistry: mockGameRegistry }));
 
-const shared = await import("@eschaton/playgrid-shared");
+const shared = await import("@eschaton/shared");
 const lobbyModule = await import("../rooms/LobbyRoom")
   .catch(() => import("../rooms/LobbyRoom.ts"))
   .catch(() => import("../rooms/LobbyRoom.js"))
@@ -339,8 +340,8 @@ describeLobby("LobbyRoom pregame flow", () => {
       expectedPlayers: 2,
     });
     expect(getGame(room, gameId)?.status).toBe("in_progress");
-    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
-    expect(findPayload(guest, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
+    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
+    expect(findPayload(guest, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
   });
 
   it("supports the full create → join → ready → start path", async () => {
@@ -352,8 +353,8 @@ describeLobby("LobbyRoom pregame flow", () => {
 
     expect(getWaitingPlayers(room, gameId).size).toBe(0);
     expect(getGame(room, gameId)?.status).toBe("in_progress");
-    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
-    expect(findPayload(guest, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
+    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
+    expect(findPayload(guest, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
   });
 
   it("blocks non-host players from starting a game", async () => {
@@ -610,7 +611,7 @@ describeLobby("LobbyRoom pregame flow", () => {
       maxPlayers: 4,
       expectedPlayers: 1,
     });
-    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123" });
+    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
   });
 
   it("requires the plugin minimum player count before starting when games are registered", async () => {
