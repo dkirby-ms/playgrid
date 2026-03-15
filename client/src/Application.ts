@@ -30,6 +30,7 @@ const GAME_HEIGHT = 600;
 const STATUS_MARGIN = 12;
 const STATUS_HIDE_DELAY_MS = 2500;
 const DISPLAY_NAME_STORAGE_KEY = "playgrid.display-name";
+const LOBBY_PLAYER_ID_STORAGE_KEY = "playgrid.lobby-player-id";
 const ACTIVE_SESSION_STORAGE_KEY = "playgrid.active-session";
 const ACTIVE_SESSION_MAX_AGE_MS = 30_000;
 const GAME_ENDED_MESSAGE = "game-end";
@@ -87,6 +88,7 @@ export class PlaygridApp {
   private reconnectReturnTimeoutId: number | null = null;
   private statusVisibleInGame = false;
   private displayName = "";
+  private lobbyPlayerId = "";
   private activeGameType: string | null = null;
   private isDisplayNameUpdatePending = false;
   private readonly rendererRegistry = rendererRegistry;
@@ -132,6 +134,7 @@ export class PlaygridApp {
     this.sceneManager.register(this.gameScene);
 
     this.displayName = this.loadDisplayName();
+    this.lobbyPlayerId = this.loadLobbyPlayerId();
     this.lobbyScene.setDisplayName(this.displayName);
 
     this.statusText = createStatusText(this.pixiApp);
@@ -206,7 +209,10 @@ export class PlaygridApp {
     this.setStatus("Connecting to lobby…", { persistent: true });
 
     try {
-      const joinOptions = this.displayName ? { displayName: this.displayName } : undefined;
+      const joinOptions = {
+        ...(this.displayName ? { displayName: this.displayName } : {}),
+        ...(this.lobbyPlayerId ? { playerId: this.lobbyPlayerId } : {}),
+      };
       const room = await this.connectionManager.joinLobby(joinOptions);
       this.lobbyRoom = room;
       this.lobbyScene.bindToRoom(room);
@@ -655,6 +661,24 @@ export class PlaygridApp {
     } catch {
       return "";
     }
+  }
+
+  private loadLobbyPlayerId(): string {
+    const fallbackPlayerId = globalThis.crypto?.randomUUID?.()
+      ?? `lobby-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+    try {
+      const savedPlayerId = window.sessionStorage.getItem(LOBBY_PLAYER_ID_STORAGE_KEY)?.trim();
+      if (savedPlayerId) {
+        return savedPlayerId;
+      }
+
+      window.sessionStorage.setItem(LOBBY_PLAYER_ID_STORAGE_KEY, fallbackPlayerId);
+    } catch {
+      // Ignore storage failures and fall back to an in-memory ID for this page lifecycle.
+    }
+
+    return fallbackPlayerId;
   }
 
   private saveDisplayName(displayName: string): void {

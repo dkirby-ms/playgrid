@@ -57,6 +57,7 @@ const {
   GAME_STARTED,
   GAME_PLAYERS,
   GAME_UPDATED,
+  ONLINE_PLAYERS,
   LOBBY_ERROR,
   LOBBY_DEFAULTS,
   DEFAULT_MAP_SIZE,
@@ -136,11 +137,11 @@ function registerClient(
 
   room.sessions.set(client.sessionId, {
     sessionId: client.sessionId,
-    userId,
+    playerId: userId,
     displayName,
-    isGuest,
     currentGameId: undefined,
   });
+  room.sessionIdByPlayerId?.set(userId, client.sessionId);
   room.state.players.set(client.sessionId, {
     userId,
     displayName,
@@ -539,6 +540,75 @@ describeLobby("LobbyRoom pregame flow", () => {
     expect(getWaitingPlayers(room, gameId).has(guest.sessionId)).toBe(true);
     expect(getTrackedGameId(room, guest.sessionId)).toBe(gameId);
     expect(room.sessions.has(guest.sessionId)).toBe(true);
+  });
+
+  it("reclaims a refreshed lobby session instead of duplicating the player online", async () => {
+    const refreshRoom = createLobbyRoom();
+    const originalClient = createClient("original-session", "Host");
+    const refreshedClient = createClient("refreshed-session", "Host");
+
+    refreshRoom.clients.push(originalClient, refreshedClient);
+    refreshRoom.onJoin(originalClient as never, { displayName: "Host", playerId: "browser-tab-1" });
+    refreshRoom.allowReconnection.mockResolvedValue(undefined);
+
+    await refreshRoom.onLeave(originalClient as never);
+    refreshRoom.broadcast.mockClear();
+
+    refreshRoom.onJoin(refreshedClient as never, {
+      displayName: "Host",
+      playerId: "browser-tab-1",
+    });
+
+    const onlinePlayersPayload = refreshRoom.broadcast.mock.calls
+      .filter(([type]: [string]) => type === ONLINE_PLAYERS)
+      .at(-1)?.[1];
+
+    expect(refreshRoom.sessions.has(originalClient.sessionId)).toBe(false);
+    expect(refreshRoom.sessions.get(refreshedClient.sessionId)).toMatchObject({
+      playerId: "browser-tab-1",
+      displayName: "Host",
+    });
+    expect(onlinePlayersPayload).toEqual({
+      players: [
+        expect.objectContaining({
+          userId: refreshedClient.sessionId,
+          displayName: "Host",
+          status: "in_lobby",
+        }),
+      ],
+    });
+  });
+
+  it("transfers waiting-room ownership to the refreshed lobby session", async () => {
+    const refreshRoom = createLobbyRoom();
+    const originalHost = createClient("original-host-session", "Host");
+    const refreshedHost = createClient("refreshed-host-session", "Host");
+
+    refreshRoom.clients.push(originalHost, refreshedHost);
+    refreshRoom.onJoin(originalHost as never, { displayName: "Host", playerId: "browser-tab-1" });
+    const gameId = await createGame(refreshRoom, originalHost);
+    refreshRoom.allowReconnection.mockResolvedValue(undefined);
+
+    await refreshRoom.onLeave(originalHost as never);
+    refreshRoom.broadcast.mockClear();
+
+    refreshRoom.onJoin(refreshedHost as never, {
+      displayName: "Host",
+      playerId: "browser-tab-1",
+    });
+
+    expect(refreshRoom.sessions.has(originalHost.sessionId)).toBe(false);
+    expect(getTrackedGameId(refreshRoom, refreshedHost.sessionId)).toBe(gameId);
+    expect(getWaitingPlayers(refreshRoom, gameId).has(originalHost.sessionId)).toBe(false);
+    expect(getWaitingPlayers(refreshRoom, gameId).get(refreshedHost.sessionId)).toMatchObject({
+      userId: refreshedHost.sessionId,
+      displayName: "Host",
+      isReady: false,
+    });
+    expect(getGame(refreshRoom, gameId)).toMatchObject({
+      hostId: refreshedHost.sessionId,
+      hostName: "Host",
+    });
   });
 
   it("keeps a host-owned waiting room reserved across an unexpected disconnect", async () => {

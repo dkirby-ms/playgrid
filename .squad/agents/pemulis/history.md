@@ -40,6 +40,13 @@
 - Pattern to remember for deployed Colyseus clients: when the app is served behind TLS-terminating ingress, do not hard-code the container port into the public WebSocket URL; prefer `window.location.port` so standard `443` stays implicit.
 - Validation path for networking changes remains the repo root commands: `npm run build`, `npm run lint`, and `npm run test`.
 
+### Lobby refresh session identity (2026-03-15)
+
+- The duplicate-name bug in the lobby came from a mismatch between the lobby room's 30-second `allowReconnection()` window and the client always opening a fresh lobby session on browser refresh. Because `LobbyRoom` keyed presence by Colyseus `sessionId`, a refresh produced a second tracked session before the old reserved one expired.
+- The durable fix is to give each browser tab a stable lobby `playerId` in `sessionStorage` (`playgrid.lobby-player-id`) and send it on every lobby join. That keeps refreshes in the same tab tied to one logical lobby user without merging separate tabs the way `localStorage` would.
+- `LobbyRoom` now keeps a `sessionIdByPlayerId` index so a refreshed join can reclaim the prior session immediately, migrate any waiting-room membership/host ownership to the new `sessionId`, and rebroadcast `ONLINE_PLAYERS` without waiting for `onLeave()` timeout cleanup.
+- Coverage lives in `server/src/__tests__/lobby-pregame.test.ts` for both plain lobby presence and waiting-room host transfer, and the repo-level verification path remains `npm run build && npm run test`.
+
 ## Cross-Agent Update — Issue #1 Closed, PR #47 Open (2026-03-14)
 
 **From:** Joelle (Community/DevRel)  
