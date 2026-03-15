@@ -360,3 +360,18 @@ Hal has triaged Risk and assigned you as the systems developer. Here's your scop
 
 **Next Step:** Hal will re-review revised PR #83. Ready for merge once approved.
 
+
+### Issue #82: Lobby duplicate player entry on browser refresh (2026-03-14)
+
+**Problem:** After logging in and joining the lobby, refreshing the browser caused the player's name to appear twice (or more) in the online players list. The old session was not being properly cleaned up before the new connection was established.
+
+**Root Cause:** In `LobbyRoom.onJoin()`, when a player reconnected within the 30-second `allowReconnection()` grace period, the existing session check would return early without broadcasting the updated online players list. This caused:
+- Other clients may have seen a temporary disconnect notification
+- Without re-broadcasting, they didn't get updated that the player was back
+- Client state became inconsistent with server state, showing duplicates
+
+**Fix:** Added `this.broadcastOnlinePlayers()` call in the existing session reconnection path (line 106 of `LobbyRoom.ts`), ensuring all clients receive consistent lobby state when a player reconnects within the grace period.
+
+**Verification:** All tests passed (`npm run build && npm run lint && npm run test`). The fix is minimal and surgical — only adds the broadcast call that was missing from the reconnection path.
+
+**PR #84:** Opened against `dev` branch.
