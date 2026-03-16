@@ -50,3 +50,104 @@ jobs:
 
       - name: Run tests
         run: npm run test
+
+  create-failure-issue:
+    if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    needs: build-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Create failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          SHORT_SHA="${GITHUB_SHA::7}"
+          TITLE="CI build failure (${SHORT_SHA})"
+
+          existing_issue="$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state all \
+            --search "\"${TITLE}\" in:title" \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          if [ -n "$existing_issue" ]; then
+            echo "Issue #$existing_issue already exists for ${SHORT_SHA}."
+            exit 0
+          fi
+
+          body_file="$(mktemp)"
+          cat <<EOF > "$body_file"
+          CI build failure detected on \`${BRANCH_NAME}\`.
+
+          - Workflow run: ${RUN_URL}
+          - Commit: ${GITHUB_SHA}
+          - Commit message: ${COMMIT_MESSAGE}
+          - Commit author: ${COMMIT_AUTHOR}
+          - Branch: ${BRANCH_NAME}
+          EOF
+
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TITLE" \
+            --label squad \
+            --label bug \
+            --body-file "$body_file"
+
+  version-bump:
+    if: github.event_name == 'push'
+    needs: build-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@0a44ba7841725637a19e28fa30b79a866c81b0a6 # v4.0.4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump patch version
+        id: version
+        run: |
+          set -euo pipefail
+
+          npm version patch --no-git-tag-version
+          NEW_VERSION="$(node -p "require('./package.json').version")"
+
+          npm pkg set version="$NEW_VERSION" --workspace client --workspace server --workspace shared
+          npm install --package-lock-only --ignore-scripts --legacy-peer-deps
+
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Commit version bump
+        run: |
+          set -euo pipefail
+
+          git add package.json package-lock.json client/package.json server/package.json shared/package.json
+          git commit -m "chore: bump patch version to v${{ steps.version.outputs.new_version }} [skip ci]"
+
+      - name: Push version bump
+        run: git push origin HEAD:dev

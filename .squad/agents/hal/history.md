@@ -44,6 +44,17 @@
 
 ---
 
+## Cross-Agent Update — PR #121 & #122 Reviews Complete (2026-03-16)
+
+**Event:** Both PRs approved and merged to `dev` after lockout protocol
+
+- **PR #121 (CPU opponents, Issue #86):** First rejection → re-review approved (Marathe cleaned promote.yml scope leak via rebase) → Merged
+- **PR #122 (Head-to-head mode, Issue #115):** First rejection → second rejection (Pemulis fixed synthetic lifecycle) → third review approved (Steeply added timeout regression test) → Merged
+- **Decisions merged:** 7 inbox decisions now in `.squad/decisions.md`
+- **Cross-agent:** Lockout protocol executed (Gately → Pemulis → Steeply chain on PR #122)
+
+---
+
 ## Session Logs
 
 ### 2026-03-14: Cross-Agent Architecture Alignment
@@ -702,3 +713,31 @@ User provided redesign package at `docs/designs/redesign/` with React/Tailwind r
 4. **Real-time Physics:** Hungry Hippos may need hybrid client prediction + server authority
 5. **Word Validation:** Scrabble needs dictionary (SOWPODS or TWL), decide client vs server validation
 
+
+---
+
+## 2026-03-16: PR Review (Round 3) + Issue Scoping
+
+**Event:** Round 3 orchestration — PR merges & scoping decisions
+
+**Work Completed:**
+- PR #118 (footer): approved, merged
+- PR #119 (Backgammon dice): approved, merged
+- Issue #115 (head-to-head): scoped, decision posted, approved
+- Issue #100, #97: closed (stale)
+
+**Decisions Made:**
+1. PR #118 & #119 both merge-ready (low-risk, tests pass)
+2. Issue #115: proceed with client-side view switching (Checkers MVP, Backgammon Phase 2, ~1.5–2 days, low risk)
+
+**Context Propagated:**
+- Action validation pattern (validateAction hook) confirmed consistent across Checkers & Backgammon
+- Head-to-head scoping affects client team (Gately) — no server changes needed
+
+**Next Steps:**
+- Assign #115 to Gately (client-side renderer logic)
+- Assign #86 to Pemulis (server-side CPU opponent)
+
+## Learnings
+- **Head-to-Head Mode Lifecycle:** Synthetic players (shared device) require explicit cleanup in *all* departure paths, including reconnection timeouts. The initial implementation missed the timeout branch, leading to orphaned state.
+- **Testing Timers:** Regression tests for reconnection windows must explicitly verify side effects (like synthetic player removal) after the timeout promise rejects.

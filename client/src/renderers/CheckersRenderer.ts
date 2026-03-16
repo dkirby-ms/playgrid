@@ -18,6 +18,7 @@ import {
 import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
 import {
   ACCENT_VIOLET,
+  AMBER_500,
   BG_PRIMARY,
   BLACK as TOKEN_BLACK,
   BOARD_DARK_SQUARE,
@@ -46,6 +47,7 @@ import {
   TEXT_SECONDARY,
   TEXT_SUBTLE,
   WHITE,
+  YELLOW_400,
 } from "./DesignTokens";
 import type {
   GameRenderer,
@@ -89,6 +91,13 @@ function toCssHexColor(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
 }
 
+function toCssRgbaColor(color: number, alpha: number): string {
+  const red = (color >> 16) & 0xff;
+  const green = (color >> 8) & 0xff;
+  const blue = color & 0xff;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
 function boardIndexToNotation(index: number): string {
   const column = index % BOARD_DIMENSION;
   const row = Math.floor(index / BOARD_DIMENSION);
@@ -99,6 +108,7 @@ type PlayerSnapshot = {
   displayName: string;
   playerIndex: number;
   isSpectator: boolean;
+  controllerSessionId: string;
 };
 
 export class CheckersRenderer implements GameRenderer {
@@ -646,7 +656,7 @@ export class CheckersRenderer implements GameRenderer {
       ? Number(nextState.mustCaptureFrom)
       : NO_FORCED_CAPTURE;
     this.players = this.parsePlayers(nextState);
-    this.isFlipped = this.getLocalPlayerColor() === BLACK;
+    this.isFlipped = this.getPerspectivePlayerColor() === BLACK;
     this.recordMove(previousBoard, previousCurrentTurn, previousPlayers);
   }
 
@@ -714,6 +724,10 @@ export class CheckersRenderer implements GameRenderer {
       return { text: "Spectating", color: TURN_WAITING_COLOR };
     }
 
+    if (this.isHeadToHeadMode()) {
+      return { text: `${this.getTurnOwnerLabel()} to move`, color: TURN_READY_COLOR };
+    }
+
     if (this.isLocalPlayersTurn()) {
       return { text: "Your turn", color: TURN_READY_COLOR };
     }
@@ -731,6 +745,10 @@ export class CheckersRenderer implements GameRenderer {
       return "You are spectating";
     }
 
+    if (this.isHeadToHeadMode()) {
+      return "Shared device mode — pass the device after each turn.";
+    }
+
     const localPlayerColor = getPlayerColorFromPlayerIndex(localPlayer.playerIndex);
     if (localPlayerColor === BLACK) {
       return "You are playing as ⚫ Black";
@@ -746,6 +764,17 @@ export class CheckersRenderer implements GameRenderer {
   private getGameOverTitle(): string {
     if (this.gameResult?.type === "draw") {
       return "Draw";
+    }
+
+    if (this.isHeadToHeadMode()) {
+      const winnerColor = this.gameResult?.metadata?.winnerColor;
+      if (winnerColor === BLACK) {
+        return "Black wins";
+      }
+      if (winnerColor === RED) {
+        return "Red wins";
+      }
+      return "Game over";
     }
 
     const localSessionId = this.room?.sessionId;
@@ -802,8 +831,8 @@ export class CheckersRenderer implements GameRenderer {
   }
 
   private isSelectableSquare(index: number): boolean {
-    const localPlayerColor = this.getLocalPlayerColor();
-    if (localPlayerColor === null || getPieceColor(this.board[index]) !== localPlayerColor) {
+    const controllablePlayerColor = this.getControllablePlayerColor();
+    if (controllablePlayerColor === null || getPieceColor(this.board[index]) !== controllablePlayerColor) {
       return false;
     }
 
@@ -812,12 +841,13 @@ export class CheckersRenderer implements GameRenderer {
 
   private isLocalPlayersTurn(): boolean {
     const localSessionId = this.room?.sessionId;
-    if (!localSessionId || localSessionId !== this.currentTurn) {
+    const currentTurnPlayer = this.getCurrentTurnPlayer();
+    if (!localSessionId || !currentTurnPlayer || currentTurnPlayer.isSpectator) {
       return false;
     }
 
-    const localPlayer = this.players.get(localSessionId);
-    return Boolean(localPlayer && !localPlayer.isSpectator);
+    return this.currentTurn === localSessionId
+      || currentTurnPlayer.controllerSessionId === localSessionId;
   }
 
   private getLocalPlayer(): PlayerSnapshot | null {
@@ -836,6 +866,64 @@ export class CheckersRenderer implements GameRenderer {
     }
 
     return getPlayerColorFromPlayerIndex(localPlayer.playerIndex);
+  }
+
+  private getCurrentTurnPlayer(): PlayerSnapshot | null {
+    if (!this.currentTurn) {
+      return null;
+    }
+
+    return this.players.get(this.currentTurn) ?? null;
+  }
+
+  private getPlayerColor(player: PlayerSnapshot | null): number | null {
+    if (!player || player.isSpectator) {
+      return null;
+    }
+
+    return getPlayerColorFromPlayerIndex(player.playerIndex);
+  }
+
+  private isHeadToHeadMode(): boolean {
+    const localSessionId = this.room?.sessionId;
+    if (!localSessionId) {
+      return false;
+    }
+
+    return Array.from(this.players.entries()).some(([sessionId, player]) => (
+      !player.isSpectator
+      && sessionId !== localSessionId
+      && player.controllerSessionId === localSessionId
+    ));
+  }
+
+  private getControllablePlayerColor(): number | null {
+    if (this.isHeadToHeadMode()) {
+      return this.getPlayerColor(this.getCurrentTurnPlayer());
+    }
+
+    return this.getLocalPlayerColor();
+  }
+
+  private getPerspectivePlayerColor(): number | null {
+    if (this.isHeadToHeadMode()) {
+      return this.getPlayerColor(this.getCurrentTurnPlayer());
+    }
+
+    return this.getLocalPlayerColor();
+  }
+
+  private getTurnOwnerLabel(): string {
+    const currentTurnPlayerColor = this.getPlayerColor(this.getCurrentTurnPlayer());
+    if (currentTurnPlayerColor === BLACK) {
+      return "Black";
+    }
+    if (currentTurnPlayerColor === RED) {
+      return "Red";
+    }
+
+    const currentPlayer = this.getCurrentTurnPlayer();
+    return currentPlayer?.displayName || "Player";
   }
 
   private toDisplayIndex(boardIndex: number): number {
@@ -870,7 +958,7 @@ export class CheckersRenderer implements GameRenderer {
     this.sidebar.updatePanel(
       "game-info",
       `<div class="sidebar-stat-list">
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Current turn</span><span class="sidebar-stat-value">${escapeHtml(this.getCurrentTurnLabel())}</span></div>
+        ${this.getCurrentTurnRowMarkup()}
         ${getTurnClockMarkup(this.turnClockSeconds, this.showTurnClock)}
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Black pieces</span><span class="sidebar-stat-value">⚫ ${blackCount}</span></div>
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Red pieces</span><span class="sidebar-stat-value">🔴 ${redCount}</span></div>
@@ -906,9 +994,27 @@ export class CheckersRenderer implements GameRenderer {
     }
   }
 
+  private getCurrentTurnRowMarkup(): string {
+    const isLocalTurn = this.isLocalPlayersTurn();
+    const rowClass = isLocalTurn ? "sidebar-stat-row sidebar-stat-row--turn-active" : "sidebar-stat-row";
+    const valueClass = isLocalTurn ? "sidebar-stat-value sidebar-stat-value--turn-active" : "sidebar-stat-value";
+    const styleAttribute = isLocalTurn
+      ? ` style="--sidebar-turn-indicator-border: ${toCssRgbaColor(STATUS_ONLINE, 0.44)}; --sidebar-turn-indicator-bg: ${toCssRgbaColor(AMBER_500, 0.18)}; --sidebar-turn-indicator-shadow: ${toCssRgbaColor(AMBER_500, 0.24)}; --sidebar-turn-indicator-accent: ${toCssHexColor(YELLOW_400)}; --sidebar-turn-indicator-text: ${toCssHexColor(WHITE)}; --sidebar-turn-indicator-text-glow: ${toCssRgbaColor(YELLOW_400, 0.26)};"`
+      : "";
+    const turnLabel = this.isHeadToHeadMode()
+      ? `${this.getTurnOwnerLabel()} to move`
+      : isLocalTurn ? "Your Turn" : this.getCurrentTurnLabel();
+
+    return `<div class="${rowClass}"${styleAttribute}><span class="sidebar-stat-label">Current turn</span><span class="${valueClass}">${escapeHtml(turnLabel)}</span></div>`;
+  }
+
   private getCurrentTurnLabel(): string {
     if (!this.currentTurn) {
       return "Waiting";
+    }
+
+    if (this.isHeadToHeadMode()) {
+      return this.getTurnOwnerLabel();
     }
 
     if (this.room?.sessionId === this.currentTurn) {
@@ -935,7 +1041,9 @@ export class CheckersRenderer implements GameRenderer {
 
   private getSidebarStatus(): string {
     if (this.phase === "waiting") {
-      return "Waiting for both players to join.";
+      return this.isHeadToHeadMode()
+        ? "Start the shared-device game when you are ready."
+        : "Waiting for both players to join.";
     }
 
     if (this.phase === "ended") {
@@ -952,7 +1060,13 @@ export class CheckersRenderer implements GameRenderer {
     }
 
     if (this.mustCaptureFrom !== NO_FORCED_CAPTURE) {
-      return "Capture chain in progress.";
+      return this.isHeadToHeadMode()
+        ? "Finish the capture chain before passing the device."
+        : "Capture chain in progress.";
+    }
+
+    if (this.isHeadToHeadMode()) {
+      return `Pass the device and make ${this.getTurnOwnerLabel()}'s move.`;
     }
 
     return this.isLocalPlayersTurn() ? "Make a move on the board." : "Waiting for the opponent.";
@@ -1038,6 +1152,7 @@ export class CheckersRenderer implements GameRenderer {
         displayName: typeof player.displayName === "string" ? player.displayName : "Player",
         playerIndex: Number(player.playerIndex ?? -1),
         isSpectator: Boolean(player.isSpectator),
+        controllerSessionId: typeof player.controllerSessionId === "string" ? player.controllerSessionId : "",
       });
     }
 

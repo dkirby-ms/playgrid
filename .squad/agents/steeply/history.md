@@ -6,6 +6,19 @@
 - **Studio:** eschaton-studio
 - **Created:** 2026-03-14T01:09:23Z
 
+## Cross-Agent Update — PR #122 Final Fix & Approval (2026-03-16)
+
+**Lockout Protocol Escalation:** Gately → Pemulis → Steeply
+
+- **Issue:** Pemulis's lifecycle fix did not cover the `handleReconnectionTimeout` cleanup path
+- **Fix:** Ensured `finalizeParticipantDeparture` is called, which properly triggers `releaseControllerOwnedParticipants`
+- **Regression Test:** Added coverage in `BaseGameRoom.test.ts` confirming synthetic player removal and draw outcome (not forfeit)
+- **Build:** Passed
+- **Re-review:** Hal approved (third review cycle)
+- **Status:** PR #122 merged to `dev` ✅
+
+---
+
 ## Learnings
 - Lobby gameType coverage lives in `server/src/__tests__/lobby-pregame.test.ts`; the useful seams are the mocked `gameRegistry` responses plus `GAME_LIST`/`GAME_UPDATED` payload assertions to verify type propagation and player-limit clamping.
 - Checkers Playwright coverage has to follow the current lobby UI, not the old table flow: open `#create-game-modal`, scope joins to the unique `.active-game-card`, and assert the visible lobby shell as "Board Game Lounge" before using the `?e2e=1` harness for in-game state.

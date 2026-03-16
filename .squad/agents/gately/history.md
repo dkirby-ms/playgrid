@@ -33,6 +33,22 @@
 
 ## Learnings
 
+### 2026-03-16: PR #122 Final Approval — Head-to-Head Mode Merged
+
+- **Decisions merged:** `gately-head-to-head.md` and `gately-turn-indicator.md` now in `.squad/decisions.md`
+- **Shared-device control model:** Synthetic `shared-device-opponent` seat controlled via `controllerSessionId` mapping
+- **Turn indicator design:** Sidebar highlight instead of overlay banner (board stays visually clear)
+- **Regression:** Steeply's timeout cleanup test confirmed synthetic player removal and proper game end
+- **Merged to dev:** 2026-03-16 (after Pemulis→Steeply→Hal lockout cycle)
+
+### 2026-03-16: Checkers shared-device head-to-head mode (Original Session)
+
+- `client/src/ui/LobbyScreen.ts` and `server/src/rooms/LobbyRoom.ts` now support a Checkers-only `headToHeadMode` toggle, keep shared-device rooms single-seat in the waiting lobby, and start them with one real player.
+- `shared/src/BaseGameState.ts` adds `PlayerInfo.controllerSessionId`; `server/src/game/BaseGameRoom.ts` uses that field to synthesize a `shared-device-opponent` seat so one Colyseus client can legally take both turns without replacing the normal turn-order flow.
+- `client/src/renderers/CheckersRenderer.ts` detects when the local session controls both seats, rotates the board by the active color, allows input for whichever shared-device seat is up, and updates sidebar copy to describe Black/Red turns clearly.
+- `client/src/scenes/GameScene.ts` now shows a transient pass-the-device prompt when the active shared-device seat changes.
+- Regression coverage for the mode lives in `server/src/__tests__/BaseGameRoom.test.ts` and `server/src/__tests__/lobby-pregame.test.ts`, and the branch validates with `npm run build`, `npm run lint`, and `npm run test`.
+
 ### 2026-03-15: Client reconnect session resilience
 
 - Added `client/src/ui/ReconnectOverlay.ts` plus `#reconnect-overlay` styles in `client/index.html` so game disconnects show reconnecting, reconnected, and return-to-lobby states without touching the Pixi render loop.
@@ -1037,6 +1053,12 @@ Replaced flat-colored checkers pieces with polished tactile-looking pieces using
 
 **Pattern Reusability:** This FillGradient radial gradient pattern can be applied to other game pieces (Risk armies, Connect4 pieces, etc.) for consistent visual quality across games.
 
+### 2026-03-16: Shared turn clocks belong in the sidebar, not the HUD overlay
+
+- `client/src/ui/HUD.ts` can keep ownership of the countdown interval without rendering any game-status DOM by exposing timer ticks through `onTimerChange(...)`.
+- `client/src/scenes/GameScene.ts` is the clean bridge for shared turn clocks: feed it `turnTimeRemaining` from Colyseus once, then forward ticks to renderer-specific sidebars through the optional `setTurnClock()` hook.
+- `client/src/ui/GameSidebar.ts` should own the turn-clock formatting and badge styling so Checkers, Risk, and Backgammon all get the same glass-panel treatment and low-time warning colors.
+
 ## Cross-Agent Update — Checkers Piece Visual Polish (2026-03-15T23:36:21Z)
 
 **From:** Squad Scribe  
@@ -1109,3 +1131,52 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - Related decision entries merged to `.squad/decisions.md`
 
 **Status:** Phase 4 complete. Design system established. Ready for Phase 5 (future: Scrabble, Hungry Hippos, Catan — currently out of scope).
+
+### 2026-03-16: Desktop sidebar layout must reserve board width
+
+- **User preference:** Desktop game UI must not cover the Pixi board; sidebar/HUD chrome should sit beside the board, while mobile keeps the canvas full width.
+- **Layout pattern:** `client/index.html` now owns the reserved desktop lane through `body.game-layout-sidebar-active` and shared CSS variables for sidebar width, gap, and edge offset.
+- **Resize coordination:** `client/src/ui/GameSidebar.ts` toggles the body layout class and emits a `playgrid:layoutchange` event; `client/src/Application.ts` watches `#game-container` with `ResizeObserver` and forces `pixiApp.resize()` plus `sceneManager.resize(...)` so renderer layouts follow CSS-driven width changes.
+- **HUD anchoring rule:** `client/src/ui/HUD.ts` should position status, leave, and chat controls from `#game-container.getBoundingClientRect()` instead of the viewport so overlay controls stay inside the playable column.
+- **Key file paths:** `client/index.html`, `client/src/ui/gameLayout.ts`, `client/src/ui/GameSidebar.ts`, `client/src/ui/HUD.ts`, `client/src/Application.ts`.
+
+---
+
+## 2026-03-16: Issue #97 — Center version footer and add feedback link
+
+**Session:** background mode, completed  
+**Outcome:** ✅ PR #118 created targeting dev. Footer now centered with feedback link to GitHub issues.
+
+**Details:**
+- Moved version footer from bottom-right to bottom-center using Flexbox + transform
+- Added "Submit Feedback" link next to version text
+- Implemented safe external link handling (`target="_blank"`, `rel="noopener noreferrer"`)
+- Subtle hover effect on feedback link for discoverability
+
+**Decision merged to `.squad/decisions.md`**
+
+---
+
+## 2026-03-16: Issue #100 — Manual dice roll button with animation for backgammon
+
+**Session:** background mode, resumed after interruption, completed  
+**Outcome:** ✅ PR #119 created targeting dev. Roll Dice button with 20-frame animation working. Server-side `roll` action implemented.
+
+**Details:**
+- Client-side: Frame-based animation (20 frames, ~333ms at 60fps) shows random dice during roll
+- Server-side: `roll` action on BackgammonRoom applies real dice values from authoritative server
+- Button enabled only when turn is active and dice unrolled (0,0)
+- Animation stops when server returns actual dice values
+- Used `requestAnimationFrame` via existing game loop update() method (no setTimeout)
+
+**Decision merged to `.squad/decisions.md`**
+
+---
+
+## Learnings
+
+### 2026-03-16: Checkers turn emphasis should stay inside the sidebar
+
+- **What changed:** Removed the temporary Pixi turn banner from `client/src/renderers/CheckersRenderer.ts`, deleted the banner view-model test files, and moved the emphasis back into the existing Game Info panel by rendering a highlighted `Current turn` row that reads `Your Turn` for the active local player.
+- **Pattern discovered:** `client/src/ui/GameSidebar.ts` is the right place for reusable turn-state treatment. Adding opt-in sidebar row/value classes plus CSS custom properties let the renderer dial in game-specific accent colors while keeping the layout inside the shared glass-panel system.
+- **User preference:** Turn prompts should be unmistakable but non-obstructive. Prefer a brighter, slightly animated sidebar treatment over any overlay/banner that sits on top of the board.

@@ -13,6 +13,13 @@ export interface GameSceneEvent {
   type: "leave_game";
 }
 
+interface ScenePlayerSnapshot {
+  controllerSessionId: string;
+  displayName: string;
+  isSpectator: boolean;
+  playerIndex: number;
+}
+
 export class GameScene implements Scene {
   readonly name = "game";
   readonly container = new Container();
@@ -23,6 +30,9 @@ export class GameScene implements Scene {
   private hud: HUD | null = null;
   private width = 0;
   private height = 0;
+  private persistentMessage = "";
+  private turnPromptUntil = 0;
+  private lastObservedTurn = "";
 
   private readonly messageText = new Text({
     text: "",
@@ -75,6 +85,7 @@ export class GameScene implements Scene {
     this.stateChangeHandler = (state) => {
       this.renderer?.onStateChange(state);
       this.updateHUD(state);
+      this.updateHeadToHeadPrompt(state);
     };
     this.room.onStateChange(this.stateChangeHandler);
     this.hud?.setSidebarActive(true);
@@ -91,6 +102,11 @@ export class GameScene implements Scene {
   }
 
   update(deltaTime: number): void {
+    if (this.turnPromptUntil > 0 && performance.now() >= this.turnPromptUntil) {
+      this.turnPromptUntil = 0;
+      this.updateMessageDisplay();
+    }
+
     this.renderer?.update(deltaTime);
   }
 
@@ -109,6 +125,8 @@ export class GameScene implements Scene {
 
     this.stateChangeHandler = null;
     this.room = null;
+    this.turnPromptUntil = 0;
+    this.lastObservedTurn = "";
     this.hud?.setSidebarActive(false);
     this.hud?.hide();
     this.hideMessage();
@@ -164,14 +182,102 @@ export class GameScene implements Scene {
     }
   }
 
-  private showMessage(message: string): void {
+  private updateHeadToHeadPrompt(state: unknown): void {
+    const phase = this.extractPhase(state);
+    const currentTurn = this.extractCurrentTurn(state);
+    const players = this.extractPlayers(state);
+    const localSessionId = this.room?.sessionId ?? "";
+    const isHeadToHead = localSessionId.length > 0 && Array.from(players.entries()).some(
+      ([sessionId, player]) => (
+        !player.isSpectator
+        && sessionId !== localSessionId
+        && player.controllerSessionId === localSessionId
+      ),
+    );
+
+    if (!isHeadToHead || phase !== "playing" || !currentTurn) {
+      this.lastObservedTurn = currentTurn;
+      this.turnPromptUntil = 0;
+      this.updateMessageDisplay();
+      return;
+    }
+
+    if (this.lastObservedTurn && this.lastObservedTurn !== currentTurn) {
+      const currentPlayer = players.get(currentTurn);
+      const playerLabel = currentPlayer && currentPlayer.playerIndex >= 0
+        ? `Player ${currentPlayer.playerIndex + 1}`
+        : currentPlayer?.displayName || "Next player";
+      this.showTurnPrompt(`${playerLabel}'s turn — pass the device`);
+    }
+
+    this.lastObservedTurn = currentTurn;
+  }
+
+  private extractPhase(state: unknown): string {
+    if (typeof state !== "object" || state === null) {
+      return "";
+    }
+
+    const stateObj = state as Record<string, unknown>;
+    return typeof stateObj.phase === "string" ? stateObj.phase : "";
+  }
+
+  private extractCurrentTurn(state: unknown): string {
+    if (typeof state !== "object" || state === null) {
+      return "";
+    }
+
+    const stateObj = state as Record<string, unknown>;
+    return typeof stateObj.currentTurn === "string" ? stateObj.currentTurn : "";
+  }
+
+  private extractPlayers(state: unknown): Map<string, ScenePlayerSnapshot> {
+    const players = new Map<string, ScenePlayerSnapshot>();
+    if (typeof state !== "object" || state === null) {
+      return players;
+    }
+
+    const stateObj = state as Record<string, unknown>;
+    const playerEntries = (stateObj.players as { entries?: () => Iterable<[string, Record<string, unknown>]> } | undefined)
+      ?.entries?.();
+
+    for (const [sessionId, player] of playerEntries ?? []) {
+      players.set(sessionId, {
+        controllerSessionId: typeof player.controllerSessionId === "string" ? player.controllerSessionId : "",
+        displayName: typeof player.displayName === "string" ? player.displayName : "Player",
+        isSpectator: Boolean(player.isSpectator),
+        playerIndex: typeof player.playerIndex === "number" ? player.playerIndex : -1,
+      });
+    }
+
+    return players;
+  }
+
+  private showTurnPrompt(message: string): void {
+    this.turnPromptUntil = performance.now() + 1800;
     this.messageText.text = message;
     this.messageText.visible = true;
   }
 
+  private showMessage(message: string): void {
+    this.persistentMessage = message;
+    this.updateMessageDisplay();
+  }
+
   private hideMessage(): void {
-    this.messageText.text = "";
-    this.messageText.visible = false;
+    this.persistentMessage = "";
+    this.turnPromptUntil = 0;
+    this.updateMessageDisplay();
+  }
+
+  private updateMessageDisplay(): void {
+    if (this.turnPromptUntil > 0) {
+      this.messageText.visible = true;
+      return;
+    }
+
+    this.messageText.text = this.persistentMessage;
+    this.messageText.visible = this.persistentMessage.length > 0;
   }
 
 }

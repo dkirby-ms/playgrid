@@ -1,30 +1,40 @@
+import type { Delayed } from "@colyseus/timer";
 import { Client, CloseCode, Room } from "colyseus";
 import {
   BaseGameState,
   PlayerInfo,
   type ActionHandler,
+  type CheckersState,
   type GameOptions,
   type GamePlugin,
   type GameResult,
 } from "@eschaton/shared";
+import * as gameRepository from "../db/gameRepository.js";
+import { getPool } from "../db.js";
+import { selectCpuMove } from "../games/checkers/CpuOpponent.js";
+import { GAME_ROOM_DISPOSED_TOPIC } from "../rooms/lobbyPresence.js";
+import { trackEvent } from "../telemetry.js";
 import { gameRegistry } from "./GameRegistry.js";
 import { TurnManager } from "./TurnManager.js";
-import { getPool } from "../db.js";
-import * as gameRepository from "../db/gameRepository.js";
-import { trackEvent } from "../telemetry.js";
-import { GAME_ROOM_DISPOSED_TOPIC } from "../rooms/lobbyPresence.js";
 
 interface BaseGameRoomOptions extends GameOptions {
+  cpuOpponent?: boolean;
   gameId?: string;
   gameType?: string;
+  headToHeadMode?: boolean;
   maxPlayers?: number;
   expectedPlayers?: number;
   reconnectionTimeout?: number;
 }
 
+const CPU_OPPONENT_DISPLAY_NAME = "CPU Opponent";
+const CPU_OPPONENT_SESSION_ID = "cpu-opponent";
+const CPU_TURN_DELAY_MS = 200;
 const DEFAULT_ACTION_ERROR = "Action failed.";
 const DEFAULT_RECONNECTION_TIMEOUT = 30;
 const GAME_ENDED_MESSAGE = "game-end";
+const HEAD_TO_HEAD_OPPONENT_DISPLAY_NAME = "Player 2";
+const HEAD_TO_HEAD_OPPONENT_SESSION_ID = "shared-device-opponent";
 const INVALID_ACTION_ERROR = "Invalid action.";
 const ROOM_ERROR_MESSAGE = "error";
 
@@ -38,6 +48,9 @@ export class BaseGameRoom extends Room {
   private gameId?: string;
   private lobbyGameId?: string;
   private gameStartTime?: number;
+  private cpuOpponentEnabled = false;
+  private pendingCpuTurn?: Delayed;
+  private headToHeadMode = false;
 
   override async onCreate(options: BaseGameRoomOptions = {}) {
     const gameType = typeof options.gameType === "string" ? options.gameType.trim() : "";
@@ -46,6 +59,8 @@ export class BaseGameRoom extends Room {
     }
 
     this.plugin = gameRegistry.get(gameType) as unknown as GamePlugin<BaseGameState>;
+    this.cpuOpponentEnabled = options.cpuOpponent === true && gameType === "checkers";
+    this.headToHeadMode = options.headToHeadMode === true && gameType === "checkers";
 
     const [minPlayers, maxPlayers] = this.plugin.metadata.playerCount;
     const maxPlayersConfig = Math.min(
@@ -106,6 +121,7 @@ export class BaseGameRoom extends Room {
     if (existingPlayer) {
       const wasDisconnected = !existingPlayer.isConnected;
       existingPlayer.isConnected = true;
+      this.setControllerOwnedConnection(client.sessionId, true);
 
       if (wasDisconnected) {
         this.resumeTurnTimerFor(client.sessionId);
@@ -131,6 +147,7 @@ export class BaseGameRoom extends Room {
     player.playerIndex = playerIndex;
     player.isSpectator = isSpectator;
     player.isConnected = true;
+    player.controllerSessionId = client.sessionId;
 
     this.state.players.set(client.sessionId, player);
     this.plugin.lifecycle.onPlayerJoin?.(this.state, client, playerIndex);
@@ -154,8 +171,12 @@ export class BaseGameRoom extends Room {
       }
     }
 
-    if (!isSpectator && this.shouldStartGame()) {
-      this.startGame();
+    if (!isSpectator) {
+      this.ensureCpuParticipant();
+      this.ensureHeadToHeadParticipant(client);
+      if (this.shouldStartGame()) {
+        this.startGame();
+      }
     }
   }
 
@@ -166,6 +187,7 @@ export class BaseGameRoom extends Room {
     }
 
     player.isConnected = false;
+    this.setControllerOwnedConnection(client.sessionId, false);
     trackEvent("player_disconnected", {
       gameType: this.plugin.name,
       roomId: this.roomId,
@@ -175,15 +197,16 @@ export class BaseGameRoom extends Room {
     });
 
     if (
-      this.state.phase === "playing" &&
-      !player.isSpectator &&
-      code !== CloseCode.CONSENTED
+      this.state.phase === "playing"
+      && !player.isSpectator
+      && code !== CloseCode.CONSENTED
     ) {
       this.pauseTurnTimerFor(client.sessionId);
 
       try {
         await this.allowReconnection(client, this.reconnectionTimeout);
         player.isConnected = true;
+        this.setControllerOwnedConnection(client.sessionId, true);
         return;
       } catch {
         await this.handleReconnectionTimeout(client.sessionId);
@@ -191,20 +214,48 @@ export class BaseGameRoom extends Room {
       }
     }
 
-    this.plugin.lifecycle.onPlayerLeave?.(this.state, client.sessionId);
-    this.turnManager?.removePlayer(client.sessionId);
-    this.syncTurnState();
+    this.finalizeParticipantDeparture(client.sessionId);
 
     if (this.state.phase !== "playing") {
+      if (this.headToHeadMode && !this.hasConnectedController()) {
+        await this.disconnect();
+      }
+
       return;
     }
 
     const remainingPlayers = this.getConnectedParticipants();
+    if (remainingPlayers.length === 0) {
+      await this.endGame({
+        type: "draw",
+        scores: {},
+        metadata: {
+          consented: code === CloseCode.CONSENTED,
+          disconnectedPlayerId: client.sessionId,
+          reason: "all-players-disconnected",
+        },
+      });
+      return;
+    }
+
     if (remainingPlayers.length !== 1) {
       return;
     }
 
     const winner = remainingPlayers[0];
+    if (winner.controllerSessionId === client.sessionId) {
+      await this.endGame({
+        type: "draw",
+        scores: {},
+        metadata: {
+          consented: code === CloseCode.CONSENTED,
+          disconnectedPlayerId: client.sessionId,
+          reason: "controller-owned-opponent",
+        },
+      });
+      return;
+    }
+
     await this.endGame({
       type: "forfeit",
       winnerId: winner.sessionId,
@@ -217,6 +268,7 @@ export class BaseGameRoom extends Room {
   }
 
   override onDispose() {
+    this.cancelPendingCpuTurn();
     this.turnManager?.stop();
 
     if (this.lobbyGameId) {
@@ -246,39 +298,58 @@ export class BaseGameRoom extends Room {
     payload: unknown,
     handler: ActionHandler<BaseGameState>,
   ) {
+    await this.processAction(client, actionType, payload, handler, true);
+  }
+
+  private async processAction(
+    client: Client,
+    actionType: string,
+    payload: unknown,
+    handler: ActionHandler<BaseGameState>,
+    sendErrors: boolean,
+  ) {
     const player = this.state.players.get(client.sessionId);
     if (player?.isSpectator) {
-      client.send(ROOM_ERROR_MESSAGE, { message: "Spectators cannot perform actions." });
-      return;
+      if (sendErrors) {
+        client.send(ROOM_ERROR_MESSAGE, { message: "Spectators cannot perform actions." });
+      }
+      return false;
     }
 
+    const actingClient = this.resolveActingClient(client);
     const isValid = this.plugin.conditions.validateAction(
       this.state,
-      client,
+      actingClient,
       actionType,
       payload,
     );
 
     if (!isValid) {
-      client.send(ROOM_ERROR_MESSAGE, { message: INVALID_ACTION_ERROR });
-      return;
+      if (sendErrors) {
+        client.send(ROOM_ERROR_MESSAGE, { message: INVALID_ACTION_ERROR });
+      }
+      return false;
     }
 
-    const result = handler(this.state, client, payload);
+    const result = handler(this.state, actingClient, payload);
     if (!result.success) {
-      client.send(ROOM_ERROR_MESSAGE, { message: result.error ?? DEFAULT_ACTION_ERROR });
-      return;
+      if (sendErrors) {
+        client.send(ROOM_ERROR_MESSAGE, { message: result.error ?? DEFAULT_ACTION_ERROR });
+      }
+      return false;
     }
 
     const gameResult = this.plugin.conditions.checkGameEnd(this.state);
     if (result.endsGame || gameResult) {
       await this.endGame(gameResult ?? this.createFallbackGameResult());
-      return;
+      return true;
     }
 
     if (result.endsTurn) {
       this.advanceTurn();
     }
+
+    return true;
   }
 
   private startGame() {
@@ -308,6 +379,7 @@ export class BaseGameRoom extends Room {
     this.state.currentTurn = this.turnManager.getCurrentPlayer();
     this.state.turnNumber = this.turnManager.getTurnNumber();
     this.updateTurnTimeRemaining();
+    this.queueCpuTurnIfNeeded();
     trackEvent("game_started", {
       gameType: this.plugin.name,
       roomId: this.roomId,
@@ -324,6 +396,7 @@ export class BaseGameRoom extends Room {
     this.state.currentTurn = this.turnManager.nextTurn();
     this.state.turnNumber = this.turnManager.getTurnNumber();
     this.updateTurnTimeRemaining();
+    this.queueCpuTurnIfNeeded();
   }
 
   private async handleTurnTimeout(sessionId: string) {
@@ -351,8 +424,7 @@ export class BaseGameRoom extends Room {
       return;
     }
 
-    this.turnManager?.removePlayer(sessionId);
-    this.syncTurnState();
+    this.finalizeParticipantDeparture(sessionId);
 
     const remainingPlayers = this.getConnectedParticipants();
     if (remainingPlayers.length === 1) {
@@ -383,6 +455,7 @@ export class BaseGameRoom extends Room {
       return;
     }
 
+    this.cancelPendingCpuTurn();
     this.turnManager?.stop();
     this.state.phase = "ended";
     this.state.currentTurn = "";
@@ -420,6 +493,157 @@ export class BaseGameRoom extends Room {
     }
   }
 
+  private ensureCpuParticipant() {
+    if (!this.cpuOpponentEnabled || this.state.players.has(CPU_OPPONENT_SESSION_ID)) {
+      return;
+    }
+
+    const playerIndex = this.getParticipatingPlayers().length;
+    const player = new PlayerInfo();
+    player.sessionId = CPU_OPPONENT_SESSION_ID;
+    player.displayName = CPU_OPPONENT_DISPLAY_NAME;
+    player.playerIndex = playerIndex;
+    player.isSpectator = false;
+    player.isConnected = true;
+
+    this.state.players.set(CPU_OPPONENT_SESSION_ID, player);
+    this.plugin.lifecycle.onPlayerJoin?.(
+      this.state,
+      this.createSyntheticClient(CPU_OPPONENT_SESSION_ID),
+      playerIndex,
+    );
+
+    if (this.gameId) {
+      try {
+        const pool = getPool();
+        void gameRepository.addParticipant(pool, {
+          gameId: this.gameId,
+          userId: CPU_OPPONENT_SESSION_ID,
+          role: "player",
+        });
+      } catch (error) {
+        console.error("[BaseGameRoom] Failed to add CPU participant to DB:", error);
+      }
+    }
+  }
+
+  private ensureHeadToHeadParticipant(client: Client) {
+    if (!this.headToHeadMode || this.state.players.has(HEAD_TO_HEAD_OPPONENT_SESSION_ID)) {
+      return;
+    }
+
+    const playerIndex = this.getParticipatingPlayers().length;
+    const player = new PlayerInfo();
+    player.sessionId = HEAD_TO_HEAD_OPPONENT_SESSION_ID;
+    player.displayName = HEAD_TO_HEAD_OPPONENT_DISPLAY_NAME;
+    player.playerIndex = playerIndex;
+    player.isSpectator = false;
+    player.isConnected = true;
+    player.controllerSessionId = client.sessionId;
+
+    this.state.players.set(HEAD_TO_HEAD_OPPONENT_SESSION_ID, player);
+    this.plugin.lifecycle.onPlayerJoin?.(
+      this.state,
+      this.createSyntheticClient(HEAD_TO_HEAD_OPPONENT_SESSION_ID),
+      playerIndex,
+    );
+
+    if (this.gameId) {
+      try {
+        const pool = getPool();
+        void gameRepository.addParticipant(pool, {
+          gameId: this.gameId,
+          userId: HEAD_TO_HEAD_OPPONENT_SESSION_ID,
+          role: "player",
+        });
+      } catch (error) {
+        console.error("[BaseGameRoom] Failed to add head-to-head participant to DB:", error);
+      }
+    }
+  }
+
+  private queueCpuTurnIfNeeded() {
+    this.cancelPendingCpuTurn();
+
+    if (!this.isCpuTurn(this.state.currentTurn) || this.state.phase !== "playing") {
+      return;
+    }
+
+    if (!this.clock) {
+      void this.executeCpuTurn();
+      return;
+    }
+
+    this.pendingCpuTurn = this.clock.setTimeout(() => {
+      this.pendingCpuTurn = undefined;
+      void this.executeCpuTurn();
+    }, CPU_TURN_DELAY_MS);
+  }
+
+  private cancelPendingCpuTurn() {
+    this.pendingCpuTurn?.clear();
+    this.pendingCpuTurn = undefined;
+  }
+
+  private isCpuTurn(sessionId: string) {
+    return this.cpuOpponentEnabled
+      && this.plugin.id === "checkers"
+      && sessionId === CPU_OPPONENT_SESSION_ID;
+  }
+
+  private async executeCpuTurn() {
+    if (!this.isCpuTurn(this.state.currentTurn) || this.state.phase !== "playing") {
+      return;
+    }
+
+    const move = selectCpuMove(this.state as CheckersState);
+    if (!move) {
+      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      return;
+    }
+
+    const moveHandler = this.plugin.actions.move;
+    if (!moveHandler) {
+      return;
+    }
+
+    const didProcessAction = await this.processAction(
+      this.createSyntheticClient(CPU_OPPONENT_SESSION_ID),
+      "move",
+      move,
+      moveHandler as ActionHandler<BaseGameState>,
+      false,
+    );
+
+    if (!didProcessAction) {
+      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      return;
+    }
+
+    this.queueCpuTurnIfNeeded();
+  }
+
+  private resolveActingClient(client: Client) {
+    const currentTurnPlayer = this.state.players.get(this.state.currentTurn);
+    if (
+      !currentTurnPlayer
+      || currentTurnPlayer.isSpectator
+      || currentTurnPlayer.sessionId === client.sessionId
+      || currentTurnPlayer.controllerSessionId !== client.sessionId
+    ) {
+      return client;
+    }
+
+    return this.createSyntheticClient(currentTurnPlayer.sessionId);
+  }
+
+  private createSyntheticClient(sessionId: string): Client {
+    return {
+      sessionId,
+      send: () => undefined,
+    } as unknown as Client;
+  }
+
   private getParticipatingPlayers() {
     return Array.from(this.state.players.values()).filter((player) => !player.isSpectator);
   }
@@ -428,16 +652,46 @@ export class BaseGameRoom extends Room {
     return this.getParticipatingPlayers().filter((player) => player.isConnected);
   }
 
+  private finalizeParticipantDeparture(sessionId: string) {
+    this.plugin.lifecycle.onPlayerLeave?.(this.state, sessionId);
+    this.turnManager?.removePlayer(sessionId);
+    this.releaseControllerOwnedParticipants(sessionId);
+    this.syncTurnState();
+  }
+
+  private getControllerOwnedParticipants(controllerSessionId: string) {
+    return this.getParticipatingPlayers().filter(
+      (player) => player.sessionId !== controllerSessionId
+        && player.controllerSessionId === controllerSessionId,
+    );
+  }
+
+  private setControllerOwnedConnection(controllerSessionId: string, isConnected: boolean) {
+    for (const player of this.getControllerOwnedParticipants(controllerSessionId)) {
+      player.isConnected = isConnected;
+    }
+  }
+
+  private releaseControllerOwnedParticipants(controllerSessionId: string) {
+    for (const player of this.getControllerOwnedParticipants(controllerSessionId)) {
+      this.plugin.lifecycle.onPlayerLeave?.(this.state, player.sessionId);
+      this.turnManager?.removePlayer(player.sessionId);
+    }
+  }
+
+  private hasConnectedController() {
+    return this.getConnectedParticipants().some(
+      (player) => player.controllerSessionId === player.sessionId,
+    );
+  }
+
   private shouldStartGame() {
     return this.state.phase === "waiting"
       && this.getConnectedParticipants().length >= this.expectedPlayers;
   }
 
   private pauseTurnTimerFor(sessionId: string) {
-    if (
-      !this.turnManager?.isActive()
-      || this.state.currentTurn !== sessionId
-    ) {
+    if (!this.turnManager?.isActive() || !this.isTurnControlledBy(sessionId)) {
       return;
     }
 
@@ -445,14 +699,21 @@ export class BaseGameRoom extends Room {
   }
 
   private resumeTurnTimerFor(sessionId: string) {
-    if (
-      !this.turnManager?.isActive()
-      || this.state.currentTurn !== sessionId
-    ) {
+    if (!this.turnManager?.isActive() || !this.isTurnControlledBy(sessionId)) {
       return;
     }
 
     this.turnManager.resume();
+  }
+
+  private isTurnControlledBy(sessionId: string) {
+    const currentTurnPlayer = this.state.players.get(this.state.currentTurn);
+    if (!currentTurnPlayer) {
+      return false;
+    }
+
+    return currentTurnPlayer.sessionId === sessionId
+      || currentTurnPlayer.controllerSessionId === sessionId;
   }
 
   private syncTurnState() {
@@ -460,9 +721,11 @@ export class BaseGameRoom extends Room {
       this.state.currentTurn = this.turnManager.getCurrentPlayer();
       this.state.turnNumber = this.turnManager.getTurnNumber();
       this.updateTurnTimeRemaining();
+      this.queueCpuTurnIfNeeded();
       return;
     }
 
+    this.cancelPendingCpuTurn();
     if (this.state.phase !== "ended") {
       this.state.currentTurn = "";
     }

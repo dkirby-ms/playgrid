@@ -1,0 +1,105 @@
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: Version bump type
+        required: true
+        type: choice
+        default: minor
+        options:
+          - minor
+          - major
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: promote-release
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout dev branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@0a44ba7841725637a19e28fa30b79a866c81b0a6 # v4.0.4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump release version
+        id: version
+        run: |
+          set -euo pipefail
+
+          npm version "${{ inputs.bump_type }}" --no-git-tag-version
+          NEW_VERSION="$(node -p "require('./package.json').version")"
+
+          npm pkg set version="$NEW_VERSION" --workspace client --workspace server --workspace shared
+          npm install --package-lock-only --ignore-scripts --legacy-peer-deps
+
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag_name=v$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Commit version bump
+        run: |
+          set -euo pipefail
+
+          git add package.json package-lock.json client/package.json server/package.json shared/package.json
+          git commit -m "chore: bump version to v${{ steps.version.outputs.new_version }}"
+
+      - name: Push dev branch
+        run: git push origin HEAD:dev
+
+      - name: Create release tag
+        run: |
+          set -euo pipefail
+
+          TAG_NAME="${{ steps.version.outputs.tag_name }}"
+
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists." >&2
+            exit 1
+          fi
+
+          git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+
+      - name: Create dev to prod pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          EXISTING_PR_NUMBER="$(gh pr list --repo "$GITHUB_REPOSITORY" --base prod --head dev --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$EXISTING_PR_NUMBER" ]; then
+            echo "An open dev -> prod pull request already exists (#$EXISTING_PR_NUMBER)." >&2
+            exit 1
+          fi
+
+          PR_BODY=$'Promotes dev to prod for release ${{ steps.version.outputs.tag_name }}.\n\n- Bump type: ${{ inputs.bump_type }}\n- Source branch: dev\n- Target branch: prod'
+
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base prod \
+            --head dev \
+            --title "chore: promote v${{ steps.version.outputs.new_version }} to prod" \
+            --body "$PR_BODY"
+
+      - name: Push release tag
+        run: git push origin "${{ steps.version.outputs.tag_name }}"

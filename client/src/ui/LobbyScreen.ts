@@ -31,6 +31,8 @@ export interface GameSessionInfo {
   mapSeed: number;
   createdAt: number;
   cpuPlayers?: number;
+  cpuOpponent?: boolean;
+  headToHeadMode?: boolean;
 }
 
 export interface CreateGamePayload {
@@ -40,6 +42,8 @@ export interface CreateGamePayload {
   mapSize?: number;
   mapSeed?: number;
   cpuPlayers?: number;
+  cpuOpponent?: boolean;
+  headToHeadMode?: boolean;
 }
 
 export interface JoinGamePayload {
@@ -169,6 +173,8 @@ export class LobbyScreen {
   private readonly gameNameInput: HTMLInputElement;
   private readonly gameTypeInput: HTMLSelectElement;
   private readonly maxPlayersInput: HTMLSelectElement;
+  private readonly cpuOpponentInput: HTMLInputElement;
+  private readonly headToHeadInput: HTMLInputElement;
   private readonly createButton: HTMLButtonElement;
   private readonly filterButtons = new Map<LobbyFilter, HTMLButtonElement>();
   private readonly filterCounts = new Map<LobbyFilter, HTMLSpanElement>();
@@ -367,10 +373,33 @@ export class LobbyScreen {
     this.maxPlayersInput = createElement("select", "lobby-select") as HTMLSelectElement;
     this.maxPlayersInput.name = "max-players";
 
+    const cpuOpponentField = createElement("label", "field-group");
+    const cpuOpponentLabel = createElement("span", "field-label", "Opponent");
+    const cpuOpponentToggle = createElement("label") as HTMLLabelElement;
+    this.cpuOpponentInput = createElement("input") as HTMLInputElement;
+    this.cpuOpponentInput.type = "checkbox";
+    this.cpuOpponentInput.name = "cpu-opponent";
+    const cpuOpponentText = createElement("span", undefined, "Play vs CPU");
+    cpuOpponentToggle.append(this.cpuOpponentInput, cpuOpponentText);
+
+    const headToHeadField = createElement("label", "field-group");
+    const headToHeadLabel = createElement("span", "field-label", "Mode");
+    const headToHeadToggle = createElement("label") as HTMLLabelElement;
+    this.headToHeadInput = createElement("input") as HTMLInputElement;
+    this.headToHeadInput.type = "checkbox";
+    this.headToHeadInput.name = "head-to-head-mode";
+    this.headToHeadInput.addEventListener("change", () => {
+      this.syncGameTypeConstraints();
+    });
+    const headToHeadText = createElement("span", undefined, "Play on Shared Device");
+    headToHeadToggle.append(this.headToHeadInput, headToHeadText);
+
     gameTypeField.append(gameTypeLabel, this.gameTypeInput);
     maxPlayersField.append(maxPlayersLabel, this.maxPlayersInput);
+    cpuOpponentField.append(cpuOpponentLabel, cpuOpponentToggle);
+    headToHeadField.append(headToHeadLabel, headToHeadToggle);
 
-    createForm.append(nameField, gameTypeField, maxPlayersField);
+    createForm.append(nameField, gameTypeField, maxPlayersField, cpuOpponentField, headToHeadField);
     createForm.addEventListener("submit", (event) => {
       event.preventDefault();
       this.handleCreateGame();
@@ -565,6 +594,8 @@ export class LobbyScreen {
       name: this.gameNameInput.value.trim() || this.gameNameInput.placeholder || "New game",
       gameType: this.getSelectedGameType(),
       maxPlayers: this.getSelectedMaxPlayers(),
+      cpuOpponent: this.shouldUseCpuOpponent(),
+      headToHeadMode: this.shouldUseHeadToHeadMode(),
     };
 
     this.pendingTransition = "create";
@@ -621,11 +652,45 @@ export class LobbyScreen {
       this.maxPlayersInput.append(option);
     }
 
+    const supportsCpuOpponent = this.supportsCpuOpponent(gameTypeOption.value);
+    if (!supportsCpuOpponent) {
+      this.cpuOpponentInput.checked = false;
+    }
+
+    const supportsHeadToHeadMode = this.supportsHeadToHeadMode(gameTypeOption.value);
+    if (!supportsHeadToHeadMode) {
+      this.headToHeadInput.checked = false;
+    }
+
     this.maxPlayersInput.disabled = this.isCreatePending || this.isTwoPlayerGameType(gameTypeOption.value);
+    this.cpuOpponentInput.disabled = this.isCreatePending || !supportsCpuOpponent;
+    this.cpuOpponentInput.title = supportsCpuOpponent
+      ? ""
+      : "CPU opponents are currently available for Checkers only.";
+    this.headToHeadInput.disabled = this.isCreatePending || !supportsHeadToHeadMode;
+    this.headToHeadInput.title = supportsHeadToHeadMode
+      ? ""
+      : "Shared-device mode is currently available for Checkers only.";
   }
 
   private isTwoPlayerGameType(gameType: string): boolean {
     return getGameTypeOption(gameType).selectablePlayerCounts.length === 1;
+  }
+
+  private supportsCpuOpponent(gameType: string): boolean {
+    return gameType === "checkers";
+  }
+
+  private shouldUseCpuOpponent(): boolean {
+    return this.supportsCpuOpponent(this.getSelectedGameType()) && this.cpuOpponentInput.checked;
+  }
+
+  private supportsHeadToHeadMode(gameType: string): boolean {
+    return gameType === "checkers";
+  }
+
+  private shouldUseHeadToHeadMode(): boolean {
+    return this.supportsHeadToHeadMode(this.getSelectedGameType()) && this.headToHeadInput.checked;
   }
 
   private setActiveFilter(filter: LobbyFilter): void {
@@ -773,6 +838,9 @@ export class LobbyScreen {
     playersMeta.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>${game.playerCount}/${game.maxPlayers}</span>`;
     
     meta.append(gameTypeMeta, playersMeta);
+    if (game.headToHeadMode) {
+      meta.append(createElement("span", "active-game-meta-item", "Shared Device"));
+    }
     
     // Show time elapsed for in-progress games
     if (game.status === "in_progress" && game.createdAt) {
@@ -803,7 +871,9 @@ export class LobbyScreen {
     footer.append(playersDiv);
     
     // Join button for waiting games with space
-    const canJoin = game.status === "waiting" && game.playerCount < game.maxPlayers;
+    const canJoin = game.status === "waiting"
+      && game.playerCount < game.maxPlayers
+      && game.headToHeadMode !== true;
     if (canJoin) {
       const joinBtn = createElement("button", "active-game-join-btn") as HTMLButtonElement;
       joinBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Join</span>';

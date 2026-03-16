@@ -2397,3 +2397,520 @@ Prioritize clarity fixes over further visual polish in Checkers. The next UX pas
 - On narrow viewports, compact or relocate HUD chrome so the board can sit closer to the top safe area.
 - Prefer a shape-based king marker (double ring or vector crown badge) over the current text glyph.
 
+
+---
+
+### 2026-03-16T01:16Z: User directive
+**By:** dkirby-ms (via Copilot)
+**What:** The old HUD status panel (turn info, player list, timer) is redundant now that the GameSidebar exists. Remove the status panel overlay and move the turn clock into the sidebar's game info panel instead.
+**Why:** User request — captured for team memory
+
+---
+
+### 2026-03-16T01:23Z: Game sidebar reserves board space on desktop
+**By:** Gately
+**What:** When the in-game sidebar is visible on desktop, reserve a right-side layout lane for it by shrinking `#game-container` instead of floating the sidebar over the Pixi canvas. Coordinate HUD/canvas updates through a shared layout event and `ResizeObserver`.
+**Why:** User request — the board must remain fully visible, and DOM overlay chrome should anchor to the board column instead of obscuring gameplay.
+
+---
+
+### 2026-03-16T02:22Z: Shared game status lives in the sidebar, not the HUD overlay
+**By:** Gately
+**What:** Remove the redundant shared HUD status card and keep `HUD.ts` focused on overlay chrome (Leave + chat) plus turn-clock timing. Renderer sidebars now own the visible game status, player info, and turn clock via a shared `GameSidebar` clock helper and `GameRenderer.setTurnClock()` hook.
+**Why:** User request — the sidebar already surfaces game status and players, so duplicating that data in the HUD wasted screen space and split the same state across two UI surfaces. Centralizing visible status inside sidebar panels keeps the board column cleaner while preserving one shared countdown source.
+
+---
+
+### Gately: Version Footer: Center + Feedback Link
+
+**Status:** Implemented  
+**Date:** 2026-03-15  
+**Author:** Gately (Game Dev - Frontend)  
+**Issue:** #97  
+**PR:** #118  
+
+## Context
+
+The version footer was positioned bottom-right and included only the version number. Needed to center it and add a feedback link to encourage user issue reporting.
+
+## Decision
+
+Moved version footer from bottom-right to bottom-center using Flexbox and CSS transforms. Added "Submit Feedback" link next to version.
+
+## Implementation Details
+
+- **Layout:** Flexbox with centered positioning using `left: 50%; transform: translateX(-50%)`
+- **Structure:** Version text + separator bullet + feedback link
+- **Link behavior:** Opens in new tab (`target="_blank"`) with security (`rel="noopener noreferrer"`)
+- **Styling:** Subtle hover effect (opacity transition from 0.4 to 0.7) for feedback link
+- **Pointer events:** Version text and separator are non-interactive; only link is clickable
+
+## Why This Approach
+
+1. **Center positioning** — Uses transform instead of margin for precise centering across all viewport widths
+2. **Flexbox** — Easier to maintain gap spacing and alignment vs. manual positioning
+3. **Inline hover handlers** — Kept simple since this is a one-off UI element
+4. **Security attributes** — `rel="noopener noreferrer"` prevents tab-nabbing attacks on external links
+
+## Future Considerations
+
+If we add more footer links, consider extracting styles into a shared footer component.
+
+**Files Affected:**
+- `client/src/ui/HUD.ts` (footer JSX)
+- `client/src/ui/gameLayout.ts` (footer styling)
+
+---
+
+### Gately: Dice Roll Animation Implementation
+
+**Status:** Implemented  
+**Date:** 2026-03-16  
+**Author:** Gately (Game Dev - Frontend/Rendering)  
+**Issue:** #100  
+**PR:** #119  
+
+## Context
+
+Backgammon needed a manual dice roll button instead of automatic rolling. Players should see visual feedback as dice are "rolling" before the server returns the actual values.
+
+## Decision
+
+Implemented client-side dice roll animation using frame-based approach:
+
+### Animation Approach
+- **Duration:** 20 frames (~333ms at 60fps)
+- **Method:** Random dice faces shown each frame during animation
+- **Trigger:** Button click sends "roll" action to server, starts animation immediately
+- **Stop:** Animation stops when server returns real dice values (dice > 0)
+
+### Why This Approach
+1. **Frame-based vs Time-based:** Used frame counter instead of deltaTime for predictable, consistent duration
+2. **requestAnimationFrame:** Leveraged existing game loop update() method - no setTimeout/setInterval (per team pattern)
+3. **State-driven:** Animation state (`isRollingDice`) integrates cleanly with existing state management
+4. **Server authoritative:** Client animation is purely visual - server determines actual dice values
+
+### Technical Details
+- Added 3 new class properties: `isRollingDice`, `rollAnimationFrame`, `rollAnimationDuration`
+- Modified `redrawDice()` to show random values when `isRollingDice === true`
+- Updated `update()` to advance animation frame counter
+- Modified `applyState()` to stop animation when server sends real dice values
+- Button enabled/disabled based on turn state and dice values (0,0 = unrolled)
+
+### Button UX
+- Enabled: Player's turn AND dice are 0,0 (unrolled) AND not currently animating
+- Disabled: Otherwise
+- Located: Sidebar controls panel, consistent with existing button styling
+
+## Alternative Considered
+
+Could have used CSS animation on HTML dice elements, but:
+- Would require duplicating dice rendering logic
+- PixiJS canvas-based rendering is already in place
+- Random value animation simpler with direct Graphics API access
+
+## Future Enhancement Opportunities
+- Add sound effect on roll
+- Add easing to animation (slow down at end)
+- Vary animation duration based on dice values (longer = higher suspense)
+
+**Files Affected:**
+- `client/src/renderers/BackgammonRenderer.ts` (animation, button)
+- `server/src/games/backgammon/BackgammonRoom.ts` (roll action)
+- `shared/src/games/backgammon/BackgammonState.ts` (state schema)
+
+---
+
+## Session: PR Reviews & Issue Scoping (2026-03-16)
+
+### Hal: PR #118 & #119 Review & Merge
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+**Reviewer:** Hal  
+
+Both pull requests reviewed, approved, and merged with squash.
+
+#### PR #118: Footer UI
+- **What:** Center version footer, add feedback link.
+- **Review:** Clean UI change, proper security attributes, builds pass.
+- **Verdict:** Low-risk cosmetic change. ✅ Merged.
+
+#### PR #119: Backgammon Manual Dice Roll
+- **What:** Manual dice roll button with animation for Backgammon.
+- **Architecture:**
+  - Client animation runs frame-based in `update()` loop (not setTimeout/setInterval per team pattern).
+  - Server action validates through `validateAction()` hook (centralized, not duplicated).
+  - Animation stops on state sync from server.
+- **Review Checklist:**
+  - ✅ Type safety — clean, no unsafe casts
+  - ✅ State mutation — server-side only
+  - ✅ No setTimeout/setInterval — uses game loop
+  - ✅ Colyseus optional chaining — proper null checks
+  - ✅ Event listeners — existing pattern, cleanup in place
+  - ✅ Tests — updated and passing
+- **Pattern Note:** Action handlers rely on `validateAction` for turn enforcement (consistent with existing `move` action). This is defense-in-depth: validation is centralized, not duplicated in handlers.
+- **Verdict:** Solid implementation. ✅ Merged.
+
+#### Housekeeping
+- Closed issue #97 (duplicate).
+- Closed issue #100 (obsolete).
+
+---
+
+### Hal: Scope Head-to-Head Mode for 2-Player Games (Issue #115)
+
+**Status:** Proposal  
+**Decision Owner:** Hal (Lead)  
+**Issue:** #115  
+**Date:** 2026-03-16  
+
+#### Summary
+
+Enable 2-player games (Checkers, Backgammon) to be played on a single shared device by allowing the board to rotate/flip between turns. This is a **Medium-scope feature** with **high value** for in-person play.
+
+#### Recommendation
+
+Implement now with a phased approach (Checkers MVP first, then Backgammon).
+
+#### Architecture: Client-Side View Switching
+
+Both players connect to the same game room via a single device client. The renderer dynamically determines board perspective based on whose turn it is (via `currentTurn` in state). Existing `isFlipped` logic in CheckersRenderer and similar patterns in BackgammonRenderer already support this—**no schema changes needed.**
+
+**Key insight:** The renderer must switch from "show the board for the local player" to "show the board for the active turn player." This is a logic change, not an architectural change.
+
+#### Server Impact
+
+**Minimal.** No breaking changes:
+- Existing `playerIndex` and `currentTurn` fields already support this use case.
+- Server validation (checking that `sessionId` matches the current turn) works unchanged.
+- Optional: Add `headToHeadMode` flag for telemetry (cosmetic).
+
+#### Client Impact
+
+**Moderate. 3–4 files:**
+1. **LobbyScreen** — Add "Play on Shared Device?" toggle.
+2. **CheckersRenderer** — Update `getLocalPlayerColor()` to use active turn player, not session-based player.
+3. **BackgammonRenderer** — Same update (reuse pattern).
+4. **GameScene / GameSidebar** — Add turn indicator UI and listener for turn changes.
+
+No breaking changes to the GameRenderer interface or state schemas.
+
+#### Complexity & Effort
+
+- **Estimate:** 1.5–2 days (developer).
+- **Breakdown:**
+  - Renderer logic: 2–4 hours
+  - Lobby UI: 1–2 hours
+  - Testing & integration: 2–3 hours
+  - Polish (deferred): animations, input locks, orientation hints
+
+#### Risks
+
+1. **Session Sharing:** Both players on one session; disconnect affects both. ✅ Acceptable for local play.
+2. **Perspective Confusion:** Without a clear turn indicator, players may be unsure whose board they're looking at. ✅ Mitigated by UI "Player X's Turn" prompt.
+3. **Input Timing:** A player could tap before their turn. ✅ Server validation prevents illegal moves; UX can improve with ready confirmation.
+
+#### Implementation Plan
+
+**Phase 1: Checkers (MVP)**
+- Implement dynamic perspective logic in CheckersRenderer.
+- Add lobby toggle and turn indicator.
+- E2E test with two tabs.
+
+**Phase 2: Backgammon**
+- Port logic to BackgammonRenderer.
+- Test with same E2E pattern.
+
+**Phase 3: Polish (future)**
+- Input lock UI.
+- Board rotation animation.
+- Device orientation lock detection.
+
+#### Decision
+
+✅ **Proceed with implementation.**
+- Start with Checkers.
+- Use existing state schema (no migrations).
+- Follow the proposed phased approach.
+- Aim for merge to `main` within 2 sprints.
+
+---
+
+### Pemulis: Scope CPU Opponents for Checkers (Issue #86)
+
+**Status:** Proposal  
+**Decision Owner:** Pemulis (Systems Dev)  
+**Issue:** #86  
+**Date:** 2026-03-16  
+
+#### Problem Statement
+
+Players currently need another human to play Checkers. This prevents single-player experience and limits engagement for users without friends available. We need a CPU opponent to play Checkers as the RED player while humans play as BLACK.
+
+#### Architecture: Server-Side Bot Player
+
+**Why server-side bot (not alternatives):**
+- **Separate AI service?** Overkill for Checkers; adds latency, complexity, separate deployment.
+- **Client-side AI?** Breaks server-authority; clients could cheat. Not viable.
+- **Deferring to future?** Blocks single-player mode now; no architectural blocker.
+
+#### How It Works
+
+1. **Bot Creation:** When a human creates a single-player game, `LobbyRoom` optionally creates a CPU opponent.
+2. **Bot Registration:** Create `PlayerInfo` with synthetic `sessionId` = `"cpu-opponent"`.
+3. **Move Selection:** When `TurnManager.getCurrentPlayer()` returns the CPU's `sessionId`, call `selectCpuMove(state, difficulty)` → apply automatically (no network round-trip).
+4. **Timing:** CPU should have a brief delay (200–500ms) for UI feedback.
+
+#### AI Strategy: Greedy Heuristic (Recommended)
+
+| Algorithm | Strength | Complexity | Code |
+|-----------|----------|-----------|------|
+| **Random** | Weak | Trivial | Pick any legal move at random |
+| **Greedy Heuristic** | Medium | Low | Prefer captures, promotions, advancement |
+| **Minimax + α-β** | Strong | Medium | Tree search with evaluation |
+
+**Greedy Heuristic Algorithm:**
+1. Get all legal moves
+2. Filter & rank by:
+   - Captures (highest priority — forced captures handled by rules)
+   - King promotion (advance pieces toward back row)
+   - Piece advancement (move toward opponent)
+3. For ties, pick randomly (unpredictability)
+4. Return highest-ranked move
+
+**Why greedy:**
+- **Fast:** O(m log m) where m ≈ 12 legal moves, instant execution.
+- **Playable:** Captures pieces, promotes kings, feels like a real player.
+- **Clean:** Evaluation function isolated, testable, easy to tune.
+- **Scalable:** Can add Minimax later without rewriting core.
+
+#### Difficulty Levels (Greedy + Tuning)
+
+| Difficulty | Behavior |
+|-----------|----------|
+| **Easy** | Random move from legal set; or greedy with 50% random noise |
+| **Medium** | Pure greedy: captures → promotions → advancement |
+| **Hard** | Greedy + future risk: avoid moves that set up opponent captures; prefer defensive placements |
+
+#### Room & Lobby Changes
+
+**Lobby (`LobbyRoom.ts`):**
+- Accept `cpuOpponent: boolean` and `cpuDifficulty: "easy" | "medium" | "hard"` options.
+- Validate: only allow if `maxPlayers === 1` or single human in 2-player game.
+- Pass options to game room creation.
+
+**Game Room (`BaseGameRoom.ts`):**
+- Store CPU options in `BaseGameRoomOptions`.
+- In `onCreate()`: if `cpuOpponent`, create bot via `onPlayerJoin()` with synthetic sessionId.
+- In turn execution: detect CPU turn, schedule delayed move (200ms), apply automatically.
+
+**Checkers Plugin (`CheckersPlugin.ts`):**
+- **No changes.** Plugin is already generic; doesn't care if player is human or bot.
+
+#### Complexity Estimate: **SMALL**
+
+**LOC Breakdown:**
+- **New file:** `CpuOpponent.ts` (~80 lines) — move selection, heuristic evaluation
+- **Lobby changes:** `LobbyRoom.ts` (~15 lines) — accept options, validate, pass to room
+- **Game room changes:** `BaseGameRoom.ts` (~20 lines) — store options, detect CPU turn, schedule move
+- **Tests:** `checkers.cpu.test.ts` (~100 lines) + `lobby-cpu.test.ts` (~50 lines)
+
+**Total:** ~250 LOC including tests. **No schema changes, no plugin changes.**
+
+#### Why Small
+
+1. **No plugin changes** — plugin is already generic.
+2. **Reuses existing state sync** — Colyseus already broadcasts CPU moves.
+3. **No new game rules** — just move selection on an existing game.
+4. **No persistence** — CPU games are ephemeral.
+5. **No auth/multiplayer** — single-player only, simpler lifecycle.
+
+#### Risk Areas & Mitigation
+
+- **Turn timing:** CPU moves must be async (delayed) to feel responsive. Use Colyseus `clock.setTimeout()` for determinism.
+- **Disconnection:** If human leaves, game ends cleanly via existing `onPlayerLeave()` logic.
+- **Spectators:** CPU moves go through the same state mutation; spectators see them automatically.
+
+#### MVP (Phase 1)
+
+1. **Implement greedy heuristic CPU** (not random).
+   - Reason: Random is not fun; greedy is minimal playable AI.
+2. **Medium difficulty only** (no easy/hard yet).
+   - Reason: Scope reduction; tuning is follow-up polish.
+3. **Checkers only** (no other games).
+   - Reason: Simplest; pattern proven here extends to Risk or Dominoes.
+4. **No persistent CPU profiles.**
+   - Reason: Out of scope; single-player sandbox.
+
+#### Nice to Have (Phase 2)
+
+- Easy/hard difficulty modes via heuristic tuning.
+- Minimax for harder AI.
+- Win/loss stats tracking.
+- Multiple CPU opponents for future multiplayer AI games (Risk, Poker).
+
+#### Out of Scope
+
+- Chat/personality for CPU.
+- Learning AI (reinforcement learning).
+- Replays or analysis of CPU games.
+
+#### Acceptance Criteria
+
+A human player can:
+1. ✅ Create a single-player Checkers game from the lobby.
+2. ✅ See the CPU opponent join the game as player 2 (RED).
+3. ✅ Play a complete game (move, capture, promote, win/lose) against the CPU.
+4. ✅ CPU makes legal moves.
+5. ✅ CPU doesn't hang the turn (~200ms move time).
+6. ✅ Winning/losing against CPU counts the same as PvP.
+
+#### Decision
+
+✅ **Proceed with implementation.**
+- Implement greedy heuristic (not random, not Minimax yet).
+- Start with Checkers, Medium difficulty only.
+- Follow MVP scope above.
+- Can extend to other games and difficulty modes later.
+
+---
+
+---
+
+## Session: PR #121 & #122 Review & Merge (2026-03-16)
+
+### Pemulis: CPU Opponent Wiring (Issue #86)
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+**Reviewer:** Hal (after Marathe rebase cleanup)
+
+Represent the Checkers CPU opponent as a fixed synthetic participant (`cpu-opponent`) across both lobby pregame state and the server game room, and let `BaseGameRoom` schedule its turns through the normal plugin action pipeline.
+
+**Rationale:**
+- Keeps `CheckersPlugin` unchanged and human/CPU-agnostic.
+- Reuses existing player ordering, win detection, reconnection, and renderer state sync.
+- Makes single-player waiting rooms understandable to players because the CPU appears as a ready roster slot before start.
+
+**Implementation Notes:**
+- `LobbyRoom` accepts `cpuOpponent: true` only for Checkers and seeds a ready `PreGamePlayerInfo` for `cpu-opponent`.
+- `BaseGameRoom` injects the synthetic player on first human join, then uses `clock.setTimeout(..., 200)` to trigger `selectCpuMove()` and replay `move` through the existing validate/handle/end-turn flow.
+- Current MVP heuristic is deterministic: captures > promotions > advancement toward promotion.
+
+---
+
+### Pemulis: Head-to-Head Synthetic Lifecycle Follow-up (Issue #115)
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+**Reviewer:** Hal (via Steeply's regression test)
+
+Treat controller-owned synthetic participants as dependent lifecycle state:
+
+1. Mirror the controller's connectivity onto any synthetic players it owns.
+2. Restore those synthetic players only when the controller actually reconnects.
+3. If the controller leaves permanently, do not award a forfeit to the owned synthetic seat; end the room with a no-winner cleanup path instead.
+
+**Rationale:**
+Head-to-head mode still has only one real device connection. Awarding wins to a synthetic seat owned by that same device breaks match semantics and prevents proper room disposal.
+
+**Implementation Note:**
+Current fix lives in `server/src/game/BaseGameRoom.ts` with regression coverage in `server/src/__tests__/BaseGameRoom.test.ts`. `handleReconnectionTimeout` now calls `finalizeParticipantDeparture`, which correctly triggers `releaseControllerOwnedParticipants`.
+
+---
+
+### Gately: Shared-Device Head-to-Head Control Model (Issue #115)
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+**Reviewer:** Hal (third review, after Steeply's timeout fix)
+
+For shared-device Checkers, keep both seats represented as normal room participants, but make the second seat a synthetic server-side participant whose `controllerSessionId` points at the real client holding the device.
+
+**Rationale:**
+- Reuses the existing `currentTurn`, turn manager, renderer, and endgame assumptions that already expect per-seat players.
+- Keeps move authorization server-authoritative: the active seat still owns the turn, while the controller mapping lets one device submit actions for that seat.
+- Contains the mode-specific branching to room join/action routing instead of duplicating Checkers logic for a separate offline mode.
+
+**Implementation Notes:**
+- Added `controllerSessionId` to `shared/src/BaseGameState.ts` so client and server can agree on who controls a seat.
+- `server/src/game/BaseGameRoom.ts` synthesizes `shared-device-opponent` for head-to-head rooms and remaps incoming actions when the controlled seat is active.
+- `server/src/rooms/LobbyRoom.ts` only enables the mode for Checkers and blocks extra non-spectator joins to waiting shared-device rooms.
+- `client/src/renderers/CheckersRenderer.ts` and `client/src/scenes/GameScene.ts` read the controller mapping to rotate perspective and show pass-the-device prompts.
+
+---
+
+### Gately: Checkers Turn Indicator Design (Issue #115)
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+**Reviewer:** Hal (third review)
+
+Keep urgent turn feedback for Checkers inside the shared sidebar instead of rendering a separate board overlay banner.
+
+**Rationale:**
+- The board should stay visually clear while players are choosing moves.
+- The existing `Game Info` panel already owns turn context, so emphasis belongs there.
+- A highlighted sidebar row with subtle animation is noticeable without blocking pieces or targets.
+
+**Implementation Notes:**
+- Removed the Pixi banner layer and its view-model helper files.
+- Added opt-in highlighted sidebar row/value styles in `client/src/ui/GameSidebar.ts`.
+- `client/src/renderers/CheckersRenderer.ts` now renders `Your Turn` with token-driven accent colors and a soft pulse only when the local player is active.
+
+---
+
+### Marathe: Promote Workflow & Version Bumping
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+
+Add a dedicated manual GitHub Actions workflow at `.github/workflows/promote.yml` to handle dev→prod promotions with a controlled version bump.
+
+**Rationale:**
+- Production promotion should be explicit and operator-driven instead of tied to every branch merge.
+- The repo is an npm workspace monorepo, so release version bumps must keep the root package, workspace packages, and lockfile aligned.
+- Opening the `dev` → `prod` PR from the workflow keeps the release handoff transparent while still producing a release tag for downstream prod deployment automation.
+
+**Implementation Notes:**
+- Triggered by `workflow_dispatch` with `bump_type` choice input (`minor` or `major`).
+- Checks out `dev`, configures `github-actions[bot]`, bumps versions in `package.json`, `client/package.json`, `server/package.json`, and `shared/package.json`, and refreshes `package-lock.json` with `npm install --package-lock-only --ignore-scripts --legacy-peer-deps`.
+- Commits the bump to `dev`, creates `v*` tag, opens the `dev` → `prod` PR with `gh pr create`, then pushes the tag.
+- Uses SHA-pinned `actions/checkout` and `actions/setup-node`, plus `contents: write` and `pull-requests: write` permissions.
+
+---
+
+### Marathe: Automatic Dev Patch Bump (Version Management)
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+
+Keep the automatic patch-version increment inside `.github/workflows/ci.yml` as a dedicated `version-bump` job that runs only after successful pushes to `dev`.
+
+**Rationale:**
+- The existing CI workflow already gates `dev` pushes with build, lint, and test, so adding the patch bump as a dependent job keeps the release signal coupled to the validated commit.
+- PlayGrid is an npm workspace monorepo, so the bump must update the root package, all workspace package manifests, and `package-lock.json` together.
+- Using a `[skip ci]` commit message on the bot-generated version commit prevents an infinite CI loop without needing a second workflow.
+
+**Implementation Notes:**
+- `build-test` continues to run for both `push` and `pull_request` events targeting `dev`.
+- `version-bump` uses `if: github.event_name == 'push'`, job-level `contents: write`, SHA-pinned `actions/checkout` and `actions/setup-node`, and the same `github-actions[bot]` git identity pattern as `promote.yml`.
+- The bump command sequence is `npm version patch --no-git-tag-version`, `npm pkg set version=...` for `client`, `server`, and `shared`, then `npm install --package-lock-only --ignore-scripts --legacy-peer-deps` before committing and pushing back to `dev`.
+
+---
+
+### Hal: PR #122 — Head-to-Head Mode Final Approval
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+**Reviewer:** Hal
+
+Approved the fix for the reconnection timeout issue in Head-to-Head mode.
+
+**Verification:**
+- **Code:** `handleReconnectionTimeout` now calls `finalizeParticipantDeparture`, which correctly triggers `releaseControllerOwnedParticipants`.
+- **Tests:** New regression test in `BaseGameRoom.test.ts` confirms synthetic player is removed and game ends in a draw (not forfeit) when controller times out.
+- **Build:** Passed.
+
+---

@@ -407,6 +407,9 @@ export class BackgammonRenderer implements GameRenderer {
   private bottomTipY = 0;
   private offAreaX = 0;
   private diceCenterX = 0;
+  private isRollingDice = false;
+  private rollAnimationFrame = 0;
+  private rollAnimationDuration = 20;
 
   constructor() {
     this.piecesLayer.eventMode = "none";
@@ -524,7 +527,16 @@ export class BackgammonRenderer implements GameRenderer {
     this.updateSidebar();
   }
 
-  update(_deltaTime: number): void {}
+  update(_deltaTime: number): void {
+    if (this.isRollingDice) {
+      this.rollAnimationFrame += 1;
+      if (this.rollAnimationFrame >= this.rollAnimationDuration) {
+        this.isRollingDice = false;
+        this.rollAnimationFrame = 0;
+      }
+      this.redrawDice();
+    }
+  }
 
   resize(width: number, height: number): void {
     this.width = width;
@@ -753,7 +765,13 @@ export class BackgammonRenderer implements GameRenderer {
   private redrawDice(): void {
     this.diceLayer.clear();
 
-    const [die1, die2] = this.dice;
+    let [die1, die2] = this.dice;
+    
+    if (this.isRollingDice) {
+      die1 = Math.floor(Math.random() * 6) + 1;
+      die2 = Math.floor(Math.random() * 6) + 1;
+    }
+    
     if (die1 <= 0 || die2 <= 0) {
       return;
     }
@@ -1104,6 +1122,17 @@ export class BackgammonRenderer implements GameRenderer {
     this.clearSelection();
   }
 
+  private handleRollDice(): void {
+    if (!this.isLocalPlayersTurn() || this.dice[0] !== 0 || this.dice[1] !== 0 || this.isRollingDice) {
+      return;
+    }
+
+    this.isRollingDice = true;
+    this.rollAnimationFrame = 0;
+    this.updateSidebar();
+    this.room?.send("roll");
+  }
+
   private getPreferredMoveForTarget(target: BackgammonTarget): BackgammonMove | null {
     const matchingMoves = this.validMoves.filter((move) => move.to === target);
     if (matchingMoves.length === 0) {
@@ -1156,7 +1185,12 @@ export class BackgammonRenderer implements GameRenderer {
     this.redBar = this.toCount(nextState?.redBar);
     this.blackBorneOff = this.toCount(nextState?.blackBorneOff);
     this.redBorneOff = this.toCount(nextState?.redBorneOff);
-    this.dice = this.parseDice(nextState);
+    const newDice = this.parseDice(nextState);
+    if (newDice[0] > 0 && newDice[1] > 0 && this.isRollingDice) {
+      this.isRollingDice = false;
+      this.rollAnimationFrame = 0;
+    }
+    this.dice = newDice;
     this.usedDice = this.parseUsedDice(nextState);
     this.phase = typeof nextState?.phase === "string" ? nextState.phase : "waiting";
     this.currentTurn = typeof nextState?.currentTurn === "string" ? nextState.currentTurn : "";
@@ -1648,16 +1682,23 @@ export class BackgammonRenderer implements GameRenderer {
       : '<div class="sidebar-empty">Moves will appear here after the opening roll.</div>';
     this.sidebar.updatePanel("move-history", historyMarkup);
 
+    const canRollDice = this.isLocalPlayersTurn() && this.dice[0] === 0 && this.dice[1] === 0 && !this.isRollingDice;
     this.sidebar.updatePanel(
       "controls",
       `<div class="sidebar-button-group">
-        <button type="button" class="sidebar-button sidebar-button--secondary" data-action="roll-dice" disabled>Roll Dice</button>
+        <button type="button" class="sidebar-button sidebar-button--secondary" data-action="roll-dice"${canRollDice ? "" : " disabled"}>Roll Dice</button>
         <button type="button" class="sidebar-button sidebar-button--danger" data-action="resign"${this.requestLeave ? "" : " disabled"}>Resign</button>
       </div>
-      <div class="sidebar-note">Dice are rolled automatically at the start of each turn. Use resign to concede the match.</div>`,
+      <div class="sidebar-note">Click "Roll Dice" to roll at the start of your turn. Use resign to concede the match.</div>`,
     );
 
     const controlsPanel = this.sidebar.getPanelContent("controls");
+    const rollButton = controlsPanel?.querySelector('[data-action="roll-dice"]');
+    if (rollButton instanceof HTMLButtonElement) {
+      rollButton.onclick = () => {
+        this.handleRollDice();
+      };
+    }
     const resignButton = controlsPanel?.querySelector('[data-action="resign"]');
     if (resignButton instanceof HTMLButtonElement) {
       resignButton.onclick = () => {

@@ -47,12 +47,36 @@
 - `LobbyRoom` now keeps a `sessionIdByPlayerId` index so a refreshed join can reclaim the prior session immediately, migrate any waiting-room membership/host ownership to the new `sessionId`, and rebroadcast `ONLINE_PLAYERS` without waiting for `onLeave()` timeout cleanup.
 - Coverage lives in `server/src/__tests__/lobby-pregame.test.ts` for both plain lobby presence and waiting-room host transfer, and the repo-level verification path remains `npm run build && npm run test`.
 
+### 2026-03-16: PR #121 & #122 Approvals and Lockout Escalation
+
+- **PR #121 (CPU opponents)** — APPROVED after Marathe's rebase cleanup removed promote.yml scope leak
+  - Implementation: `cpu-opponent` synthetic participant in lobby and game room
+  - Turn scheduling via `clock.setTimeout(..., 200)` and the normal plugin action pipeline
+  - Decision committed: `pemulis-cpu-opponents.md`
+
+- **PR #122 (Head-to-head mode)** — Initial synthetic lifecycle fix committed
+  - Root cause: controller-owned synthetics remained connected after controller left
+  - Fix: Mirror controller connectivity to owned synthetics; release them on controller departure
+  - Decision committed: `pemulis-h2h-lifecycle-fix.md`
+  - Escalated to Steeply for timeout cleanup regression (lockout protocol: Gately → Pemulis → Steeply)
+
+- **Decisions merged:** Both decisions now in `.squad/decisions.md`
+
 ### Shareable waiting-room links (2026-03-15)
 
 - The waiting-room join identifier is the lobby `gameId`, not the eventual Colyseus `roomId`; while a game is still pre-start, clients must re-use `JOIN_GAME { gameId }` through the lobby room.
 - No new server route is needed for invite links. `LobbyRoom.handleJoinGame()` already validates the important failure modes for shared links (`Game not found.`, `Game is full.`, and `Cannot join a game in progress as a player.`), so the client can safely drive invites with `?join={gameId}`.
 - Waiting-room URL state should stay aligned with the scene: set `?join={gameId}` while a lobby waiting room is open, clear it when transitioning into the real game room, and let lobby reconnects/refreshes reuse that URL to restore the pregame flow.
 - Client-side host detection for `GAME_JOINED` cannot rely only on the local `pendingTransition === "create"` flag. Refresh/auto-join paths must also treat `games.get(gameId)?.hostId === room.sessionId` as authoritative so the host keeps start controls after re-entering their waiting room.
+- CPU Checkers now uses a fixed synthetic participant (`cpu-opponent`) that is added in both the lobby waiting roster and `BaseGameRoom` right before game start, which keeps the existing plugin lifecycle and turn order intact without modifying `CheckersPlugin`.
+- `BaseGameRoom` can safely drive bot turns by scheduling a 200ms `clock.setTimeout()` whenever `state.currentTurn` belongs to the CPU, then replaying the normal action-validation/action-handler/game-end pipeline through a synthetic client object.
+- The greedy MVP heuristic in `server/src/games/checkers/CpuOpponent.ts` is deterministic: captures win first, then king promotions, then moves that land closer to promotion. Regression coverage lives in `cpuOpponent.test.ts`, `BaseGameRoom.test.ts`, and `lobby-pregame.test.ts`.
+
+### Shared-device controller lifecycle (2026-03-16)
+
+- Head-to-head mode reuses one real `sessionId` to control a synthetic second `PlayerInfo`, so connectivity must be tracked at the controller level instead of treating the synthetic seat as independently online.
+- When the controller disconnects, `BaseGameRoom` should immediately mark any controller-owned synthetic participants disconnected as well, then restore them only if the controller successfully reconnects.
+- Permanent controller leaves in head-to-head mode should never award a forfeit to that synthetic seat; the correct cleanup path is a no-winner shutdown (`draw` / all players disconnected) followed by normal room disposal.
 
 ## Cross-Agent Update — Issue #1 Closed, PR #47 Open (2026-03-14)
 
@@ -792,3 +816,42 @@ All three features validate cleanly end-to-end with `npm run build && npm run li
 - `.squad/orchestration-log/2026-03-15T21-26-56Z-pemulis-11.md` — Your agent's outcome
 - `.squad/log/2026-03-15T21-26-56Z-features-batch-2.md` — Session summary with all three features
 
+
+---
+
+## 2026-03-16: Issue Scoping (Round 3) + CPU Opponent Design
+
+**Event:** Round 3 orchestration — issue #86 scoped and approved
+
+**Work Completed:**
+- Issue #86 (CPU opponents): comprehensive scope document posted
+- Architecture finalized: server-side bot player with greedy heuristic
+- MVP scope defined: greedy heuristic only, Medium difficulty, Checkers only
+- Complexity estimate: Small (~250 LOC)
+
+**Decisions Made:**
+1. CPU opponents: server-side bot (not client-side, not separate service)
+2. AI strategy: greedy heuristic (not random, not Minimax for MVP)
+3. Difficulty: Medium only for MVP; easy/hard deferred to Phase 2
+4. Scope: Checkers only; extensible to Risk/Dominoes later
+
+**Technical Decisions:**
+- Bot is a PlayerInfo with synthetic sessionId ("cpu-opponent")
+- Move selection via selectCpuMove() — applies automatically (no network)
+- 200–500ms delay for UI feedback (use Colyseus clock.setTimeout)
+- No plugin changes; leverages existing plugin system
+- No schema changes; no persistence
+
+**Files to Create/Modify:**
+- New: server/src/games/checkers/CpuOpponent.ts (~80 lines)
+- Modify: LobbyRoom.ts (~15 lines), BaseGameRoom.ts (~20 lines)
+- Tests: checkersPlugin.cpu.test.ts, lobby-cpu.test.ts (~150 lines)
+
+**Context Propagated:**
+- Hal's action validation pattern (validateAction) aligns with CPU architecture
+- Head-to-head mode (#115) client-side only; no server conflicts
+
+**Next Steps:**
+- Begin implementation of CpuOpponent.ts
+- Update lobby to accept cpuOpponent option
+- Implement CPU turn detection in BaseGameRoom
