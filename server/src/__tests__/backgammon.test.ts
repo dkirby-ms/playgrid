@@ -977,5 +977,70 @@ describe("Backgammon Plugin — Integration", () => {
 
       expect(state.phase).toBe("ended");
     });
+
+    it("pass action ends turn and resets dice when no valid moves exist", () => {
+      const state = createStartedGame();
+      setBoard(state, Array.from({ length: 24 }, () => 0));
+      // Black piece on point 0, all landing spots blocked by Red
+      state.points[0] = 1;
+      state.points[5] = -2;
+      state.points[6] = -2;
+      state.currentTurn = "player-1";
+      setDice(state, 5, 6);
+
+      // Verify no valid moves exist
+      const availableDice = getAvailableDice(Array.from(state.dice), Array.from(state.usedDice));
+      expect(hasValidMoves(state.points, 0, 0, 0, 0, availableDice, BLACK)).toBe(false);
+
+      // Validate that pass is allowed
+      const isValid = backgammonPlugin.conditions.validateAction(
+        state,
+        mockClient("player-1"),
+        "pass",
+        undefined,
+      );
+      expect(isValid).toBe(true);
+
+      // Execute the pass action
+      const result = backgammonPlugin.actions.pass(state, mockClient("player-1"), undefined);
+      expect(result.success).toBe(true);
+      expect(result.endsTurn).toBe(true);
+      expect(result.endsGame).toBe(false);
+
+      // Dice should be reset to 0,0
+      expect(state.dice[0]).toBe(0);
+      expect(state.dice[1]).toBe(0);
+    });
+
+    it("pass action is rejected when valid moves exist", () => {
+      const state = createStartedGame();
+      setBoard(state, Array.from({ length: 24 }, () => 0));
+      state.points[0] = 1;
+      state.currentTurn = "player-1";
+      setDice(state, 3, 5);
+
+      const isValid = backgammonPlugin.conditions.validateAction(
+        state,
+        mockClient("player-1"),
+        "pass",
+        undefined,
+      );
+      expect(isValid).toBe(false);
+    });
+
+    it("pass action is rejected when dice are not yet rolled", () => {
+      const state = createStartedGame();
+      state.currentTurn = "player-1";
+      state.dice[0] = 0;
+      state.dice[1] = 0;
+
+      const isValid = backgammonPlugin.conditions.validateAction(
+        state,
+        mockClient("player-1"),
+        "pass",
+        undefined,
+      );
+      expect(isValid).toBe(false);
+    });
   });
 });

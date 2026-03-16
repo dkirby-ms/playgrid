@@ -25,7 +25,8 @@ function isBackgammonColor(value: number | null): value is BackgammonColor {
 
 export type CpuAction =
   | { actionType: "roll" }
-  | { actionType: "move"; payload: { from: number | "bar"; to: number | "off"; die: number } };
+  | { actionType: "move"; payload: { from: number | "bar"; to: number | "off"; die: number } }
+  | { actionType: "pass" };
 
 export function selectCpuAction(state: BackgammonState): CpuAction | null {
   const currentPlayer = state.players.get(state.currentTurn);
@@ -51,7 +52,7 @@ export function selectCpuAction(state: BackgammonState): CpuAction | null {
 
   const moves = getAllValidMoves(state, playerColor, availableDice);
   if (moves.length === 0) {
-    return null;
+    return { actionType: "pass" };
   }
 
   let bestMove = moves[0];

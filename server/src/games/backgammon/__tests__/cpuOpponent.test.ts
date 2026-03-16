@@ -76,7 +76,7 @@ describe("selectCpuAction", () => {
     expect(action?.actionType).toBe("move");
   });
 
-  it("returns null when no valid moves remain", () => {
+  it("returns a pass action when no valid moves remain", () => {
     const state = createState();
     const board = emptyBoard();
     // Red piece blocked: single red piece, all landing spots blocked by black
@@ -95,7 +95,7 @@ describe("selectCpuAction", () => {
     state.usedDice[1] = false;
 
     const action = selectCpuAction(state);
-    expect(action).toBeNull();
+    expect(action).toEqual({ actionType: "pass" });
   });
 
   it("prefers bearing off when possible", () => {
@@ -189,7 +189,7 @@ describe("selectCpuAction", () => {
     }
   });
 
-  it("returns null for a player with no pieces", () => {
+  it("returns a pass action for a player with no pieces", () => {
     const state = createState();
     const board = emptyBoard();
     setBoard(state, board);
@@ -200,6 +200,6 @@ describe("selectCpuAction", () => {
     state.usedDice[1] = false;
 
     const action = selectCpuAction(state);
-    expect(action).toBeNull();
+    expect(action).toEqual({ actionType: "pass" });
   });
 });
