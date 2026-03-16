@@ -146,6 +146,7 @@
         min-height: 100vh;
         display: flex;
         flex-direction: column;
+        background: var(--gradient-page);
       }
 
       /* Header */
@@ -302,7 +303,7 @@
 
       .game-library-title {
         font-size: 1.5rem;
-        color: white;
+        color: var(--text-primary);
         font-weight: 600;
       }
 
@@ -315,21 +316,22 @@
 
       .create-game-trigger {
         padding: 0.5rem 1rem;
-        border-radius: 8px;
-        background: #7c3aed;
+        border-radius: 0.5rem;
+        background: var(--gradient-button-primary);
         color: white;
         border: none;
         cursor: pointer;
         font-weight: 600;
         font-size: 0.875rem;
-        transition: all 0.2s;
+        transition: all 0.2s ease;
         display: flex;
         align-items: center;
         gap: 0.5rem;
       }
 
       .create-game-trigger:hover {
-        background: #6d28d9;
+        transform: scale(1.02);
+        filter: brightness(1.1);
       }
 
       .create-game-trigger svg {
@@ -386,37 +388,43 @@
       /* Game Tiles Grid */
       .game-tiles-grid {
         display: grid;
-        grid-template-columns: 1fr;
-        gap: 1rem;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1.5rem;
+        padding: var(--space-xl);
       }
 
       @media (min-width: 640px) {
         .game-tiles-grid {
-          grid-template-columns: repeat(2, 1fr);
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         }
       }
 
       @media (min-width: 1024px) {
         .game-tiles-grid {
-          grid-template-columns: repeat(2, 1fr);
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         }
       }
 
       .game-tile {
         position: relative;
         overflow: hidden;
-        border-radius: 12px;
-        background: #27272a;
+        border-radius: var(--glass-radius);
+        background: var(--glass-bg);
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
+        border: 1px solid var(--border-light);
         cursor: pointer;
-        transition: all 0.3s;
-        border: none;
+        transition: all 0.2s ease;
         padding: 0;
         text-align: left;
       }
 
       .game-tile:hover {
-        transform: scale(1.05);
-        box-shadow: 0 20px 48px rgba(124, 58, 237, 0.2);
+        transform: scale(1.02);
+        border-color: var(--accent-violet);
+        background: rgba(124, 58, 237, 0.1);
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
       }
 
       .game-tile-image {
@@ -456,11 +464,10 @@
       }
 
       .game-tile-name {
-        font-size: 1.25rem;
-        color: white;
+        font-size: 1.125rem;
+        color: var(--text-primary);
         font-weight: 600;
         margin-bottom: 0.5rem;
-        text-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
       }
 
       .game-tile-meta {
@@ -468,14 +475,13 @@
         align-items: center;
         justify-content: space-between;
         font-size: 0.875rem;
-        text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
       }
 
       .game-tile-players {
         display: flex;
         align-items: center;
         gap: 0.25rem;
-        color: #d4d4d8;
+        color: var(--text-secondary);
       }
 
       .game-tile-players svg {
@@ -484,7 +490,7 @@
       }
 
       .game-tile-active {
-        color: #c084fc;
+        color: var(--accent-violet);
         font-weight: 500;
       }
 
@@ -498,9 +504,11 @@
       /* Active Games Panel */
       .active-games-panel,
       .online-players-panel {
-        border-radius: 12px;
-        background: rgba(39, 39, 42, 0.5);
-        backdrop-filter: blur(12px);
+        border-radius: var(--glass-radius);
+        background: var(--glass-bg);
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
+        border: 1px solid var(--border-light);
         padding: 1rem;
       }
 
@@ -513,14 +521,14 @@
 
       .panel-title {
         font-size: 1.125rem;
-        color: white;
+        color: var(--text-primary);
         font-weight: 600;
       }
 
       .panel-badge {
         padding: 0.25rem 0.625rem;
         border-radius: 999px;
-        background: #7c3aed;
+        background: var(--accent-violet-bg);
         color: white;
         font-size: 0.875rem;
         font-weight: 600;
@@ -534,23 +542,15 @@
 
       /* Active Game Card */
       .active-game-card {
-        border-radius: 8px;
-        background: rgba(24, 24, 27, 0.5);
+        border-radius: 0.5rem;
+        background: var(--bg-card-dark);
         padding: 0.75rem;
-        border: 1px solid rgba(63, 63, 70, 0.5);
+        border: 1px solid var(--border-light);
         transition: all 0.2s;
       }
 
       .active-game-card:hover {
-        border-color: rgba(124, 58, 237, 0.5);
-      }
-
-      .active-game-header {
-        display: flex;
-        align-items: start;
-        justify-content: space-between;
-        margin-bottom: 0.5rem;
-        gap: 0.5rem;
+        border-color: var(--accent-violet);
       }
 
       .active-game-info {
@@ -559,7 +559,7 @@
       }
 
       .active-game-name {
-        color: white;
+        color: var(--text-primary);
         font-weight: 500;
         font-size: 0.9375rem;
         margin-bottom: 0.25rem;
@@ -572,7 +572,7 @@
         display: flex;
         align-items: center;
         gap: 0.75rem;
-        color: #a1a1aa;
+        color: var(--text-secondary);
         font-size: 0.75rem;
       }
 
@@ -661,13 +661,13 @@
         align-items: center;
         gap: 0.75rem;
         padding: 0.5rem;
-        border-radius: 8px;
-        background: rgba(24, 24, 27, 0.5);
+        border-radius: 0.5rem;
+        background: var(--bg-card-dark);
         transition: all 0.2s;
       }
 
       .online-player-item:hover {
-        background: #18181b;
+        background: var(--bg-dark);
       }
 
       .online-player-avatar-wrapper {
@@ -679,7 +679,7 @@
         width: 40px;
         height: 40px;
         border-radius: 999px;
-        background: linear-gradient(to bottom right, #7c3aed, #9333ea);
+        background: var(--gradient-button-primary);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -694,19 +694,19 @@
         width: 12px;
         height: 12px;
         border-radius: 999px;
-        border: 2px solid rgba(24, 24, 27, 0.8);
+        border: 2px solid var(--bg-glass);
       }
 
       .online-player-status-dot.online {
-        background: #22c55e;
+        background: var(--status-online);
       }
 
       .online-player-status-dot.in-game {
-        background: #f59e0b;
+        background: var(--status-ingame);
       }
 
       .online-player-status-dot.away {
-        background: #71717a;
+        background: var(--status-away);
       }
 
       .online-player-info {
@@ -715,7 +715,7 @@
       }
 
       .online-player-name {
-        color: white;
+        color: var(--text-primary);
         font-size: 0.875rem;
         font-weight: 500;
         overflow: hidden;
@@ -724,7 +724,7 @@
       }
 
       .online-player-status {
-        color: #a1a1aa;
+        color: var(--text-secondary);
         font-size: 0.75rem;
         text-transform: capitalize;
       }
@@ -732,15 +732,17 @@
       .panel-empty {
         text-align: center;
         padding: 2rem 1rem;
-        color: #71717a;
+        color: var(--text-muted);
         font-size: 0.875rem;
       }
 
       /* Message Log Panel */
       .message-log-panel {
-        border-radius: 12px;
-        background: rgba(39, 39, 42, 0.5);
-        backdrop-filter: blur(12px);
+        border-radius: var(--glass-radius);
+        background: var(--glass-bg);
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
+        border: 1px solid var(--border-light);
         padding: 1rem;
         display: flex;
         flex-direction: column;
@@ -752,7 +754,7 @@
         overflow-y: auto;
         overflow-x: hidden;
         scrollbar-width: thin;
-        scrollbar-color: #3f3f46 transparent;
+        scrollbar-color: var(--bg-card) transparent;
       }
 
       .message-log-content::-webkit-scrollbar {
@@ -764,12 +766,13 @@
       }
 
       .message-log-content::-webkit-scrollbar-thumb {
-        background: #3f3f46;
+        background: var(--bg-card);
         border-radius: 3px;
       }
 
       .message-log-content::-webkit-scrollbar-thumb:hover {
-        background: #52525b;
+        background: var(--bg-card);
+        filter: brightness(1.2);
       }
 
       .message-log-list {
@@ -781,29 +784,30 @@
       .message-log-entry {
         padding: 0.5rem;
         border-radius: 6px;
-        background: rgba(24, 24, 27, 0.5);
+        background: var(--bg-card-dark);
         font-size: 0.875rem;
         line-height: 1.4;
         display: flex;
         gap: 0.5rem;
         align-items: flex-start;
         border-left: 2px solid transparent;
+        color: var(--text-secondary);
       }
 
       .message-log-entry--player_joined {
-        border-left-color: #22c55e;
+        border-left-color: var(--status-online);
       }
 
       .message-log-entry--player_left {
-        border-left-color: #71717a;
+        border-left-color: var(--status-away);
       }
 
       .message-log-entry--game_created {
-        border-left-color: #7c3aed;
+        border-left-color: var(--accent-violet-bg);
       }
 
       .message-log-entry--game_started {
-        border-left-color: #f59e0b;
+        border-left-color: var(--status-ingame);
       }
 
       .message-log-entry--game_finished {
@@ -846,15 +850,15 @@
       .create-game-modal-content {
         width: 100%;
         max-width: 480px;
-        border-radius: 12px;
-        background: #18181b;
-        border: 1px solid #27272a;
+        border-radius: var(--glass-radius);
+        background: var(--bg-dark);
+        border: 1px solid var(--border-default);
         box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
       }
 
       .create-game-modal-header {
         padding: 1.5rem;
-        border-bottom: 1px solid #27272a;
+        border-bottom: 1px solid var(--border-default);
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -862,7 +866,7 @@
 
       .create-game-modal-title {
         font-size: 1.25rem;
-        color: white;
+        color: var(--text-primary);
         font-weight: 600;
       }
 
@@ -870,13 +874,13 @@
         padding: 0.25rem;
         border: none;
         background: transparent;
-        color: #a1a1aa;
+        color: var(--text-secondary);
         cursor: pointer;
         transition: color 0.2s;
       }
 
       .create-game-modal-close:hover {
-        color: white;
+        color: var(--text-primary);
       }
 
       .create-game-modal-close svg {
@@ -902,7 +906,7 @@
 
       .field-label {
         font-size: 0.875rem;
-        color: #d4d4d8;
+        color: var(--text-secondary);
         font-weight: 500;
       }
 
@@ -910,9 +914,9 @@
       .lobby-select {
         width: 100%;
         padding: 0.625rem 0.875rem;
-        border-radius: 8px;
-        border: 1px solid #3f3f46;
-        background: #09090b;
+        border-radius: 0.5rem;
+        border: 1px solid var(--border-light);
+        background: var(--bg-primary);
         color: white;
         font: inherit;
         transition: all 0.2s;
@@ -921,7 +925,7 @@
       .lobby-input:focus,
       .lobby-select:focus {
         outline: none;
-        border-color: #7c3aed;
+        border-color: var(--accent-violet-bg);
       }
 
       .lobby-input:disabled,
@@ -932,7 +936,7 @@
 
       .create-game-modal-footer {
         padding: 1rem 1.5rem;
-        border-top: 1px solid #27272a;
+        border-top: 1px solid var(--border-default);
         display: flex;
         gap: 0.75rem;
         justify-content: flex-end;
@@ -940,13 +944,13 @@
 
       .lobby-button {
         padding: 0.625rem 1rem;
-        border-radius: 8px;
+        border-radius: 0.5rem;
         border: none;
         font: inherit;
         font-weight: 600;
         font-size: 0.875rem;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all 0.2s ease;
       }
 
       .lobby-button:disabled {
@@ -955,21 +959,22 @@
       }
 
       .lobby-button-secondary {
-        background: #27272a;
+        background: var(--bg-dark);
         color: white;
       }
 
       .lobby-button-secondary:hover:not(:disabled) {
-        background: #3f3f46;
+        background: var(--bg-card);
       }
 
       .lobby-button-primary {
-        background: #7c3aed;
+        background: var(--gradient-button-primary);
         color: white;
       }
 
       .lobby-button-primary:hover:not(:disabled) {
-        background: #6d28d9;
+        transform: scale(1.02);
+        filter: brightness(1.1);
       }
 
       /* Notifications */
