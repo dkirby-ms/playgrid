@@ -1,15 +1,15 @@
 {
   "name": "@eschaton/playgrid-client",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build"
   },
   "dependencies": {
-    "@eschaton/shared": "file:../shared",
     "@colyseus/sdk": "^0.17.26",
+    "@eschaton/shared": "file:../shared",
     "pixi.js": "^8.0.0"
   },
   "devDependencies": {
