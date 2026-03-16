@@ -303,9 +303,19 @@ async function getSnapshot(page: Page): Promise<GameSnapshot> {
       mustCaptureFrom: typeof state?.mustCaptureFrom === "number" ? state.mustCaptureFrom : null,
       board: state?.board ? Array.from(state.board, Number) : [],
       statusText: typeof renderer?.statusText?.text === "string" ? renderer.statusText.text : null,
-      playerColorText: typeof renderer?.playerColorText?.text === "string"
-        ? renderer.playerColorText.text
-        : null,
+      playerColorText: (() => {
+        if (typeof renderer?.playerColorText?.text === "string") {
+          return renderer.playerColorText.text;
+        }
+        const sidebarNotes = document.querySelectorAll('.sidebar-note');
+        for (const note of sidebarNotes) {
+          const text = note.textContent ?? '';
+          if (text.includes('You are playing as') || text.includes('You are spectating')) {
+            return text;
+          }
+        }
+        return null;
+      })(),
       overlayTitle: typeof renderer?.overlayTitleText?.text === "string"
         ? renderer.overlayTitleText.text
         : null,

@@ -229,9 +229,19 @@ async function getCheckersSnapshot(page: Page): Promise<CheckersSnapshot> {
       mustCaptureFrom: typeof state?.mustCaptureFrom === "number" ? state.mustCaptureFrom : null,
       board: state?.board ? Array.from(state.board, Number) : [],
       statusText: typeof renderer?.statusText?.text === "string" ? renderer.statusText.text : null,
-      playerColorText: typeof renderer?.playerColorText?.text === "string"
-        ? renderer.playerColorText.text
-        : null,
+      playerColorText: (() => {
+        if (typeof renderer?.playerColorText?.text === "string") {
+          return renderer.playerColorText.text;
+        }
+        const sidebarNotes = document.querySelectorAll('.sidebar-note');
+        for (const note of sidebarNotes) {
+          const text = note.textContent ?? '';
+          if (text.includes('You are playing as') || text.includes('You are spectating')) {
+            return text;
+          }
+        }
+        return null;
+      })(),
       players,
     } satisfies CheckersSnapshot;
   });
@@ -282,9 +292,19 @@ async function getBackgammonSnapshot(page: Page): Promise<BackgammonSnapshot> {
       blackBorneOff: typeof state?.blackBorneOff === "number" ? state.blackBorneOff : 0,
       redBorneOff: typeof state?.redBorneOff === "number" ? state.redBorneOff : 0,
       statusText: typeof renderer?.statusText?.text === "string" ? renderer.statusText.text : null,
-      playerColorText: typeof renderer?.playerColorText?.text === "string"
-        ? renderer.playerColorText.text
-        : null,
+      playerColorText: (() => {
+        if (typeof renderer?.playerColorText?.text === "string") {
+          return renderer.playerColorText.text;
+        }
+        const sidebarNotes = document.querySelectorAll('.sidebar-note');
+        for (const note of sidebarNotes) {
+          const text = note.textContent ?? '';
+          if (text.includes('You are playing as') || text.includes('You are spectating')) {
+            return text;
+          }
+        }
+        return null;
+      })(),
       players,
     } satisfies BackgammonSnapshot;
   });

@@ -299,3 +299,25 @@ Finishing agent should convert .todo() stubs to executable tests using Pemulis/G
 - 6 issues closed total
 - E2E coverage: Checkers ✓, Risk ✓, Backgammon ✓, Reconnection ✓, Spectator ✓, CPU opponents ✓
 - All 289 tests passing, 0 flakiness in final merged state
+
+## Fix: E2E getSnapshot() playerColorText reads from sidebar DOM (2026-03-16)
+
+**Root Cause:** Phase 4 visual redesign (commit `4eddedf`) removed the `playerColorText` PixiJS Text property from `CheckersRenderer` and `RiskRenderer`, moving the color label into the HTML sidebar. E2E `getSnapshot()` functions still read `renderer.playerColorText.text`, returning `null` for Checkers/Risk renderers. This caused `startMatch()` to fail with "Expected exactly one black player and one red player" in every test using that helper.
+
+**Fix:** Updated `playerColorText` extraction in `getSnapshot()` across 5 spec files to use an IIFE that tries the PixiJS renderer property first (backward compat for BackgammonRenderer), then falls back to reading `.sidebar-note` elements from the DOM.
+
+**Files Changed:**
+- `e2e/checkers.spec.ts`
+- `e2e/spectator.spec.ts`
+- `e2e/cpu-opponent.spec.ts` (two getSnapshot functions: Checkers + Backgammon)
+- `e2e/reconnection.spec.ts`
+- `e2e/backgammon.spec.ts`
+
+**Not Changed:** `e2e/risk.spec.ts` — does not use `playerColorText` at all.
+
+**Verification:** All `playerColorText` assertions pass. Remaining E2E failures are unrelated (statusText also removed from PixiJS, controllerSessionId issues, stochastic game logic timing).
+
+**Learnings:**
+- When the client UI moves text from PixiJS canvas to HTML DOM, E2E `page.evaluate()` snapshots must read from DOM selectors instead of renderer properties.
+- The sidebar `.sidebar-note` class is the reliable selector for player color labels across all game renderers.
+- BackgammonRenderer still exposes `playerColorText` as a PixiJS Text property; Checkers and Risk do not (post Phase 4 redesign).
