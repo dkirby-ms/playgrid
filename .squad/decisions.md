@@ -1501,3 +1501,93 @@ Future games wanting CPU support need to:
 2. Add the gameType to the `cpuOpponentEnabled` gate
 3. Add an `execute{Game}CpuTurn()` method in BaseGameRoom
 
+# Decision: PR #125 Re-Review — Backgammon CPU Pass Action
+
+**Author:** Hal (Lead)
+**Date:** 2026-03-16
+**Status:** Approved & Merged
+
+## Context
+
+PR #125 (feat: CPU opponents in Backgammon, issue #87) was rejected because `selectCpuAction` returned `null` when the CPU rolled dice with no valid moves, which triggered `handleTurnTimeout` and forfeited the game.
+
+Gately fixed this by introducing a `pass` action — a proper backgammon mechanic where a player with no legal moves passes their turn.
+
+## Decision
+
+Approved the pass-action fix and merged PR #125 to dev.
+
+## Rationale
+
+1. **Correct game mechanics:** Passing when no moves exist is standard backgammon rules
+2. **Validation prevents abuse:** Pass is only allowed when dice are rolled AND no valid moves exist
+3. **Clean integration:** Pass flows through the existing action processing pipeline (no special-case paths)
+4. **Good test coverage:** 5 tests cover the fix (3 plugin tests + 2 updated CPU tests)
+5. **Build/lint/test all green:** 289 tests pass, 0 lint errors
+
+## Impact
+
+- CPU opponents in Backgammon now handle all game states correctly
+- Pattern established: games with no-move situations need explicit pass/skip actions in the plugin
+- All future game plugins should avoid returning `null` from CPU action selectors for recoverable game states
+
+---
+
+## Backgammon CPU Opponent Review Cycle — Initial Phase (2026-03-16)
+
+### Hal: PR #125 Code Review — CPU Opponents in Backgammon (Initial Review)
+
+**Status:** Changes Requested  
+**Date:** 2026-03-16  
+**PR:** #125 (squad/87-backgammon-cpu → dev)  
+**Author:** Pemulis  
+
+**Decision:** Request changes before merge. One critical bug found.
+
+**Critical Issue:**
+When the CPU has no valid moves after rolling dice (a normal Backgammon state), `selectCpuAction` returns `null`, causing `executeBackgammonCpuTurn` to call `handleTurnTimeout`, which ends the game with a forfeit. This is incorrect — the turn should pass to the opponent.
+
+**Required Fix:**
+1. Add a `"pass"` action to `BackgammonPlugin` — resets dice, returns `endsTurn: true`
+2. Validate pass only when dice are rolled and `hasValidMoves()` returns false
+3. `selectCpuAction` returns `{ actionType: "pass" }` for this case (not `null`)
+4. Add test for this scenario
+
+**Notes:**
+- This also fixes a pre-existing gap for human players in the same scenario
+- Overall implementation quality is good; this is the only blocking issue
+- Pemulis should fix and re-request review
+
+---
+
+### Gately: PR #125 Fix Implementation — Backgammon CPU "pass" Action
+
+**Status:** Completed, Ready for Re-Review  
+**Date:** 2026-03-16  
+**PR:** #125 (squad/87-backgammon-cpu → dev)  
+**Context:** Applied Hal's recommended fix (Pemulis locked out due to concurrent changes)
+
+**Decision:** Implement "pass" action to resolve CPU no-valid-moves bug per Hal's specification.
+
+**Changes Applied:**
+1. Added `"pass"` action to `BackgammonPlugin.executeAction()`
+   - Validates: dice rolled AND `!hasValidMoves()`
+   - Returns `{ endsTurn: true }` (resets dice, passes turn)
+   
+2. Updated `selectCpuAction()` in BackgammonCpuOpponent
+   - Returns `{ actionType: "pass" }` instead of `null` when no moves exist
+   
+3. Tests added (3 new, 2 updated)
+   - Scenario: CPU has dice but no legal moves → must pass
+   - Human player in same state → also respects pass logic
+   - Edge cases: pass when dice not rolled (rejected), pass when moves exist (rejected)
+
+**Verification:**
+- All 289 tests pass
+- No regressions detected
+- PR pushed for re-review by Hal
+
+**Notes:**
+- Pemulis was locked out due to concurrent fix work; Gately applied the changes
+- This fix also resolves the gap for human players in the same scenario (bonus improvement)
+- Implementation matches Hal's recommendation exactly

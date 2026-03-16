@@ -26,6 +26,7 @@ import {
   type WaitingRoomSceneEnterData,
   type WaitingRoomSceneEvent,
 } from "./scenes/WaitingRoomScene";
+import { SandboxScene } from "./scenes/SandboxScene";
 import { ReconnectOverlay } from "./ui/ReconnectOverlay";
 import { GameOverOverlay } from "./ui/GameOverOverlay";
 import { JOIN_GAME, type JoinGamePayload, type LobbyEvent } from "./ui/LobbyScreen";
@@ -110,6 +111,7 @@ export class PlaygridApp {
   private readonly gameScene = new GameScene(this.rendererRegistry, (event) => {
     void this.handleGameSceneEvent(event);
   });
+  private readonly sandboxScene = new SandboxScene(this.rendererRegistry);
 
   private createVersionFooter(): void {
     const footer = document.createElement("div");
@@ -173,6 +175,7 @@ export class PlaygridApp {
     this.sceneManager.register(this.lobbyScene);
     this.sceneManager.register(this.waitingRoomScene);
     this.sceneManager.register(this.gameScene);
+    this.sceneManager.register(this.sandboxScene);
 
     this.displayName = this.loadDisplayName();
     this.lobbyPlayerId = this.loadLobbyPlayerId();
@@ -193,10 +196,33 @@ export class PlaygridApp {
       this.layoutStatusText();
     });
 
+    const sandboxMatch = this.detectSandboxRoute();
+    if (sandboxMatch) {
+      await this.transitionTo(this.sandboxScene.name, { gameType: sandboxMatch });
+      return;
+    }
+
     const restoredSession = await this.tryRestoreActiveSession();
     if (!restoredSession.restored) {
       await this.connectToLobby(restoredSession.notice);
     }
+  }
+
+  private detectSandboxRoute(): string | null {
+    const hash = window.location.hash;
+    const path = window.location.pathname;
+    
+    const hashMatch = hash.match(/^#\/sandbox\/(\w+)$/);
+    if (hashMatch) {
+      return hashMatch[1];
+    }
+    
+    const pathMatch = path.match(/\/sandbox\/(\w+)$/);
+    if (pathMatch) {
+      return pathMatch[1];
+    }
+    
+    return null;
   }
 
   async joinGame(roomId: string, gameType?: string, spectator = false): Promise<void> {
