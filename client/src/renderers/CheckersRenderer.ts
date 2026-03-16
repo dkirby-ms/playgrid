@@ -15,7 +15,7 @@ import {
   getValidMoves,
   type CheckersMove,
 } from "../games/checkers/checkersClientLogic";
-import { GameSidebar, escapeHtml } from "../ui/GameSidebar";
+import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
 import {
   ACCENT_VIOLET,
   BG_PRIMARY,
@@ -157,6 +157,8 @@ export class CheckersRenderer implements GameRenderer {
   private room: Room | null = null;
   private requestLeave: (() => void) | null = null;
   private sidebar: GameSidebar | null = null;
+  private turnClockSeconds: number | null = null;
+  private showTurnClock = false;
   private unsubscribeGameEnded: (() => void) | null = null;
   private board: number[] = Array.from({ length: BOARD_CELL_COUNT }, () => EMPTY);
   private phase = "waiting";
@@ -226,6 +228,8 @@ export class CheckersRenderer implements GameRenderer {
     this.hoveredIndex = null;
     this.validTargetIndexes.clear();
     this.moveHistory = [];
+    this.turnClockSeconds = null;
+    this.showTurnClock = false;
     this.sidebar?.destroy();
     this.sidebar = new GameSidebar();
     this.sidebar.addPanel("game-info", "Game Info");
@@ -266,6 +270,12 @@ export class CheckersRenderer implements GameRenderer {
 
   handleInput(_event: RendererInputEvent): void {}
 
+  setTurnClock(seconds: number | null, visible: boolean): void {
+    this.turnClockSeconds = seconds !== null ? Math.max(0, Math.floor(seconds)) : null;
+    this.showTurnClock = visible && seconds !== null;
+    this.updateSidebar();
+  }
+
   getHUDStatus(_state: unknown): GameRendererHUDStatus {
     const { text, color } = this.getStatusLabel();
     const detail = this.getPlayerColorLabel();
@@ -286,6 +296,8 @@ export class CheckersRenderer implements GameRenderer {
     this.hoveredIndex = null;
     this.validTargetIndexes.clear();
     this.moveHistory = [];
+    this.turnClockSeconds = null;
+    this.showTurnClock = false;
     this.sidebar?.destroy();
     this.sidebar = null;
     this.clearPieces();
@@ -859,6 +871,7 @@ export class CheckersRenderer implements GameRenderer {
       "game-info",
       `<div class="sidebar-stat-list">
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Current turn</span><span class="sidebar-stat-value">${escapeHtml(this.getCurrentTurnLabel())}</span></div>
+        ${getTurnClockMarkup(this.turnClockSeconds, this.showTurnClock)}
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Black pieces</span><span class="sidebar-stat-value">⚫ ${blackCount}</span></div>
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Red pieces</span><span class="sidebar-stat-value">🔴 ${redCount}</span></div>
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Status</span><span class="sidebar-stat-value">${escapeHtml(this.getSidebarStatus())}</span></div>

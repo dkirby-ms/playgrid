@@ -1,65 +1,36 @@
-import type { Room } from "@colyseus/sdk";
-import type { GameRendererHUDStatus } from "../renderers/GameRenderer";
 import { GAME_LAYOUT_CHANGE_EVENT } from "./gameLayout";
 
-export interface HUDPlayer {
-  userId: string;
-  displayName: string;
-  score: number;
-  isCurrent: boolean;
-}
-
 export interface HUDOptions {
-  players: HUDPlayer[];
-  currentTurn?: string;
   gameTimer?: number;
   showTimer?: boolean;
-  status?: GameRendererHUDStatus;
 }
 
 export type HUDEvent = { type: "leave" } | { type: "chat_toggle" };
 type HUDEventCallback = (event: HUDEvent) => void;
+type HUDTimerCallback = (gameTimer: number | null, showTimer: boolean) => void;
 
 const HUD_EDGE_OFFSET = 16;
 
 export class HUD {
   private readonly container: HTMLElement;
-  private readonly statusPanel: HTMLElement;
-  private readonly statusEyebrow: HTMLElement;
-  private readonly statusHeadline: HTMLElement;
-  private readonly statusDetail: HTMLElement;
-  private readonly timerDisplay: HTMLElement;
-  private readonly playerList: HTMLElement;
   private readonly leaveButton: HTMLButtonElement;
   private readonly chatToggle: HTMLButtonElement;
   private readonly chatPlaceholder: HTMLElement;
 
-  private room: Room | null = null;
   private eventCallback: HUDEventCallback | null = null;
-  private players: HUDPlayer[] = [];
-  private currentTurn: string | null = null;
+  private timerCallback: HUDTimerCallback | null = null;
   private gameTimer: number | null = null;
   private showTimer = false;
-  private status: GameRendererHUDStatus | null = null;
   private timerIntervalId: number | null = null;
   private isChatOpen = false;
 
   constructor() {
     this.container = this.createContainer();
-    this.statusPanel = this.createStatusPanel();
-    this.statusEyebrow = this.createPanelEyebrow();
-    this.statusHeadline = this.createStatusHeadline();
-    this.statusDetail = this.createStatusDetail();
-    this.timerDisplay = this.createTimerDisplay();
-    this.playerList = this.createPlayerList();
     this.leaveButton = this.createLeaveButton();
     this.chatToggle = this.createChatToggle();
     this.chatPlaceholder = this.createChatPlaceholder();
 
-    this.composeStatusPanel();
-
     this.container.append(
-      this.statusPanel,
       this.leaveButton,
       this.chatToggle,
       this.chatPlaceholder,
@@ -75,60 +46,39 @@ export class HUD {
     this.eventCallback = callback;
   }
 
-  show(room: Room, options: HUDOptions): void {
-    this.room = room;
-    this.players = options.players;
-    this.currentTurn = options.currentTurn ?? null;
+  onTimerChange(callback: HUDTimerCallback): void {
+    this.timerCallback = callback;
+  }
+
+  show(options: HUDOptions): void {
     this.gameTimer = options.gameTimer ?? null;
     this.showTimer = options.showTimer ?? false;
-    this.status = options.status ?? null;
 
     this.applyLayout();
-    this.render();
     this.container.style.display = "block";
-
-    if (this.showTimer && this.gameTimer !== null) {
-      this.startTimer();
-    }
+    this.syncTimerState();
   }
 
   hide(): void {
     this.container.style.display = "none";
     this.stopTimer();
-    this.room = null;
-    this.players = [];
-    this.currentTurn = null;
     this.gameTimer = null;
     this.showTimer = false;
-    this.status = null;
     this.isChatOpen = false;
     this.chatPlaceholder.style.display = "none";
+    this.notifyTimerChange();
   }
 
   update(options: Partial<HUDOptions>): void {
-    if (options.players !== undefined) {
-      this.players = options.players;
-    }
-    if (options.currentTurn !== undefined) {
-      this.currentTurn = options.currentTurn;
-    }
     if (options.gameTimer !== undefined) {
       this.gameTimer = options.gameTimer;
     }
     if (options.showTimer !== undefined) {
       this.showTimer = options.showTimer;
-      if (this.showTimer && this.gameTimer !== null) {
-        this.startTimer();
-      } else {
-        this.stopTimer();
-      }
-    }
-    if (options.status !== undefined) {
-      this.status = options.status ?? null;
     }
 
     this.applyLayout();
-    this.render();
+    this.syncTimerState();
   }
 
   setSidebarActive(_active: boolean): void {
@@ -144,10 +94,7 @@ export class HUD {
     const availableWidth = gameBounds
       ? Math.max(0, gameBounds.width - (HUD_EDGE_OFFSET * 2))
       : Math.max(0, window.innerWidth - 152);
-    const statusWidth = Math.min(300, availableWidth);
 
-    this.statusPanel.style.right = `${rightInset}px`;
-    this.statusPanel.style.width = `${statusWidth}px`;
     this.leaveButton.style.right = `${rightInset}px`;
     this.chatToggle.style.right = `${rightInset}px`;
     this.chatPlaceholder.style.right = `${rightInset}px`;
@@ -167,145 +114,6 @@ export class HUD {
       color: "#f4f6fb",
     });
     return container;
-  }
-
-  private createStatusPanel(): HTMLElement {
-    const panel = document.createElement("section");
-    panel.className = "hud-status-panel";
-    Object.assign(panel.style, {
-      position: "absolute",
-      top: "16px",
-      right: "16px",
-      display: "flex",
-      flexDirection: "column",
-      gap: "10px",
-      width: "300px",
-      padding: "12px 14px",
-      background: "rgba(16, 16, 29, 0.92)",
-      border: "1px solid rgba(126, 207, 255, 0.22)",
-      borderRadius: "16px",
-      boxShadow: "0 18px 36px rgba(0, 0, 0, 0.28)",
-      backdropFilter: "blur(10px)",
-      pointerEvents: "auto",
-    });
-    return panel;
-  }
-
-  private createPanelEyebrow(): HTMLElement {
-    const eyebrow = document.createElement("div");
-    Object.assign(eyebrow.style, {
-      fontSize: "0.72rem",
-      letterSpacing: "0.14em",
-      textTransform: "uppercase",
-      color: "#7ecfff",
-      fontWeight: "600",
-    });
-    return eyebrow;
-  }
-
-  private createStatusHeadline(): HTMLElement {
-    const headline = document.createElement("div");
-    Object.assign(headline.style, {
-      fontSize: "1rem",
-      fontWeight: "700",
-      lineHeight: "1.2",
-      color: "#f4f6fb",
-    });
-    return headline;
-  }
-
-  private createStatusDetail(): HTMLElement {
-    const detail = document.createElement("div");
-    Object.assign(detail.style, {
-      fontSize: "0.8rem",
-      lineHeight: "1.3",
-      color: "#9aa3b2",
-    });
-    return detail;
-  }
-
-  private createTimerDisplay(): HTMLElement {
-    const timer = document.createElement("div");
-    timer.className = "hud-timer-display";
-    Object.assign(timer.style, {
-      display: "none",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "5px 10px",
-      borderRadius: "999px",
-      background: "rgba(255, 255, 255, 0.04)",
-      border: "1px solid rgba(126, 207, 255, 0.22)",
-      fontSize: "0.8rem",
-      fontWeight: "600",
-      whiteSpace: "nowrap",
-      color: "#f4f6fb",
-    });
-    return timer;
-  }
-
-  private createPlayerList(): HTMLElement {
-    const list = document.createElement("div");
-    Object.assign(list.style, {
-      display: "flex",
-      flexDirection: "column",
-      gap: "6px",
-      minWidth: "132px",
-      flex: "1 1 132px",
-    });
-    return list;
-  }
-
-  private composeStatusPanel(): void {
-    const headerRow = document.createElement("div");
-    Object.assign(headerRow.style, {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: "10px",
-    });
-
-    const contentRow = document.createElement("div");
-    Object.assign(contentRow.style, {
-      display: "flex",
-      alignItems: "flex-start",
-      justifyContent: "space-between",
-      gap: "14px",
-      flexWrap: "wrap",
-    });
-
-    const statusCopy = document.createElement("div");
-    Object.assign(statusCopy.style, {
-      display: "flex",
-      flexDirection: "column",
-      gap: "4px",
-      minWidth: "0",
-      flex: "1 1 150px",
-    });
-
-    const playersSection = document.createElement("div");
-    Object.assign(playersSection.style, {
-      display: "flex",
-      flexDirection: "column",
-      gap: "6px",
-      flex: "1 1 132px",
-      minWidth: "132px",
-    });
-
-    const playersTitle = document.createElement("div");
-    Object.assign(playersTitle.style, {
-      fontSize: "0.72rem",
-      letterSpacing: "0.12em",
-      textTransform: "uppercase",
-      color: "#9aa3b2",
-      fontWeight: "600",
-    });
-    playersTitle.textContent = "Players";
-
-    headerRow.append(this.statusEyebrow, this.timerDisplay);
-    statusCopy.append(this.statusHeadline, this.statusDetail);
-    playersSection.append(playersTitle, this.playerList);
-    contentRow.append(statusCopy, playersSection);
-    this.statusPanel.append(headerRow, contentRow);
   }
 
   private createLeaveButton(): HTMLButtonElement {
@@ -406,157 +214,26 @@ export class HUD {
       textAlign: "center",
       color: "#9aa3b2",
     });
-    placeholder.textContent = "Chat coming soon! 🚧";
+    placeholder.textContent = "Chat coming soon!";
     return placeholder;
   }
 
-  private render(): void {
-    this.renderStatusSummary();
-    this.renderPlayerInfo();
-    this.renderTimer();
+  private shouldShowTimer(): boolean {
+    return this.showTimer && this.gameTimer !== null;
   }
 
-  private renderStatusSummary(): void {
-    const status = this.status ?? this.getFallbackStatus();
-
-    this.statusEyebrow.textContent = status.label ?? "Game status";
-    this.statusHeadline.textContent = status.text;
-    this.statusHeadline.style.color = status.accentColor ?? "#f4f6fb";
-
-    const detail = status.detail?.trim() ?? "";
-    this.statusDetail.textContent = detail;
-    this.statusDetail.style.display = detail.length > 0 ? "block" : "none";
-  }
-
-  private renderPlayerInfo(): void {
-    this.playerList.textContent = "";
-
-    if (this.players.length === 0) {
-      const emptyState = document.createElement("div");
-      Object.assign(emptyState.style, {
-        fontSize: "0.82rem",
-        color: "#9aa3b2",
-      });
-      emptyState.textContent = "Waiting for players";
-      this.playerList.appendChild(emptyState);
-      return;
-    }
-
-    const hasScores = this.players.some((player) => player.score !== 0);
-
-    for (const player of this.players) {
-      const playerEl = document.createElement("div");
-      Object.assign(playerEl.style, {
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: "8px",
-        padding: "6px 8px",
-        background: player.isCurrent ? "rgba(126, 207, 255, 0.12)" : "rgba(255, 255, 255, 0.04)",
-        border: player.isCurrent ? "1px solid rgba(126, 207, 255, 0.28)" : "1px solid transparent",
-        borderRadius: "10px",
-      });
-
-      const nameEl = document.createElement("span");
-      Object.assign(nameEl.style, {
-        fontWeight: player.isCurrent ? "600" : "500",
-        color: player.isCurrent ? "#d9f3ff" : "#dce2ee",
-        fontSize: "0.88rem",
-        minWidth: "0",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-      });
-      nameEl.textContent = player.displayName;
-
-      const metaEl = document.createElement("div");
-      Object.assign(metaEl.style, {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "flex-end",
-        gap: "6px",
-        flexWrap: "wrap",
-      });
-
-      if (player.userId === this.room?.sessionId) {
-        metaEl.appendChild(this.createPlayerTag("You", "rgba(143, 198, 255, 0.18)", "#d9f3ff"));
-      }
-
-      if (player.isCurrent) {
-        metaEl.appendChild(this.createPlayerTag("Turn", "rgba(143, 240, 176, 0.18)", "#8ff0b0"));
-      }
-
-      if (hasScores) {
-        metaEl.appendChild(this.createPlayerTag(String(player.score), "rgba(255, 255, 255, 0.06)", "#dce2ee"));
-      }
-
-      playerEl.append(nameEl, metaEl);
-      this.playerList.appendChild(playerEl);
-    }
-  }
-
-  private renderTimer(): void {
-    if (!this.showTimer || this.gameTimer === null) {
-      this.timerDisplay.style.display = "none";
-      return;
-    }
-
-    this.timerDisplay.style.display = "inline-flex";
-    const minutes = Math.floor(this.gameTimer / 60);
-    const seconds = this.gameTimer % 60;
-    this.timerDisplay.textContent = `Turn clock ${minutes}:${seconds.toString().padStart(2, "0")}`;
-
-    if (this.gameTimer < 30) {
-      this.timerDisplay.style.color = "#ff6b6b";
-      this.timerDisplay.style.borderColor = "rgba(255, 107, 107, 0.32)";
+  private syncTimerState(): void {
+    if (this.shouldShowTimer()) {
+      this.startTimer();
     } else {
-      this.timerDisplay.style.color = "#f4f6fb";
-      this.timerDisplay.style.borderColor = "rgba(126, 207, 255, 0.22)";
+      this.stopTimer();
     }
+
+    this.notifyTimerChange();
   }
 
-  private getFallbackStatus(): GameRendererHUDStatus {
-    if (!this.currentTurn) {
-      return {
-        label: "Game status",
-        text: "Waiting for players",
-        accentColor: "#9aa3b2",
-      };
-    }
-
-    const currentPlayer = this.players.find((player) => player.userId === this.currentTurn);
-    if (!currentPlayer) {
-      return {
-        label: "Game status",
-        text: "Game in progress",
-        accentColor: "#9aa3b2",
-      };
-    }
-
-    const isLocalPlayer = this.room?.sessionId === this.currentTurn;
-    return {
-      label: "Game status",
-      text: isLocalPlayer ? "Your turn" : `${currentPlayer.displayName}'s turn`,
-      accentColor: isLocalPlayer ? "#8ff0b0" : "#8fc6ff",
-    };
-  }
-
-  private createPlayerTag(text: string, background: string, color: string): HTMLElement {
-    const tag = document.createElement("span");
-    Object.assign(tag.style, {
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "3px 8px",
-      borderRadius: "999px",
-      background,
-      color,
-      fontSize: "0.72rem",
-      fontWeight: "600",
-      lineHeight: "1",
-    });
-    tag.textContent = text;
-    return tag;
+  private notifyTimerChange(): void {
+    this.timerCallback?.(this.gameTimer, this.shouldShowTimer());
   }
 
   private startTimer(): void {
@@ -565,7 +242,7 @@ export class HUD {
     this.timerIntervalId = window.setInterval(() => {
       if (this.gameTimer !== null && this.gameTimer > 0) {
         this.gameTimer--;
-        this.renderTimer();
+        this.notifyTimerChange();
       } else {
         this.stopTimer();
       }

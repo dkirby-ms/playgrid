@@ -34,6 +34,22 @@ function setPanelMarkup(element: HTMLDivElement, content: string): void {
   element.innerHTML = content;
 }
 
+export function formatTurnClock(seconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+}
+
+export function getTurnClockMarkup(seconds: number | null, visible: boolean): string {
+  if (!visible || seconds === null) {
+    return "";
+  }
+
+  const criticalClass = seconds < 30 ? " sidebar-turn-clock--critical" : "";
+  return `<div class="sidebar-stat-row"><span class="sidebar-stat-label">Turn Clock</span><span class="sidebar-stat-value sidebar-turn-clock${criticalClass}">${escapeHtml(formatTurnClock(seconds))}</span></div>`;
+}
+
 function injectStyles(): void {
   if (document.getElementById(GAME_SIDEBAR_STYLE_ID)) {
     return;
@@ -189,6 +205,25 @@ function injectStyles(): void {
 
     .sidebar-stat-value {
       text-align: right;
+    }
+
+    .sidebar-turn-clock {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 72px;
+      padding: 4px 10px;
+      border: 1px solid rgba(126, 207, 255, 0.22);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+
+    .sidebar-turn-clock--critical {
+      border-color: rgba(255, 107, 107, 0.32);
+      color: #ff9b9b;
     }
 
     .sidebar-player-copy {

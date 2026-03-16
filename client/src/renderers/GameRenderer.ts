@@ -28,6 +28,7 @@ export interface GameRenderer {
   update(deltaTime: number): void;
   resize(width: number, height: number): void;
   handleInput(event: RendererInputEvent): void;
+  setTurnClock?(seconds: number | null, visible: boolean): void;
   getHUDStatus?(state: unknown): GameRendererHUDStatus | null;
   destroy(): void;
 }

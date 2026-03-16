@@ -2,7 +2,7 @@ import type { Room } from "@colyseus/sdk";
 import type { RiskState } from "@eschaton/shared";
 import { Container, Graphics, Text } from "pixi.js";
 import { canPlaceArmy, canSelectForAttack, canSelectForFortify } from "../games/risk/riskClientLogic";
-import { GameSidebar, escapeHtml } from "../ui/GameSidebar";
+import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
 import type {
   GameRenderer,
   GameRendererContext,
@@ -232,6 +232,8 @@ export class RiskRenderer implements GameRenderer {
 
   private room: Room | null = null;
   private sidebar: GameSidebar | null = null;
+  private turnClockSeconds: number | null = null;
+  private showTurnClock = false;
   private state: RiskState | null = null;
   private selectedTerritory: string | null = null;
   private hoveredTerritory: string | null = null;
@@ -307,6 +309,8 @@ export class RiskRenderer implements GameRenderer {
     this.selectedTerritory = null;
     this.hoveredTerritory = null;
     this.validTargets.clear();
+    this.turnClockSeconds = null;
+    this.showTurnClock = false;
     this.sidebar?.destroy();
     this.sidebar = new GameSidebar();
     this.sidebar.addPanel("game-info", "Game Info");
@@ -340,6 +344,12 @@ export class RiskRenderer implements GameRenderer {
 
   handleInput(_event: RendererInputEvent): void {}
 
+  setTurnClock(seconds: number | null, visible: boolean): void {
+    this.turnClockSeconds = seconds !== null ? Math.max(0, Math.floor(seconds)) : null;
+    this.showTurnClock = visible && seconds !== null;
+    this.updateSidebar();
+  }
+
   getHUDStatus(_state: unknown): GameRendererHUDStatus {
     const { text, color } = this.getStatusLabel();
     const detail = this.getPhaseLabel();
@@ -355,6 +365,8 @@ export class RiskRenderer implements GameRenderer {
   destroy(): void {
     this.room = null;
     this.state = null;
+    this.turnClockSeconds = null;
+    this.showTurnClock = false;
     this.sidebar?.destroy();
     this.sidebar = null;
     this.validTargets.clear();
@@ -841,6 +853,7 @@ export class RiskRenderer implements GameRenderer {
       `<div class="sidebar-stat-list">
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Phase</span><span class="sidebar-stat-value">${escapeHtml(this.getPhaseLabel())}</span></div>
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Current turn</span><span class="sidebar-stat-value">${escapeHtml(this.getCurrentTurnLabel())}</span></div>
+        ${getTurnClockMarkup(this.turnClockSeconds, this.showTurnClock)}
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Armies to place</span><span class="sidebar-stat-value">${this.getArmiesToPlace()}</span></div>
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Cards held</span><span class="sidebar-stat-value">${myRiskPlayer?.cardsHeld ?? 0}</span></div>
       </div>`,

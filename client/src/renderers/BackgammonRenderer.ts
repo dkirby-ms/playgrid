@@ -6,7 +6,7 @@ import {
   type GameResult,
 } from "@eschaton/shared";
 import { Container, Graphics, Text } from "pixi.js";
-import { GameSidebar, escapeHtml } from "../ui/GameSidebar";
+import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
 import {
   ACCENT_VIOLET,
   BACKGAMMON_OVERLAY_ALPHA,
@@ -368,6 +368,8 @@ export class BackgammonRenderer implements GameRenderer {
   private room: Room | null = null;
   private requestLeave: (() => void) | null = null;
   private sidebar: GameSidebar | null = null;
+  private turnClockSeconds: number | null = null;
+  private showTurnClock = false;
   private unsubscribeGameEnded: (() => void) | null = null;
   private points: number[] = Array.from({ length: BOARD_POINT_COUNT }, () => EMPTY_POINT);
   private blackBar = 0;
@@ -494,6 +496,8 @@ export class BackgammonRenderer implements GameRenderer {
     this.validMoves = [];
     this.validTargetKeys.clear();
     this.moveHistory = [];
+    this.turnClockSeconds = null;
+    this.showTurnClock = false;
     this.sidebar?.destroy();
     this.sidebar = new GameSidebar();
     this.sidebar.addPanel("game-info", "Game Info");
@@ -534,6 +538,12 @@ export class BackgammonRenderer implements GameRenderer {
 
   handleInput(_event: RendererInputEvent): void {}
 
+  setTurnClock(seconds: number | null, visible: boolean): void {
+    this.turnClockSeconds = seconds !== null ? Math.max(0, Math.floor(seconds)) : null;
+    this.showTurnClock = visible && seconds !== null;
+    this.updateSidebar();
+  }
+
   destroy(): void {
     this.unsubscribeFromRoomEvents();
     this.room = null;
@@ -542,6 +552,8 @@ export class BackgammonRenderer implements GameRenderer {
     this.validMoves = [];
     this.validTargetKeys.clear();
     this.moveHistory = [];
+    this.turnClockSeconds = null;
+    this.showTurnClock = false;
     this.sidebar?.destroy();
     this.sidebar = null;
     this.clearPieces();
@@ -1619,6 +1631,7 @@ export class BackgammonRenderer implements GameRenderer {
       "game-info",
       `<div class="sidebar-stat-list">
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Current turn</span><span class="sidebar-stat-value">${escapeHtml(this.getCurrentTurnLabel())}</span></div>
+        ${getTurnClockMarkup(this.turnClockSeconds, this.showTurnClock)}
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Dice</span><span class="sidebar-stat-value">${escapeHtml(this.getDiceLabel())}</span></div>
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Black pip count</span><span class="sidebar-stat-value">${black}</span></div>
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">White pip count</span><span class="sidebar-stat-value">${red}</span></div>
