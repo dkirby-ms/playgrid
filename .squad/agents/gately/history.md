@@ -696,6 +696,12 @@ Replaced flat-colored checkers pieces with polished tactile-looking pieces using
 
 **Pattern Reusability:** This FillGradient radial gradient pattern can be applied to other game pieces (Risk armies, Connect4 pieces, etc.) for consistent visual quality across games.
 
+### 2026-03-16: Shared turn clocks belong in the sidebar, not the HUD overlay
+
+- `client/src/ui/HUD.ts` can keep ownership of the countdown interval without rendering any game-status DOM by exposing timer ticks through `onTimerChange(...)`.
+- `client/src/scenes/GameScene.ts` is the clean bridge for shared turn clocks: feed it `turnTimeRemaining` from Colyseus once, then forward ticks to renderer-specific sidebars through the optional `setTurnClock()` hook.
+- `client/src/ui/GameSidebar.ts` should own the turn-clock formatting and badge styling so Checkers, Risk, and Backgammon all get the same glass-panel treatment and low-time warning colors.
+
 ## Cross-Agent Update — Checkers Piece Visual Polish (2026-03-15T23:36:21Z)
 
 **From:** Squad Scribe  
@@ -768,3 +774,11 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - Related decision entries merged to `.squad/decisions.md`
 
 **Status:** Phase 4 complete. Design system established. Ready for Phase 5 (future: Scrabble, Hungry Hippos, Catan — currently out of scope).
+
+### 2026-03-16: Desktop sidebar layout must reserve board width
+
+- **User preference:** Desktop game UI must not cover the Pixi board; sidebar/HUD chrome should sit beside the board, while mobile keeps the canvas full width.
+- **Layout pattern:** `client/index.html` now owns the reserved desktop lane through `body.game-layout-sidebar-active` and shared CSS variables for sidebar width, gap, and edge offset.
+- **Resize coordination:** `client/src/ui/GameSidebar.ts` toggles the body layout class and emits a `playgrid:layoutchange` event; `client/src/Application.ts` watches `#game-container` with `ResizeObserver` and forces `pixiApp.resize()` plus `sceneManager.resize(...)` so renderer layouts follow CSS-driven width changes.
+- **HUD anchoring rule:** `client/src/ui/HUD.ts` should position status, leave, and chat controls from `#game-container.getBoundingClientRect()` instead of the viewport so overlay controls stay inside the playable column.
+- **Key file paths:** `client/index.html`, `client/src/ui/gameLayout.ts`, `client/src/ui/GameSidebar.ts`, `client/src/ui/HUD.ts`, `client/src/Application.ts`.
