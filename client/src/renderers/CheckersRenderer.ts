@@ -18,6 +18,7 @@ import {
 import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
 import {
   ACCENT_VIOLET,
+  AMBER_500,
   BG_PRIMARY,
   BLACK as TOKEN_BLACK,
   BOARD_DARK_SQUARE,
@@ -46,6 +47,7 @@ import {
   TEXT_SECONDARY,
   TEXT_SUBTLE,
   WHITE,
+  YELLOW_400,
 } from "./DesignTokens";
 import type {
   GameRenderer,
@@ -87,6 +89,13 @@ const MAX_SIDEBAR_HISTORY_ITEMS = 8;
 
 function toCssHexColor(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
+}
+
+function toCssRgbaColor(color: number, alpha: number): string {
+  const red = (color >> 16) & 0xff;
+  const green = (color >> 8) & 0xff;
+  const blue = color & 0xff;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function boardIndexToNotation(index: number): string {
@@ -870,7 +879,7 @@ export class CheckersRenderer implements GameRenderer {
     this.sidebar.updatePanel(
       "game-info",
       `<div class="sidebar-stat-list">
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Current turn</span><span class="sidebar-stat-value">${escapeHtml(this.getCurrentTurnLabel())}</span></div>
+        ${this.getCurrentTurnRowMarkup()}
         ${getTurnClockMarkup(this.turnClockSeconds, this.showTurnClock)}
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Black pieces</span><span class="sidebar-stat-value">⚫ ${blackCount}</span></div>
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Red pieces</span><span class="sidebar-stat-value">🔴 ${redCount}</span></div>
@@ -904,6 +913,18 @@ export class CheckersRenderer implements GameRenderer {
         this.requestLeave?.();
       };
     }
+  }
+
+  private getCurrentTurnRowMarkup(): string {
+    const isLocalTurn = this.isLocalPlayersTurn();
+    const rowClass = isLocalTurn ? "sidebar-stat-row sidebar-stat-row--turn-active" : "sidebar-stat-row";
+    const valueClass = isLocalTurn ? "sidebar-stat-value sidebar-stat-value--turn-active" : "sidebar-stat-value";
+    const styleAttribute = isLocalTurn
+      ? ` style="--sidebar-turn-indicator-border: ${toCssRgbaColor(STATUS_ONLINE, 0.44)}; --sidebar-turn-indicator-bg: ${toCssRgbaColor(AMBER_500, 0.18)}; --sidebar-turn-indicator-shadow: ${toCssRgbaColor(AMBER_500, 0.24)}; --sidebar-turn-indicator-accent: ${toCssHexColor(YELLOW_400)}; --sidebar-turn-indicator-text: ${toCssHexColor(WHITE)}; --sidebar-turn-indicator-text-glow: ${toCssRgbaColor(YELLOW_400, 0.26)};"`
+      : "";
+    const turnLabel = isLocalTurn ? "Your Turn" : this.getCurrentTurnLabel();
+
+    return `<div class="${rowClass}"${styleAttribute}><span class="sidebar-stat-label">Current turn</span><span class="${valueClass}">${escapeHtml(turnLabel)}</span></div>`;
   }
 
   private getCurrentTurnLabel(): string {

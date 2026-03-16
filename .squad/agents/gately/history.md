@@ -782,3 +782,44 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - **Resize coordination:** `client/src/ui/GameSidebar.ts` toggles the body layout class and emits a `playgrid:layoutchange` event; `client/src/Application.ts` watches `#game-container` with `ResizeObserver` and forces `pixiApp.resize()` plus `sceneManager.resize(...)` so renderer layouts follow CSS-driven width changes.
 - **HUD anchoring rule:** `client/src/ui/HUD.ts` should position status, leave, and chat controls from `#game-container.getBoundingClientRect()` instead of the viewport so overlay controls stay inside the playable column.
 - **Key file paths:** `client/index.html`, `client/src/ui/gameLayout.ts`, `client/src/ui/GameSidebar.ts`, `client/src/ui/HUD.ts`, `client/src/Application.ts`.
+
+---
+
+## 2026-03-16: Issue #97 — Center version footer and add feedback link
+
+**Session:** background mode, completed  
+**Outcome:** ✅ PR #118 created targeting dev. Footer now centered with feedback link to GitHub issues.
+
+**Details:**
+- Moved version footer from bottom-right to bottom-center using Flexbox + transform
+- Added "Submit Feedback" link next to version text
+- Implemented safe external link handling (`target="_blank"`, `rel="noopener noreferrer"`)
+- Subtle hover effect on feedback link for discoverability
+
+**Decision merged to `.squad/decisions.md`**
+
+---
+
+## 2026-03-16: Issue #100 — Manual dice roll button with animation for backgammon
+
+**Session:** background mode, resumed after interruption, completed  
+**Outcome:** ✅ PR #119 created targeting dev. Roll Dice button with 20-frame animation working. Server-side `roll` action implemented.
+
+**Details:**
+- Client-side: Frame-based animation (20 frames, ~333ms at 60fps) shows random dice during roll
+- Server-side: `roll` action on BackgammonRoom applies real dice values from authoritative server
+- Button enabled only when turn is active and dice unrolled (0,0)
+- Animation stops when server returns actual dice values
+- Used `requestAnimationFrame` via existing game loop update() method (no setTimeout)
+
+**Decision merged to `.squad/decisions.md`**
+
+---
+
+## Learnings
+
+### 2026-03-16: Checkers turn emphasis should stay inside the sidebar
+
+- **What changed:** Removed the temporary Pixi turn banner from `client/src/renderers/CheckersRenderer.ts`, deleted the banner view-model test files, and moved the emphasis back into the existing Game Info panel by rendering a highlighted `Current turn` row that reads `Your Turn` for the active local player.
+- **Pattern discovered:** `client/src/ui/GameSidebar.ts` is the right place for reusable turn-state treatment. Adding opt-in sidebar row/value classes plus CSS custom properties let the renderer dial in game-specific accent colors while keeping the layout inside the shared glass-panel system.
+- **User preference:** Turn prompts should be unmistakable but non-obstructive. Prefer a brighter, slightly animated sidebar treatment over any overlay/banner that sits on top of the board.

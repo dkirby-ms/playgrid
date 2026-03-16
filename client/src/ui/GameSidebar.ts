@@ -188,6 +188,19 @@ function injectStyles(): void {
       justify-content: flex-start;
     }
 
+    .sidebar-stat-row--turn-active {
+      border-color: var(--sidebar-turn-indicator-border, rgba(34, 197, 94, 0.42));
+      background: linear-gradient(135deg, var(--sidebar-turn-indicator-bg, rgba(245, 158, 11, 0.18)), rgba(255, 255, 255, 0.08));
+      box-shadow:
+        inset 3px 0 0 var(--sidebar-turn-indicator-accent, #facc15),
+        0 14px 28px var(--sidebar-turn-indicator-shadow, rgba(245, 158, 11, 0.2));
+      animation: sidebar-turn-indicator-pulse 1800ms ease-in-out infinite;
+    }
+
+    .sidebar-stat-row--turn-active .sidebar-stat-label {
+      color: var(--sidebar-turn-indicator-accent, #facc15);
+    }
+
     .sidebar-stat-label,
     .sidebar-player-meta,
     .sidebar-empty {
@@ -205,6 +218,14 @@ function injectStyles(): void {
 
     .sidebar-stat-value {
       text-align: right;
+    }
+
+    .sidebar-stat-value--turn-active {
+      color: var(--sidebar-turn-indicator-text, var(--text-primary));
+      font-size: 1.08rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      text-shadow: 0 0 14px var(--sidebar-turn-indicator-text-glow, rgba(250, 204, 21, 0.24));
     }
 
     .sidebar-turn-clock {
@@ -267,6 +288,21 @@ function injectStyles(): void {
       color: var(--text-secondary);
     }
 
+    @keyframes sidebar-turn-indicator-pulse {
+      0%,
+      100% {
+        box-shadow:
+          inset 3px 0 0 var(--sidebar-turn-indicator-accent, #facc15),
+          0 14px 28px var(--sidebar-turn-indicator-shadow, rgba(245, 158, 11, 0.2));
+      }
+
+      50% {
+        box-shadow:
+          inset 3px 0 0 var(--sidebar-turn-indicator-accent, #facc15),
+          0 16px 32px var(--sidebar-turn-indicator-shadow, rgba(245, 158, 11, 0.28));
+      }
+    }
+
     .sidebar-button {
       appearance: none;
       width: 100%;
@@ -306,6 +342,12 @@ function injectStyles(): void {
       opacity: 0.55;
       cursor: not-allowed;
       transform: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .sidebar-stat-row--turn-active {
+        animation: none;
+      }
     }
 
     @media (max-width: 767px) {

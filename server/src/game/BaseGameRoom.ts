@@ -1,20 +1,24 @@
+import type { Delayed } from "@colyseus/timer";
 import { Client, CloseCode, Room } from "colyseus";
 import {
   BaseGameState,
   PlayerInfo,
   type ActionHandler,
+  type CheckersState,
   type GameOptions,
   type GamePlugin,
   type GameResult,
 } from "@eschaton/shared";
+import * as gameRepository from "../db/gameRepository.js";
+import { getPool } from "../db.js";
+import { selectCpuMove } from "../games/checkers/CpuOpponent.js";
+import { GAME_ROOM_DISPOSED_TOPIC } from "../rooms/lobbyPresence.js";
+import { trackEvent } from "../telemetry.js";
 import { gameRegistry } from "./GameRegistry.js";
 import { TurnManager } from "./TurnManager.js";
-import { getPool } from "../db.js";
-import * as gameRepository from "../db/gameRepository.js";
-import { trackEvent } from "../telemetry.js";
-import { GAME_ROOM_DISPOSED_TOPIC } from "../rooms/lobbyPresence.js";
 
 interface BaseGameRoomOptions extends GameOptions {
+  cpuOpponent?: boolean;
   gameId?: string;
   gameType?: string;
   maxPlayers?: number;
@@ -22,6 +26,9 @@ interface BaseGameRoomOptions extends GameOptions {
   reconnectionTimeout?: number;
 }
 
+const CPU_OPPONENT_DISPLAY_NAME = "CPU Opponent";
+const CPU_OPPONENT_SESSION_ID = "cpu-opponent";
+const CPU_TURN_DELAY_MS = 200;
 const DEFAULT_ACTION_ERROR = "Action failed.";
 const DEFAULT_RECONNECTION_TIMEOUT = 30;
 const GAME_ENDED_MESSAGE = "game-end";
@@ -38,6 +45,8 @@ export class BaseGameRoom extends Room {
   private gameId?: string;
   private lobbyGameId?: string;
   private gameStartTime?: number;
+  private cpuOpponentEnabled = false;
+  private pendingCpuTurn?: Delayed;
 
   override async onCreate(options: BaseGameRoomOptions = {}) {
     const gameType = typeof options.gameType === "string" ? options.gameType.trim() : "";
@@ -46,6 +55,7 @@ export class BaseGameRoom extends Room {
     }
 
     this.plugin = gameRegistry.get(gameType) as unknown as GamePlugin<BaseGameState>;
+    this.cpuOpponentEnabled = options.cpuOpponent === true && gameType === "checkers";
 
     const [minPlayers, maxPlayers] = this.plugin.metadata.playerCount;
     const maxPlayersConfig = Math.min(
@@ -154,8 +164,11 @@ export class BaseGameRoom extends Room {
       }
     }
 
-    if (!isSpectator && this.shouldStartGame()) {
-      this.startGame();
+    if (!isSpectator) {
+      this.ensureCpuParticipant();
+      if (this.shouldStartGame()) {
+        this.startGame();
+      }
     }
   }
 
@@ -217,6 +230,7 @@ export class BaseGameRoom extends Room {
   }
 
   override onDispose() {
+    this.cancelPendingCpuTurn();
     this.turnManager?.stop();
 
     if (this.lobbyGameId) {
@@ -246,10 +260,22 @@ export class BaseGameRoom extends Room {
     payload: unknown,
     handler: ActionHandler<BaseGameState>,
   ) {
+    await this.processAction(client, actionType, payload, handler, true);
+  }
+
+  private async processAction(
+    client: Client,
+    actionType: string,
+    payload: unknown,
+    handler: ActionHandler<BaseGameState>,
+    sendErrors: boolean,
+  ) {
     const player = this.state.players.get(client.sessionId);
     if (player?.isSpectator) {
-      client.send(ROOM_ERROR_MESSAGE, { message: "Spectators cannot perform actions." });
-      return;
+      if (sendErrors) {
+        client.send(ROOM_ERROR_MESSAGE, { message: "Spectators cannot perform actions." });
+      }
+      return false;
     }
 
     const isValid = this.plugin.conditions.validateAction(
@@ -260,25 +286,31 @@ export class BaseGameRoom extends Room {
     );
 
     if (!isValid) {
-      client.send(ROOM_ERROR_MESSAGE, { message: INVALID_ACTION_ERROR });
-      return;
+      if (sendErrors) {
+        client.send(ROOM_ERROR_MESSAGE, { message: INVALID_ACTION_ERROR });
+      }
+      return false;
     }
 
     const result = handler(this.state, client, payload);
     if (!result.success) {
-      client.send(ROOM_ERROR_MESSAGE, { message: result.error ?? DEFAULT_ACTION_ERROR });
-      return;
+      if (sendErrors) {
+        client.send(ROOM_ERROR_MESSAGE, { message: result.error ?? DEFAULT_ACTION_ERROR });
+      }
+      return false;
     }
 
     const gameResult = this.plugin.conditions.checkGameEnd(this.state);
     if (result.endsGame || gameResult) {
       await this.endGame(gameResult ?? this.createFallbackGameResult());
-      return;
+      return true;
     }
 
     if (result.endsTurn) {
       this.advanceTurn();
     }
+
+    return true;
   }
 
   private startGame() {
@@ -308,6 +340,7 @@ export class BaseGameRoom extends Room {
     this.state.currentTurn = this.turnManager.getCurrentPlayer();
     this.state.turnNumber = this.turnManager.getTurnNumber();
     this.updateTurnTimeRemaining();
+    this.queueCpuTurnIfNeeded();
     trackEvent("game_started", {
       gameType: this.plugin.name,
       roomId: this.roomId,
@@ -324,6 +357,7 @@ export class BaseGameRoom extends Room {
     this.state.currentTurn = this.turnManager.nextTurn();
     this.state.turnNumber = this.turnManager.getTurnNumber();
     this.updateTurnTimeRemaining();
+    this.queueCpuTurnIfNeeded();
   }
 
   private async handleTurnTimeout(sessionId: string) {
@@ -383,6 +417,7 @@ export class BaseGameRoom extends Room {
       return;
     }
 
+    this.cancelPendingCpuTurn();
     this.turnManager?.stop();
     this.state.phase = "ended";
     this.state.currentTurn = "";
@@ -418,6 +453,108 @@ export class BaseGameRoom extends Room {
     } else {
       await this.disconnect();
     }
+  }
+
+  private ensureCpuParticipant() {
+    if (!this.cpuOpponentEnabled || this.state.players.has(CPU_OPPONENT_SESSION_ID)) {
+      return;
+    }
+
+    const playerIndex = this.getParticipatingPlayers().length;
+    const player = new PlayerInfo();
+    player.sessionId = CPU_OPPONENT_SESSION_ID;
+    player.displayName = CPU_OPPONENT_DISPLAY_NAME;
+    player.playerIndex = playerIndex;
+    player.isSpectator = false;
+    player.isConnected = true;
+
+    this.state.players.set(CPU_OPPONENT_SESSION_ID, player);
+    this.plugin.lifecycle.onPlayerJoin?.(
+      this.state,
+      this.createSyntheticClient(CPU_OPPONENT_SESSION_ID),
+      playerIndex,
+    );
+
+    if (this.gameId) {
+      try {
+        const pool = getPool();
+        void gameRepository.addParticipant(pool, {
+          gameId: this.gameId,
+          userId: CPU_OPPONENT_SESSION_ID,
+          role: "player",
+        });
+      } catch (error) {
+        console.error("[BaseGameRoom] Failed to add CPU participant to DB:", error);
+      }
+    }
+  }
+
+  private queueCpuTurnIfNeeded() {
+    this.cancelPendingCpuTurn();
+
+    if (!this.isCpuTurn(this.state.currentTurn) || this.state.phase !== "playing") {
+      return;
+    }
+
+    if (!this.clock) {
+      void this.executeCpuTurn();
+      return;
+    }
+
+    this.pendingCpuTurn = this.clock.setTimeout(() => {
+      this.pendingCpuTurn = undefined;
+      void this.executeCpuTurn();
+    }, CPU_TURN_DELAY_MS);
+  }
+
+  private cancelPendingCpuTurn() {
+    this.pendingCpuTurn?.clear();
+    this.pendingCpuTurn = undefined;
+  }
+
+  private isCpuTurn(sessionId: string) {
+    return this.cpuOpponentEnabled
+      && this.plugin.id === "checkers"
+      && sessionId === CPU_OPPONENT_SESSION_ID;
+  }
+
+  private async executeCpuTurn() {
+    if (!this.isCpuTurn(this.state.currentTurn) || this.state.phase !== "playing") {
+      return;
+    }
+
+    const move = selectCpuMove(this.state as CheckersState);
+    if (!move) {
+      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      return;
+    }
+
+    const moveHandler = this.plugin.actions.move;
+    if (!moveHandler) {
+      return;
+    }
+
+    const didProcessAction = await this.processAction(
+      this.createSyntheticClient(CPU_OPPONENT_SESSION_ID),
+      "move",
+      move,
+      moveHandler as ActionHandler<BaseGameState>,
+      false,
+    );
+
+    if (!didProcessAction) {
+      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      return;
+    }
+
+    this.queueCpuTurnIfNeeded();
+  }
+
+  private createSyntheticClient(sessionId: string) {
+    return {
+      sessionId,
+      send: () => undefined,
+    } as unknown as Client;
   }
 
   private getParticipatingPlayers() {
@@ -460,9 +597,11 @@ export class BaseGameRoom extends Room {
       this.state.currentTurn = this.turnManager.getCurrentPlayer();
       this.state.turnNumber = this.turnManager.getTurnNumber();
       this.updateTurnTimeRemaining();
+      this.queueCpuTurnIfNeeded();
       return;
     }
 
+    this.cancelPendingCpuTurn();
     if (this.state.phase !== "ended") {
       this.state.currentTurn = "";
     }

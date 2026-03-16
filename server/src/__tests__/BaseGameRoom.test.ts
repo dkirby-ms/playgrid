@@ -190,6 +190,41 @@ describeRoom("BaseGameRoom", () => {
     expect(room.turnManager).toBeTruthy();
   });
 
+  it("registers a synthetic CPU opponent and starts once the human player joins", () => {
+    const room = createRoom();
+    const plugin = createPlugin({
+      lifecycle: {
+        onCreate: vi.fn(),
+        onPlayerJoin: vi.fn(),
+        onGameStart: vi.fn(),
+      },
+    });
+
+    mockGameRegistry.get.mockReturnValue(plugin);
+    room.onCreate({ gameType: "checkers", expectedPlayers: 2, cpuOpponent: true });
+
+    const humanPlayer = createClient("player-1");
+    room.clients.push(humanPlayer);
+    room.onJoin(humanPlayer, { displayName: "Alice" });
+
+    expect(plugin.lifecycle.onPlayerJoin).toHaveBeenNthCalledWith(1, room.state, humanPlayer, 0);
+    expect(plugin.lifecycle.onPlayerJoin).toHaveBeenNthCalledWith(
+      2,
+      room.state,
+      expect.objectContaining({ sessionId: "cpu-opponent" }),
+      1,
+    );
+    expect(room.state.players.get("cpu-opponent")).toMatchObject({
+      displayName: "CPU Opponent",
+      playerIndex: 1,
+      isConnected: true,
+    });
+    expect(plugin.lifecycle.onGameStart).toHaveBeenCalledWith(room.state);
+    expect(room.state.phase).toBe("playing");
+    expect(room.state.currentTurn).toBe("player-1");
+    expect(room.turnManager).toBeTruthy();
+  });
+
   it("validates actions and advances the turn for successful end-of-turn actions", async () => {
     const room = createRoom();
     const moveHandler = vi.fn().mockReturnValue({ success: true, endsTurn: true });

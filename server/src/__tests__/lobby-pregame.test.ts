@@ -263,6 +263,23 @@ describeLobby("LobbyRoom pregame flow", () => {
     expect(mockCreateRoom).not.toHaveBeenCalled();
   });
 
+  it("creates a ready CPU slot for single-player checkers", async () => {
+    const gameId = await createGame(room, host, { gameType: "checkers", maxPlayers: 2, cpuOpponent: true });
+
+    expect(getGame(room, gameId)).toMatchObject({
+      status: "waiting",
+      gameType: "checkers",
+      playerCount: 2,
+      cpuOpponent: true,
+    });
+    expect(getWaitingPlayers(room, gameId).get("cpu-opponent")).toMatchObject({
+      userId: "cpu-opponent",
+      displayName: "CPU Opponent",
+      isReady: true,
+      isCPU: true,
+    });
+  });
+
   it("sends GAME_JOINED without a roomId while the game is still waiting", async () => {
     const gameId = await createGame(room, host);
 
@@ -339,10 +356,29 @@ describeLobby("LobbyRoom pregame flow", () => {
       gameType: "checkers",
       maxPlayers: 4,
       expectedPlayers: 2,
+      cpuOpponent: false,
     });
     expect(getGame(room, gameId)?.status).toBe("in_progress");
     expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
     expect(findPayload(guest, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
+  });
+
+  it("starts a single-player checkers game with cpuOpponent enabled", async () => {
+    const gameId = await createGame(room, host, { gameType: "checkers", maxPlayers: 2, cpuOpponent: true });
+
+    host.send.mockClear();
+
+    await room.handleStartGame(host);
+
+    expect(mockCreateRoom).toHaveBeenCalledWith("game", {
+      gameId,
+      gameType: "checkers",
+      maxPlayers: 2,
+      expectedPlayers: 2,
+      cpuOpponent: true,
+    });
+    expect(getGame(room, gameId)?.status).toBe("in_progress");
+    expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
   });
 
   it("supports the full create → join → ready → start path", async () => {
@@ -715,6 +751,7 @@ describeLobby("LobbyRoom pregame flow", () => {
       gameType: "checkers",
       maxPlayers: 4,
       expectedPlayers: 1,
+      cpuOpponent: false,
     });
     expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
   });

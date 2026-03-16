@@ -138,7 +138,15 @@ export class PlaygridApp {
       feedbackLink.style.color = "rgba(255,255,255,0.4)";
     };
 
-    footer.append(versionText, separator, feedbackLink);
+    const separator2 = document.createElement("span");
+    separator2.textContent = "•";
+    separator2.style.cssText = "pointer-events:none";
+
+    const copyright = document.createElement("span");
+    copyright.textContent = "© 2026 Kirbytoso. All rights reserved.";
+    copyright.style.cssText = "pointer-events:none";
+
+    footer.append(versionText, separator, copyright, separator2, feedbackLink);
     document.body.appendChild(footer);
   }
 
