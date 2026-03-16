@@ -521,3 +521,32 @@ Issue #87 requests CPU-controlled opponents in Backgammon to enable single-playe
 - Scoring heuristic: bear off (1000) > hit blot (500) > bar entry (400) > make point (300) > prime bonus (150) > advancement. Penalties for leaving blots (-200) and breaking points (-100).
 - Key file paths: `server/src/games/backgammon/CpuOpponent.ts`, `server/src/games/backgammon/__tests__/cpuOpponent.test.ts`
 - PR #125, closes #87.
+
+---
+
+## Session 2026-03-16: Feature Completion & Blockers
+
+**Role:** Implementation lead (Backgammon CPU), blocker resolver (PR #135)  
+**Output:** PR #125 fix (pass action), PR #135 fix (Promise.race flakiness)  
+
+**Summary:**
+- Implemented Backgammon CPU in PR #125 → submitted
+- Hal reviewed #125, found no-valid-moves bug → locked out by concurrent changes
+- Gately fixed PR #125 with pass action (while Pemulis was locked out)
+- Hal re-reviewed & approved #125 → merged
+- Later: Hal reviewed Risk E2E (PR #135), found Promise.race flakiness
+- Applied fix to PR #135: replaced Promise.race with explicit page.waitForFunction() checks
+- Hal re-reviewed & approved #135 → merged
+
+**Key Achievement:** Fixed flakiness blocker in E2E tests by identifying race condition root cause and implementing deterministic waiting pattern.
+
+**Learnings:**
+- Lockout protocol works: Pemulis locked out, Gately fixed correctly, re-approval succeeded
+- E2E flakiness often stems from racing promises — explicit waits are more robust
+- When locked out, trust peer to apply fix correctly and move forward on re-review
+
+**Output:**
+- PR #125 merged (Backgammon CPU)
+- PR #135 merged (Risk E2E with deterministic waits)
+- Issue #87 and #127 closed
+- All 289 tests passing

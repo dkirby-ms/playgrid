@@ -857,3 +857,38 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
   - SandboxStatePanel uses HTML/CSS overlay (not PixiJS) for controls
 - **Zero production impact:** All new files + minimal routing changes in Application.ts
 - **Success:** Build, lint, and tests all pass. Ready for renderer testing workflow.
+
+---
+
+## Session 2026-03-16: PR #125 Fix & Sandbox Completion
+
+**Role:** Blocker resolver (PR #125 fix), sandbox MVP implementation  
+**Output:** PR #125 pass-action fix, PR #132 sandbox MVP (both merged)  
+
+**Summary:**
+- PR #125 (Backgammon CPU) blocked on no-valid-moves bug → Pemulis locked out
+- Applied Hal's specification: implemented "pass" action in BackgammonPlugin
+- Added validation: pass only when dice rolled AND no valid moves exist
+- Updated selectCpuAction() to return { actionType: "pass" } instead of null
+- Added 5 tests covering pass action scenarios (plugin + CPU)
+- PR #125 re-submitted, Hal approved & merged
+
+- Implemented sandbox MVP (PR #132):
+  - Created SandboxScene.ts, mockStates.ts, SandboxStatePanel.ts
+  - Mock state builders for all 3 games (plain JS objects, not Schema)
+  - HTML overlay for state controls (Checkers: visual editor, Backgammon/Risk: JSON textarea)
+  - Route detection in Application.ts for /sandbox/{game} patterns
+  - No server connection required
+- Hal reviewed & approved #132 → merged
+
+**Key Achievement:** Fixed critical Backgammon bug using lockout protocol, then shipped dev sandbox MVP for renderer testing.
+
+**Directives:**
+- Dev sandbox must stay in sync with real game renderers (not a disposable tool)
+- Mock state builders need updates whenever real state schemas change
+
+**Output:**
+- PR #125 merged (Backgammon CPU with pass action)
+- PR #132 merged (Dev sandbox MVP)
+- Issues #87 closed via #125
+- All 289 tests passing

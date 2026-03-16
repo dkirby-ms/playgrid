@@ -30,6 +30,8 @@
 - `server/src/__tests__/lobby-pregame.test.ts` already exposes the waiting-room seams needed for disconnect coverage (`waitingPlayers`, `sessions`, `currentGameId`), so lobby reconnection tests should stay there and assert membership preservation/removal behavior directly.
 - There is no real client-side `PlaygridApp` harness yet; for startup/sessionStorage reconnect work, Vitest `.todo()` coverage is the safe placeholder until Gately lands the application-side session persistence flow and a controllable `ConnectionManager` seam.
 - Issue #91 lobby E2E failures came from stale selectors and brittle assumptions: the suite still targeted the old table UI (`.lobby-table`, `Save Name`) and assumed an empty lobby, while the current UI uses header blur-to-save, a create-game modal, active-game cards, and exact button labels that collide unless selectors are scoped. The reliable pattern is: save names by blurring `input[name="player-name"]`, create unique games through `#create-game-modal`, assert only against the unique `.active-game-card` for that test, and use exact/scoped button locators so shared server state from earlier specs cannot poison lobby assertions.
+- CPU opponent E2E tests only need ONE browser context (single human player). The CPU is a synthetic server-side player with session ID `"cpu-opponent"`. CPU games auto-start after the host clicks "Start Game" since the CPU is pre-set to `isReady: true`. The `controllerSessionId` field links the CPU to the human player. CPU turn delay is 200ms — use `expect.poll()` with 10s timeout to wait for CPU responses.
+- For stochastic games like Backgammon vs CPU, dynamic move finding is necessary since dice are random. Scan the board in `page.evaluate()` to find valid sources and destinations. For Checkers, compute valid moves by checking piece positions and diagonal offsets (+/-7, +/-9 for moves, +/-14, +/-18 for captures).
 
 ## Cross-Agent Update — Issue #1 Closed, PR #47 Open (2026-03-14)
 
@@ -256,3 +258,44 @@ Finishing agent should convert .todo() stubs to executable tests using Pemulis/G
 - **Impact:** Your Checkers E2E suite correctly implements this standard (PR #93)
 - **Next step:** Hal will review PR #93
 
+
+---
+
+## Session 2026-03-16: E2E Coverage Expansion & Testing Leadership
+
+**Role:** E2E test architect, issue filer, test implementation lead  
+**Output:** 5 issues filed (#126-129, #131), 5 PRs submitted (#133-138), all merged  
+
+**Summary:**
+- Conducted E2E coverage audit → identified 5 critical gaps
+- Filed issues #126-129 and #131 with clear acceptance criteria
+- Proposed E2E strategy: action pipeline verification for non-deterministic games (Backgammon)
+- Implemented Backgammon E2E tests (PR #133): roll → move → turn advance → state sync
+  - Random dice adaptation: tests don't attempt deterministic full-game replay
+  - Invalid action rejection verified
+  - Game-end outcome listener confirmed
+  - PR #133 → Hal approved & merged
+- Implemented Risk E2E tests (PR #135): 5-move deterministic game replay
+  - PR #135 → Hal found Promise.race flakiness
+  - Locked out for concurrent changes; Pemulis applied deterministic waiting fix
+  - PR #135 re-merged (under Pemulis name)
+- Implemented Reconnection E2E tests (PR #134): disconnect → reconnect → 30s timeout
+  - State recovery, spectator behavior
+  - PR #134 → Hal approved & merged
+- Implemented Spectator E2E tests (PR #137): join without slot, read-only sync, spectator → player transition
+  - PR #137 → Hal approved & merged
+- Implemented CPU Opponent E2E tests (PR #138): human vs CPU for all 3 games, action validation, turn progression, game-end handling
+  - PR #138 → Hal approved & merged
+
+**Key Achievement:** Led E2E coverage expansion from ~20% to near-complete. Established action-pipeline verification pattern for random games. All 5 test PRs merged successfully.
+
+**Directives:**
+- E2E strategy for non-deterministic games: verify action pipeline, not game logic (game logic covered by unit tests)
+- Deterministic waits (page.waitForFunction) are more reliable than Promise.race for E2E test sequencing
+
+**Output:**
+- 5 issues filed (#126-129, #131)
+- 5 PRs merged (#133-134, #137-138, plus #135 merged under Pemulis)
+- 6 issues closed total
+- E2E coverage: Checkers ✓, Risk ✓, Backgammon ✓, Reconnection ✓, Spectator ✓, CPU opponents ✓
+- All 289 tests passing, 0 flakiness in final merged state

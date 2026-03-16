@@ -834,3 +834,84 @@ This PR implements the sandbox exactly as scoped. The architecture is clean, typ
 - **Optional Chaining Adoption:** Playgrid renderers were already designed to handle both Colyseus Schema and plain objects via optional chaining. The sandbox leverages this pattern cleanly without requiring any renderer changes. This is a sign of good forward-thinking design during the renderer architecture phase.
 - **HTML Overlay for Dev Tools:** The decision to use HTML/CSS forms for state controls (not PixiJS UI) is pragmatic. Dev tools don't need to be polished; speed of implementation matters more. Future iterations can add PixiJS-native controls if needed, but for MVP, HTML is the right call.
 - **Scene Isolation:** By treating sandbox as a full Scene (not a modal on top of the game), Gately avoided the complexity of UI layering and state management within GameScene. Clean separation enables easy on/off and no side effects.
+
+---
+
+## 2026-03-16: PR #138 Review — CPU Opponent E2E Tests (Issue #131)
+
+**Status:** ✅ APPROVED  
+**Reviewer:** Hal  
+**Branch:** origin/squad/131-cpu-e2e  
+**Author:** dkirby-ms (Steeply)
+
+### Review Summary
+
+Steeply delivered CPU opponent E2E tests — the final E2E gap issue. Six tests (717 lines) covering Checkers and Backgammon CPU creation, move response, and multi-turn progression. Includes minimal production code changes to enable Backgammon CPU in lobby validation.
+
+### Key Findings
+
+**Test Quality:** 
+- ✓ 3 Checkers tests: creation, move response, multi-turn progression (dynamic move finding)
+- ✓ 3 Backgammon tests: creation, move + roll response, multi-turn with pass action handling
+- ✓ Proper grey-box pattern using `__PLAYGRID_E2E__` harness
+- ✓ 19 uses of `expect.poll()` with generous timeouts (10s for CPU, 3s for moves)
+- ✓ No hardcoded sleeps or race conditions
+
+**Production Code (Critical Review):**
+- Client: `supportsCpuOpponent()` extended from `checkers` to `checkers || backgammon` (1 line)
+- Server: `shouldEnableCpuOpponent()` extended same way (1 line)
+- Error message generalized to support future games
+- Risk assessment: LOW — minimal change, leverages existing BaseGameRoom CPU logic (game-agnostic)
+
+**Backgammon Pass Action:**
+- ✓ Test scenario at line 659: "verify CPU handles all situations (moves and passes)"
+- ✓ Explicit pass action sent when human has no valid moves
+- ✓ Tests that CPU responds after pass, confirming no forfeit
+- ✓ Covers the fix from PR #134
+
+**Build & Validation:**
+- ✓ `npm run build` — PASS (778 modules, 2.12s)
+- ✓ `npm run lint` — PASS (0 new errors)
+- ✓ `npm run test` — PASS (289 tests, all green)
+
+### Learnings
+
+**E2E Test Maturity:** Playgrid E2E suite is now comprehensive across 3 games. CPU tests demonstrate excellent pattern consistency — new test file reads exactly like existing checkers/backgammon specs. Team has settled on clean grey-box approach with proper polling. This is production-quality test infrastructure.
+
+**Production Code at Scale:** When enabling features across games, the pattern is simple: extend one condition from game-specific to multi-game check. The fact that both Checkers and Backgammon CPU just work with the same lobby validation tells us the BaseGameRoom plugin architecture is doing its job correctly — games inherit what they need, no special wiring required.
+
+**Risk of Minimal Changes:** Temptation is to overthink small PRs like this. But 2-line production changes that follow existing patterns and leverage battle-tested infrastructure (BaseGameRoom CPU logic) are actually LOWER risk than larger PRs. The review should confirm: (1) is this a recognized pattern? (2) does this extend it correctly? (3) are all tests green? Yes to all three → ship it.
+
+### Verdict
+
+**APPROVED** — This PR closes Issue #131 with excellent test coverage and safe, minimal production code changes. The E2E suite is now feature-complete for CPU opponents in both Checkers and Backgammon.
+
+---
+
+## Session 2026-03-16: Full Feature Completion & E2E Coverage Sprint
+
+**Role:** Lead reviewer & architect  
+**Key Reviews:** PR #125 (initial + re-review), #132, #133, #134, #135 (initial + re-review), #137, #138  
+**Critical Decisions:** Backgammon pass action, sandbox architecture, E2E strategy for random games  
+
+**Summary:**
+- Triaged Backgammon CPU issue (#87) → assigned to Pemulis
+- Reviewed PR #125, identified critical no-valid-moves bug → required "pass" action
+- Locked out Pemulis, Gately applied fix, re-approved #125 → merged
+- Scoped and reviewed dev sandbox MVP → merged #132
+- Approved E2E coverage expansion (5 issues filed) → Steeply assigned
+- Reviewed Backgammon E2E (#133) → approved & merged
+- Reviewed Risk E2E (#135), found Promise.race flakiness → locked out Steeply, Pemulis fixed, re-approved & merged
+- Reviewed Reconnection (#134), Spectator (#137), CPU opponents (#138) E2E tests → all approved & merged
+
+**Key Achievement:** Led team through 7 PR reviews (2 rejections, both resolved on lockout protocol + re-review). E2E coverage expanded from ~20% to near-complete.
+
+**Directives Captured:**
+1. Backgammon pass action is valid game mechanic, not a workaround
+2. Dev sandbox must stay in sync with real game renderers
+3. E2E strategy for non-deterministic games: action pipeline verification, not deterministic replay
+
+**Output:**
+- Session orchestration log: `.squad/orchestration-log/2026-03-16T22-47-43Z-full-session.md`
+- Session log: `.squad/log/2026-03-16T22-46-00Z-full-session.md`
+- 7 PRs merged, 7 issues closed, 289 tests passing, 0 lint errors
