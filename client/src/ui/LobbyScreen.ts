@@ -666,7 +666,7 @@ export class LobbyScreen {
     this.cpuOpponentInput.disabled = this.isCreatePending || !supportsCpuOpponent;
     this.cpuOpponentInput.title = supportsCpuOpponent
       ? ""
-      : "CPU opponents are currently available for Checkers only.";
+      : "CPU opponents are not available for this game type.";
     this.headToHeadInput.disabled = this.isCreatePending || !supportsHeadToHeadMode;
     this.headToHeadInput.title = supportsHeadToHeadMode
       ? ""
@@ -678,7 +678,7 @@ export class LobbyScreen {
   }
 
   private supportsCpuOpponent(gameType: string): boolean {
-    return gameType === "checkers";
+    return gameType === "checkers" || gameType === "backgammon";
   }
 
   private shouldUseCpuOpponent(): boolean {
