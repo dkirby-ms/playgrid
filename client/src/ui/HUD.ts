@@ -1,5 +1,6 @@
 import type { Room } from "@colyseus/sdk";
 import type { GameRendererHUDStatus } from "../renderers/GameRenderer";
+import { GAME_LAYOUT_CHANGE_EVENT } from "./gameLayout";
 
 export interface HUDPlayer {
   userId: string;
@@ -20,9 +21,6 @@ export type HUDEvent = { type: "leave" } | { type: "chat_toggle" };
 type HUDEventCallback = (event: HUDEvent) => void;
 
 const HUD_EDGE_OFFSET = 16;
-const GAME_SIDEBAR_WIDTH = 304;
-const GAME_SIDEBAR_RIGHT_OFFSET = 16;
-const GAME_SIDEBAR_BREAKPOINT = 768;
 
 export class HUD {
   private readonly container: HTMLElement;
@@ -45,7 +43,6 @@ export class HUD {
   private status: GameRendererHUDStatus | null = null;
   private timerIntervalId: number | null = null;
   private isChatOpen = false;
-  private isSidebarActive = false;
 
   constructor() {
     this.container = this.createContainer();
@@ -69,6 +66,8 @@ export class HUD {
     );
 
     document.body.appendChild(this.container);
+    window.addEventListener("resize", () => this.applyLayout());
+    window.addEventListener(GAME_LAYOUT_CHANGE_EVENT, () => this.applyLayout());
     this.applyLayout();
   }
 
@@ -132,29 +131,27 @@ export class HUD {
     this.render();
   }
 
-  setSidebarActive(active: boolean): void {
-    this.isSidebarActive = active;
+  setSidebarActive(_active: boolean): void {
     this.applyLayout();
   }
 
   private applyLayout(): void {
-    const sidebarInset = this.getSidebarInset();
-    const hudRightOffset = HUD_EDGE_OFFSET + sidebarInset;
+    const gameContainer = document.getElementById("game-container");
+    const gameBounds = gameContainer?.getBoundingClientRect();
+    const rightInset = gameBounds
+      ? Math.max(HUD_EDGE_OFFSET, window.innerWidth - gameBounds.right + HUD_EDGE_OFFSET)
+      : HUD_EDGE_OFFSET;
+    const availableWidth = gameBounds
+      ? Math.max(0, gameBounds.width - (HUD_EDGE_OFFSET * 2))
+      : Math.max(0, window.innerWidth - 152);
+    const statusWidth = Math.min(300, availableWidth);
 
-    this.statusPanel.style.right = `${hudRightOffset}px`;
-    this.statusPanel.style.width = sidebarInset > 0
-      ? `min(300px, calc(100vw - ${152 + sidebarInset}px))`
-      : "min(300px, calc(100vw - 152px))";
-    this.chatToggle.style.right = `${hudRightOffset}px`;
-    this.chatPlaceholder.style.right = `${hudRightOffset}px`;
-  }
-
-  private getSidebarInset(): number {
-    if (!this.isSidebarActive || window.innerWidth < GAME_SIDEBAR_BREAKPOINT) {
-      return 0;
-    }
-
-    return GAME_SIDEBAR_WIDTH + GAME_SIDEBAR_RIGHT_OFFSET;
+    this.statusPanel.style.right = `${rightInset}px`;
+    this.statusPanel.style.width = `${statusWidth}px`;
+    this.leaveButton.style.right = `${rightInset}px`;
+    this.chatToggle.style.right = `${rightInset}px`;
+    this.chatPlaceholder.style.right = `${rightInset}px`;
+    this.chatPlaceholder.style.maxWidth = `${Math.max(0, availableWidth)}px`;
   }
 
   private createContainer(): HTMLElement {
@@ -182,7 +179,7 @@ export class HUD {
       display: "flex",
       flexDirection: "column",
       gap: "10px",
-      width: "min(300px, calc(100vw - 152px))",
+      width: "300px",
       padding: "12px 14px",
       background: "rgba(16, 16, 29, 0.92)",
       border: "1px solid rgba(126, 207, 255, 0.22)",

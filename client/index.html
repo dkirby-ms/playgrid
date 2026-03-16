@@ -68,6 +68,15 @@
         --font-lg: 1.125rem;
         --font-xl: 1.25rem;
         --font-2xl: 1.5rem;
+
+        --game-sidebar-width: 304px;
+        --game-sidebar-gap: 16px;
+        --game-sidebar-edge-offset: 16px;
+        --game-sidebar-layout-reserve: calc(
+          var(--game-sidebar-width) +
+          var(--game-sidebar-gap) +
+          var(--game-sidebar-edge-offset)
+        );
       }
 
       /* === Utility Classes === */
@@ -124,8 +133,22 @@
         height: 100%;
       }
 
+      #game-container {
+        transition: width 220ms ease;
+      }
+
+      body.game-layout-sidebar-active #game-container {
+        width: max(0px, calc(100% - var(--game-sidebar-layout-reserve)));
+      }
+
       #game-container canvas {
         display: block;
+      }
+
+      @media (max-width: 767px) {
+        body.game-layout-sidebar-active #game-container {
+          width: 100%;
+        }
       }
 
       /* Lobby Dashboard Styles */

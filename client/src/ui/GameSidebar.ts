@@ -1,3 +1,8 @@
+import {
+  GAME_LAYOUT_CHANGE_EVENT,
+  GAME_LAYOUT_SIDEBAR_ACTIVE_CLASS,
+} from "./gameLayout";
+
 const GAME_SIDEBAR_STYLE_ID = "playgrid-game-sidebar-styles";
 const VISIBLE_CLASS = "is-visible";
 
@@ -6,7 +11,7 @@ export function escapeHtml(value: unknown): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
+    .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
 
@@ -40,8 +45,8 @@ function injectStyles(): void {
     .game-sidebar {
       position: fixed;
       top: 72px;
-      right: 16px;
-      width: min(304px, calc(100vw - 32px));
+      right: var(--game-sidebar-edge-offset, 16px);
+      width: min(var(--game-sidebar-width, 304px), calc(100vw - 32px));
       max-height: calc(100vh - 88px);
       display: flex;
       flex-direction: column;
@@ -281,6 +286,7 @@ function injectStyles(): void {
 export class GameSidebar {
   private readonly container: HTMLDivElement;
   private readonly panels = new Map<string, HTMLDivElement>();
+  private isVisible = false;
 
   constructor() {
     injectStyles();
@@ -353,13 +359,17 @@ export class GameSidebar {
   }
 
   show(): void {
+    this.isVisible = true;
     this.container.classList.add(VISIBLE_CLASS);
     this.container.setAttribute("aria-hidden", "false");
+    this.syncDocumentLayout();
   }
 
   hide(): void {
+    this.isVisible = false;
     this.container.classList.remove(VISIBLE_CLASS);
     this.container.setAttribute("aria-hidden", "true");
+    this.syncDocumentLayout();
   }
 
   destroy(): void {
@@ -380,5 +390,10 @@ export class GameSidebar {
 
     const contentEl = panel.querySelector(".sidebar-panel-content");
     return contentEl instanceof HTMLDivElement ? contentEl : null;
+  }
+
+  private syncDocumentLayout(): void {
+    document.body.classList.toggle(GAME_LAYOUT_SIDEBAR_ACTIVE_CLASS, this.isVisible);
+    window.dispatchEvent(new Event(GAME_LAYOUT_CHANGE_EVENT));
   }
 }
