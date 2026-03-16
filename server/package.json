@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@colyseus/core": "^0.17.32",
+    "@colyseus/schema": "^4.0.19",
     "@colyseus/ws-transport": "^0.17.9",
     "@eschaton/shared": "file:../shared",
     "applicationinsights": "^3.14.0",
