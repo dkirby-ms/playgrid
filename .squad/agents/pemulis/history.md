@@ -57,6 +57,12 @@
 - `BaseGameRoom` can safely drive bot turns by scheduling a 200ms `clock.setTimeout()` whenever `state.currentTurn` belongs to the CPU, then replaying the normal action-validation/action-handler/game-end pipeline through a synthetic client object.
 - The greedy MVP heuristic in `server/src/games/checkers/CpuOpponent.ts` is deterministic: captures win first, then king promotions, then moves that land closer to promotion. Regression coverage lives in `cpuOpponent.test.ts`, `BaseGameRoom.test.ts`, and `lobby-pregame.test.ts`.
 
+### Shared-device controller lifecycle (2026-03-16)
+
+- Head-to-head mode reuses one real `sessionId` to control a synthetic second `PlayerInfo`, so connectivity must be tracked at the controller level instead of treating the synthetic seat as independently online.
+- When the controller disconnects, `BaseGameRoom` should immediately mark any controller-owned synthetic participants disconnected as well, then restore them only if the controller successfully reconnects.
+- Permanent controller leaves in head-to-head mode should never award a forfeit to that synthetic seat; the correct cleanup path is a no-winner shutdown (`draw` / all players disconnected) followed by normal room disposal.
+
 ## Cross-Agent Update — Issue #1 Closed, PR #47 Open (2026-03-14)
 
 **From:** Joelle (Community/DevRel)  

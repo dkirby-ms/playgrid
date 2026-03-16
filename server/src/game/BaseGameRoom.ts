@@ -121,6 +121,7 @@ export class BaseGameRoom extends Room {
     if (existingPlayer) {
       const wasDisconnected = !existingPlayer.isConnected;
       existingPlayer.isConnected = true;
+      this.setControllerOwnedConnection(client.sessionId, true);
 
       if (wasDisconnected) {
         this.resumeTurnTimerFor(client.sessionId);
@@ -186,6 +187,7 @@ export class BaseGameRoom extends Room {
     }
 
     player.isConnected = false;
+    this.setControllerOwnedConnection(client.sessionId, false);
     trackEvent("player_disconnected", {
       gameType: this.plugin.name,
       roomId: this.roomId,
@@ -204,6 +206,7 @@ export class BaseGameRoom extends Room {
       try {
         await this.allowReconnection(client, this.reconnectionTimeout);
         player.isConnected = true;
+        this.setControllerOwnedConnection(client.sessionId, true);
         return;
       } catch {
         await this.handleReconnectionTimeout(client.sessionId);
@@ -213,18 +216,49 @@ export class BaseGameRoom extends Room {
 
     this.plugin.lifecycle.onPlayerLeave?.(this.state, client.sessionId);
     this.turnManager?.removePlayer(client.sessionId);
+    this.releaseControllerOwnedParticipants(client.sessionId);
     this.syncTurnState();
 
     if (this.state.phase !== "playing") {
+      if (this.headToHeadMode && !this.hasConnectedController()) {
+        await this.disconnect();
+      }
+
       return;
     }
 
     const remainingPlayers = this.getConnectedParticipants();
+    if (remainingPlayers.length === 0) {
+      await this.endGame({
+        type: "draw",
+        scores: {},
+        metadata: {
+          consented: code === CloseCode.CONSENTED,
+          disconnectedPlayerId: client.sessionId,
+          reason: "all-players-disconnected",
+        },
+      });
+      return;
+    }
+
     if (remainingPlayers.length !== 1) {
       return;
     }
 
     const winner = remainingPlayers[0];
+    if (winner.controllerSessionId === client.sessionId) {
+      await this.endGame({
+        type: "draw",
+        scores: {},
+        metadata: {
+          consented: code === CloseCode.CONSENTED,
+          disconnectedPlayerId: client.sessionId,
+          reason: "controller-owned-opponent",
+        },
+      });
+      return;
+    }
+
     await this.endGame({
       type: "forfeit",
       winnerId: winner.sessionId,
@@ -620,6 +654,32 @@ export class BaseGameRoom extends Room {
 
   private getConnectedParticipants() {
     return this.getParticipatingPlayers().filter((player) => player.isConnected);
+  }
+
+  private getControllerOwnedParticipants(controllerSessionId: string) {
+    return this.getParticipatingPlayers().filter(
+      (player) => player.sessionId !== controllerSessionId
+        && player.controllerSessionId === controllerSessionId,
+    );
+  }
+
+  private setControllerOwnedConnection(controllerSessionId: string, isConnected: boolean) {
+    for (const player of this.getControllerOwnedParticipants(controllerSessionId)) {
+      player.isConnected = isConnected;
+    }
+  }
+
+  private releaseControllerOwnedParticipants(controllerSessionId: string) {
+    for (const player of this.getControllerOwnedParticipants(controllerSessionId)) {
+      this.plugin.lifecycle.onPlayerLeave?.(this.state, player.sessionId);
+      this.turnManager?.removePlayer(player.sessionId);
+    }
+  }
+
+  private hasConnectedController() {
+    return this.getConnectedParticipants().some(
+      (player) => player.controllerSessionId === player.sessionId,
+    );
   }
 
   private shouldStartGame() {
