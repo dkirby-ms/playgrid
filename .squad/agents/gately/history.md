@@ -342,6 +342,28 @@ function getContinentBonus(continent: string): number { ... }
 - `client/src/ui/LobbyScreen.ts` should keep game tile imagery as simple path mapping (`/game-thumbnails/*.jpg`) and render real `<img>` elements, while `client/index.html` owns the sizing contract with `object-fit: cover` for consistent 4:3 crops.
 - The existing `.game-tile-image::before` gradient remains the right place for text contrast, so artwork can change without re-tuning every image.
 
+### 2026-03-16: Checkers renderer redesign pass
+
+- `client/src/renderers/CheckersRenderer.ts` should source board, piece, selection, and king colors from `DesignTokens.ts`; when a renderer-specific alias is missing (like `BOARD_LIGHT_SQUARE`, `BOARD_DARK_SQUARE`, or `KING_MARKER`), add it to the token file instead of reintroducing local hex constants.
+- The Checkers redesign reads best in PixiJS when the selected piece carries the main affordance: a violet ring plus slight scale shift on the piece, violet destination markers on target squares, and hover emphasis only on actionable pieces.
+- Captured-piece feedback is clearer as a small off-board tray of mini rendered pieces than as counts alone, because it keeps the board language consistent without touching game logic.
+- Verified with `npm run build`; repo-wide lint still has unrelated pre-existing errors in `client/src/ui/GameSidebar.ts` and redesign doc pages, while targeted lint on `client/src/renderers/CheckersRenderer.ts` and `client/src/renderers/DesignTokens.ts` passes.
+
+### 2026-03-16: Risk renderer redesign pass
+
+- `client/src/renderers/RiskRenderer.ts` now follows the redesign language with a token-driven dark slate board, glass HUD banner, continent pills, and territory cards instead of raw continent/player hex constants.
+- Risk ownership colors should always resolve from `DesignTokens.ts` via `PLAYER_COLORS` / `PLAYER_COLOR_ORDER`; continent accents can reuse that same six-color palette instead of inventing a second Risk-only color system.
+- The clearest Pixi affordances for Risk were: hover scale plus light sheen, violet selection ring, player-color source glow during attacks, red-tinted attack targets, and white army counts with dark drop shadow inside a neutral badge.
+- Sidebar player rows benefit from the same palette mapping and should include cards/territory/army counts inline so the HTML sidebar stays visually aligned with the Pixi board without changing any room message flow.
+- Verified with `npm run build` from the repo root after updating `client/src/renderers/RiskRenderer.ts` and `client/src/renderers/DesignTokens.ts`.
+
+### 2026-03-16: Backgammon renderer redesign pass
+
+- `client/src/renderers/BackgammonRenderer.ts` should consume board, point, home-board, dice-tray, and checker gradients from `DesignTokens.ts`; if the redesign needs a new backgammon surface or alpha, add it to the token file instead of reintroducing renderer-local colors.
+- The current backgammon room logic still uses `BLACK` and `RED`, but the redesign reads best by mapping the `RED` side to white/light checker visuals in the renderer only, leaving move validation and server messages untouched.
+- Selection and hover feedback are clearest when the violet affordance sits on the top checker in a stack, while valid destinations stay as semi-transparent point markers and the board keeps separate frame, center-strip, and home-board treatments.
+- Verified with `npm run build`.
+
 ## 2026-03-15: Cross-Agent Update — PR #83 Revision Complete (Lockout Protocol)
 
 **From:** Scribe (on behalf of Marathe)  
@@ -986,3 +1008,104 @@ Risk game plugin (rendering phase) now has a stable HUD contract: implement `get
 - `.squad/orchestration-log/2026-03-15T21-26-56Z-{gately-9,gately-10,pemulis-11}.md` — Individual agent outcomes
 - `.squad/log/2026-03-15T21-26-56Z-features-batch-2.md` — Session summary
 
+
+---
+
+## Learnings
+
+### Checkers Piece Visual Enhancement (2025)
+
+**File Path:** `client/src/renderers/CheckersRenderer.ts`
+
+**Architecture Pattern: PixiJS v8 FillGradient for 3D Effects**
+
+Replaced flat-colored checkers pieces with polished tactile-looking pieces using PixiJS v8 `FillGradient` API with radial gradients. Key implementation details:
+
+1. **Gradient Creation Efficiency:** Created gradients ONCE before the piece loop, then selected the appropriate gradient (black or red) inside the loop based on piece type. This avoids recreating gradient objects for every piece.
+
+2. **3D Dome Effect:** Used radial gradients with offset center point `{ x: 0.42, y: 0.38 }` to simulate lighting from upper-left, creating a dome/sphere appearance. Three color stops: highlight (offset 0), base color (offset 0.5), shadow (offset 1).
+
+3. **Drop Shadow:** Added subtle drop shadow by drawing a slightly offset (centerX + 2, centerY + 3) and larger (radius * 1.05) dark circle behind each piece with 35% alpha.
+
+4. **Specular Highlight Ring:** Added white semi-transparent ring at top of piece (centerY - pieceRadius * 0.15) with 60% of piece radius for specular highlight effect.
+
+5. **King Marker Enhancement:** Replaced plain "K" text with crown emoji "♛" and added drop shadow effect to the text for better visual depth.
+
+6. **Color Constants:** Used existing constants (`BLACK_PIECE_COLOR`, `BLACK_PIECE_HIGHLIGHT`, `BLACK_PIECE_SHADOW`, etc.) and converted to CSS hex strings via `toCssHexColor()` helper for gradient colorStops compatibility.
+
+**User Preference:** Prioritize visual polish and tactile feel in game pieces. Gradient effects and drop shadows preferred over flat colors.
+
+**Pattern Reusability:** This FillGradient radial gradient pattern can be applied to other game pieces (Risk armies, Connect4 pieces, etc.) for consistent visual quality across games.
+
+## Cross-Agent Update — Checkers Piece Visual Polish (2026-03-15T23:36:21Z)
+
+**From:** Squad Scribe  
+**Event:** Agent completed — CheckersRenderer enhanced with 3D gradient pieces
+
+**What Happened:**
+
+Gately (Game Dev) completed visual enhancement to checkers pieces:
+
+- Replaced flat-colored pieces with PixiJS v8 `FillGradient` radial gradients
+- Added 3D dome effect with offset center `{ x: 0.42, y: 0.38 }`
+- Added drop shadow layer for depth perception
+- Added specular highlight ring for shininess
+- Replaced "K" text king markers with crown emoji (♛)
+- Pattern optimized: gradients created once outside loop, selected inside
+
+**Decision Captured:**
+
+**PixiJS FillGradient Pattern for Game Piece Rendering** — Approved. This pattern is now the standard for all circular game pieces (Risk armies, Connect4, Go stones, Poker chips).
+
+**Validation:**
+
+- ✅ Build passes (`npm run build && npm run lint && npm run test`)
+- ✅ Pieces render with 3D tactile appearance
+- ✅ No performance regressions
+
+**For Your Future Work:**
+
+Risk renderer rendering phase can now adopt this pattern for armies/territories. Geometry applies to any circular game element.
+
+**Session Artifacts:**
+
+- `.squad/orchestration-log/2026-03-15T23-36-21Z-gately.md` — Orchestration outcome
+- `.squad/log/2026-03-15T23-36-21Z-checkers-piece-gradients.md` — Session summary
+- `.squad/decisions.md` — FillGradient pattern decision merged
+
+### 2026-03-16: Risk HUD state sync must fail soft
+
+- `client/src/renderers/RiskRenderer.ts` can render HUD text before Colyseus finishes syncing `currentTurn` and `turnPhase`, so text helpers must never forward those fields directly into Pixi `Text.text`.
+- Prefer safe helper defaults over an `updateHUD()` early return here: blank labels clear the HUD during hydration instead of leaving stale status text from an older frame or session.
+- Pixi's `addChild` deprecation warning in this renderer comes from `graphic.addChild(armyText)` and `graphic.addChild(nameText)` inside `redrawMap()`, where `Text` children are attached directly to `Graphics` territory nodes.
+- Validation for this fix: `npm run build` and `npm run test` both passed after the HUD safeguards landed.
+
+---
+
+## 2026-03-16: Phase 4 Design Token Unification — Session Complete
+
+**From:** Squad Scribe  
+**Event:** Three-renderer visual redesign completed under shared DesignTokens system
+
+**Deliverables:**
+- **Checkers:** Shape-marker king indicators (concentric rings), glossy piece gradients, violet selection affordances, capture tray visual feedback
+- **Backgammon:** Dark wood/felt board textures, domed piece rendering, white checker display (RED side), preserved BLACK/RED game logic
+- **Risk:** Six-player palette from DesignTokens, safe HUD defaults during state hydration, attack source/target visual feedback
+
+**Key Decisions Implemented:**
+1. **Shared Token System:** All renderers use `DesignTokens.ts` as single source of truth (no drift)
+2. **Sidebar Separation:** `GameSidebar.ts` decoupled from `HUD.ts` for game-specific customization
+3. **Safe Defaults:** HUD text helpers return empty values when state is incomplete (fix for crash on join)
+
+**Cross-Agent Coordination:**
+- Mario established lobby/sidebar CSS foundation (dark zinc/violet theme, glass-morphism panels)
+- Joelle updated README with games list, tech stack, team roster
+- Marathe integrated GitHub Release publishing into deploy-prod.yml (post-deployment verification)
+
+**Files Affected:**
+- `client/src/renderers/CheckersRenderer.ts`, `BackgammonRenderer.ts`, `RiskRenderer.ts`
+- `client/src/renderers/DesignTokens.ts` (new, centralized colors)
+- `client/src/ui/GameSidebar.ts` (new, sidebar component)
+- Related decision entries merged to `.squad/decisions.md`
+
+**Status:** Phase 4 complete. Design system established. Ready for Phase 5 (future: Scrabble, Hungry Hippos, Catan — currently out of scope).

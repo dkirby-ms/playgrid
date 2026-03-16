@@ -2214,3 +2214,186 @@ User request — captured for team memory. E2E coverage ensures shipped games wo
 
 Phase 2 and Phase 3 games (Dominoes, Backgammon, Risk) must include E2E tests covering core gameplay flows.
 
+
+---
+
+## Session: Checkers Piece Visual Polish (2026-03-15)
+
+### Gately: PixiJS FillGradient Pattern for Game Piece Rendering
+
+**Status:** Approved  
+**Date:** 2026-03-15  
+
+Adopted PixiJS v8 `FillGradient` with radial gradients as the standard pattern for rendering game pieces with 3D depth effects.
+
+**Implementation Pattern:**
+1. **Radial gradient with offset center** — Center point at `{ x: 0.42, y: 0.38 }` simulates lighting from upper-left
+2. **Three-stop gradient** — Highlight (0), base color (0.5), shadow (1) for dome effect
+3. **Drop shadow layer** — Slight offset behind main piece for depth
+4. **Specular highlight ring** — White semi-transparent circle at top for shininess
+5. **Gradient reuse** — Create gradients once outside loops for performance
+
+**Rationale:**
+- Visual polish improves user experience and perceived quality
+- Pattern is reusable across all game types (Risk, Connect4, etc.)
+- PixiJS v8 native support ensures good performance
+- Consistent visual language across game pieces
+
+**Implications:**
+- Risk armies/territories can adopt this pattern
+- Connect4 pieces, Go stones, Poker chips benefit from same approach
+- Pattern should be documented in rendering guidelines for future consistency
+- Could extract to shared utility function if widely adopted
+
+**Related Files:**
+- `client/src/renderers/CheckersRenderer.ts` — Reference implementation
+
+**Tags:** #rendering #pixi-js #game-pieces #visual-polish #pattern
+
+---
+
+## Session: Phase 4 Design Unification (2026-03-16)
+
+### User Directive: Phase 5 Out of Scope
+
+**Status:** Confirmed  
+**Date:** 2026-03-16  
+**Author:** dkirby-ms (via Copilot)
+
+No new game implementations. Phase 5 (Scrabble, Hungry Hippos, Catan) is out of scope. The design references for those games exist but are for future consideration only.
+
+**Why:** User request — captured for team memory
+
+---
+
+### Gately: Checkers Redesign Uses Shape Markers and Capture Trays
+
+**Status:** Implemented  
+**Date:** 2026-03-16  
+**Author:** Gately  
+**Context:** Aligning `client/src/renderers/CheckersRenderer.ts` with the redesign and shared design-token system.
+
+Use token-driven shape rendering for the redesigned Checkers board: kings are marked with a yellow concentric ring instead of a crown glyph, and captured pieces are shown as small off-board rendered pips instead of numeric counts alone.
+
+**Rationale:**
+- Removes typography dependence from king state, so the marker stays legible across browsers, fonts, and future Pixi text changes.
+- Keeps the board language consistent by reusing the same piece gradients and shadows for captured-piece feedback.
+- Concentrates interaction feedback on the piece itself (selection ring, hover lift) while keeping destination feedback on squares, which matches the redesign's affordance hierarchy.
+
+**Files Affected:**
+- `client/src/renderers/CheckersRenderer.ts`
+- `client/src/renderers/DesignTokens.ts`
+
+---
+
+### Gately: Backgammon Redesign Keeps Logic Colors but Renders White Checkers
+
+**Status:** Implemented  
+**Date:** 2026-03-16  
+**Author:** Gately  
+**Context:** Aligning `client/src/renderers/BackgammonRenderer.ts` with the redesign reference and shared `DesignTokens.ts` system.
+
+Keep the existing backgammon game logic keyed on `BLACK` and `RED`, but render the `RED` side as white/light checkers in the Pixi renderer and label player-facing UI accordingly.
+
+**Rationale:**
+- Preserves the existing server/client move logic, filtered state shape, and interaction handlers without a risky game-rules refactor.
+- Matches the redesign reference, which is visually organized around black-vs-white pieces instead of black-vs-red.
+- Lets `DesignTokens.ts` own the visual mapping cleanly, so future renderer passes can reuse the same piece gradients, home-board surfaces, and selection affordances.
+
+**Files Affected:**
+- `client/src/renderers/BackgammonRenderer.ts`
+- `client/src/renderers/DesignTokens.ts`
+
+---
+
+### Gately: Risk Renderer Uses Shared Six-Player Palette
+
+**Status:** Implemented  
+**Date:** 2026-03-16  
+**Author:** Gately  
+**Context:** Risk visual redesign in `client/src/renderers/RiskRenderer.ts`
+
+Use `client/src/renderers/DesignTokens.ts` as the single source of truth for Risk ownership, HUD, and board accents, with continent labels reusing the shared six-player palette instead of defining a separate Risk-only color table.
+
+**Rationale:**
+- Keeps Risk visually aligned with the redesign system and the documented player palette in `docs/design-system.md`.
+- Prevents future drift between React design references and Pixi renderers by making ownership colors, borders, and HUD accents resolve through the same shared tokens.
+- Lets renderer interaction states stay readable: player-color source glow for attack origin, red tint for attack targets, and violet for generic selection/valid-state emphasis.
+
+**Files Affected:**
+- `client/src/renderers/RiskRenderer.ts`
+- `client/src/renderers/DesignTokens.ts`
+
+**Follow-Up Note:**
+If other board renderers are redesigned, add any missing gradient helpers or aliases to `DesignTokens.ts` first so renderer files can stay free of local color constants.
+
+---
+
+### Gately: Risk HUD Safe Defaults During State Hydration
+
+**Status:** Implemented  
+**Date:** 2026-03-16  
+**Author:** Gately  
+**Context:** Fixing the join-time Risk renderer crash in `client/src/renderers/RiskRenderer.ts`
+
+Keep `updateHUD()` active during Risk state hydration, but require the HUD text helpers to return safe empty values whenever `currentTurn`, `turnPhase`, or the local session id are not ready yet.
+
+**Rationale:**
+- Prevents Pixi `Text.text` from receiving `undefined` during the initial Colyseus sync window.
+- Clears the HUD cleanly while state is incomplete instead of freezing whatever labels happened to be on screen previously.
+- Localizes the sync-tolerance logic in `getStatusLabel()` and `getPhaseLabel()` without changing the rest of the button/HUD flow.
+
+**Files Affected:**
+- `client/src/renderers/RiskRenderer.ts`
+
+**Follow-Up Note:**
+Pixi's v8 deprecation warning still comes from `graphic.addChild(armyText)` and `graphic.addChild(nameText)` in `redrawMap()`. Those text nodes should move under `Container` parents when the renderer gets a broader rendering cleanup pass.
+
+---
+
+### Marathe: GitHub Release Publishing in Prod Deploy Workflow
+
+**Status:** Implemented  
+**Date:** 2026-03-16  
+**Decider:** Marathe (DevOps/CI-CD)
+
+**Context:** The production deployment workflow triggers on `v*` tags and deploys to Azure Container Apps, but did not create GitHub Releases. This required manual release creation after successful deployments.
+
+**Decision:** Integrate release publishing into `deploy-prod.yml` rather than creating a separate release workflow. The release step is added after the health check and before Discord notification, with a conditional to only run on tag pushes (`if: github.ref_type == 'tag'`).
+
+**Rationale:**
+- **Post-deployment verification:** Releases should only be created after the deployment passes health checks. A separate workflow would run immediately on tag push, potentially creating releases for failed deployments.
+- **Atomic operation:** The workflow now represents a complete atomic operation: deploy → verify → release → notify.
+- **Clean conditional handling:** Using `if: github.ref_type == 'tag'` cleanly handles manual deploys via `workflow_dispatch` (which don't have tags and shouldn't create releases).
+- **Logical coupling:** A release represents a deployed version. The release step should be tightly coupled with the deployment it represents.
+
+**Implementation Details:**
+- Updated permissions from `contents: read` to `contents: write`
+- Uses gh CLI with `--generate-notes` for automatic changelog
+- Added `--latest` flag to mark as latest release on repo homepage
+
+**Files Affected:**
+- `.github/workflows/deploy-prod.yml`
+
+---
+
+### Mario: Checkers UX Review Priorities
+
+**Status:** Proposed  
+**Date:** 2026-03-16  
+**Author:** Mario (UX Consultant)
+
+Prioritize clarity fixes over further visual polish in Checkers. The next UX pass should first eliminate HUD overlap, strengthen move affordances, and introduce responsive HUD compaction before adding more decorative rendering treatment.
+
+**Why:**
+1. The shared HUD and the Leave Game button currently compete for the same top-right space, which breaks the intended "one panel, one mental model" direction.
+2. Move feedback relies on a small green dot and cursor change; it works, but it asks players to inspect the board instead of instantly reading it.
+3. Fixed top/bottom board reservations make narrow screens feel underused because the board is pushed down even when vertical room is available.
+4. The new gradient pieces are attractive, but the `♛` king marker is still typography-dependent and less robust than a shape-led indicator.
+
+**Implementation Direction:**
+- Keep the shared HTML HUD for status/player copy, but guarantee a no-overlap layout with the Leave Game button.
+- Upgrade move feedback to a two-layer system: persistent selected state + larger destination affordance + hover preview on actionable squares.
+- On narrow viewports, compact or relocate HUD chrome so the board can sit closer to the top safe area.
+- Prefer a shape-based king marker (double ring or vector crown badge) over the current text glyph.
+

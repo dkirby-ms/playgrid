@@ -6,11 +6,27 @@
 |-----------|----------|----------|
 | Architecture & scope | Hal | Project structure, tech decisions, priorities |
 | Rendering & UI | Gately | Canvas rendering, game loop, input handling |
+| UX & Design | Mario | Layout, color, usability, interaction design |
 | Game systems | Pemulis | Simulation, AI, world generation, combat |
 | CI/CD & DevOps | Marathe | Workflows, deployment, build pipelines |
 | Testing | Steeply | Tests, edge cases, performance checks |
 | Community & Discord | Joelle | Discord, README, release notes |
 | Session logging | Scribe | Automatic |
+| Autonomous issues | @copilot | Single-file fixes, tests, docs, small features |
+
+## @copilot Capability Profile
+
+| Capability | Fit | Notes |
+|------------|-----|-------|
+| Single-file bug fixes | 🟢 | Ideal — scoped, testable |
+| Add/update tests | 🟢 | Vitest unit tests, Playwright e2e |
+| Documentation updates | 🟢 | README, JSDoc, inline comments |
+| Small features (1-2 files) | 🟡 | Works if requirements are clear in the issue |
+| Multi-file refactors | 🟡 | Can work but needs detailed issue description |
+| Architecture changes | 🔴 | Needs squad agent with full context |
+| PixiJS rendering work | 🔴 | Needs visual judgment — route to Gately |
+| Colyseus game logic | 🟡 | Simple state changes OK; complex interactions need Pemulis |
+| CI/CD & infra | 🔴 | Route to Marathe |
 
 ## PR Review Gates
 
@@ -29,6 +45,8 @@
 | `squad:steeply` | Testing | Steeply |
 | `squad:marathe` | CI/CD, infra | Marathe |
 | `squad:joelle` | Community, docs | Joelle |
+| `squad:mario` | UX design, layout, usability | Mario |
+| `squad:copilot` | Single-file fixes, tests, docs | @copilot |
 
 ## Rules
 

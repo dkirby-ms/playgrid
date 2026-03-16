@@ -1,0 +1,12 @@
+{
+  "universe": "Infinite Jest",
+  "agents": [
+    { "persistent_name": "Hal", "role": "Lead", "created_at": "2026-03-14T01:09:23Z", "legacy_named": true, "status": "active" },
+    { "persistent_name": "Gately", "role": "Game Dev", "created_at": "2026-03-14T01:09:23Z", "legacy_named": true, "status": "active" },
+    { "persistent_name": "Pemulis", "role": "Systems Dev", "created_at": "2026-03-14T01:09:23Z", "legacy_named": true, "status": "active" },
+    { "persistent_name": "Steeply", "role": "Tester", "created_at": "2026-03-14T01:09:23Z", "legacy_named": true, "status": "active" },
+    { "persistent_name": "Marathe", "role": "DevOps / CI-CD", "created_at": "2026-03-14T01:09:23Z", "legacy_named": true, "status": "active" },
+    { "persistent_name": "Joelle", "role": "Community / DevRel", "created_at": "2026-03-14T01:09:23Z", "legacy_named": true, "status": "active" },
+    { "persistent_name": "Mario", "role": "UX Consultant", "created_at": "2026-03-15T23:33:39Z", "legacy_named": false, "status": "active" }
+  ]
+}

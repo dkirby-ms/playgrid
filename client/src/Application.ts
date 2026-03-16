@@ -29,6 +29,7 @@ import {
 import { ReconnectOverlay } from "./ui/ReconnectOverlay";
 import { GameOverOverlay } from "./ui/GameOverOverlay";
 import { JOIN_GAME, type JoinGamePayload, type LobbyEvent } from "./ui/LobbyScreen";
+import { GAME_LAYOUT_CHANGE_EVENT } from "./ui/gameLayout";
 
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
@@ -96,6 +97,9 @@ export class PlaygridApp {
   private lobbyPlayerId = "";
   private activeGameType: string | null = null;
   private isDisplayNameUpdatePending = false;
+  private gameContainer: HTMLElement | null = null;
+  private gameContainerResizeObserver: ResizeObserver | null = null;
+  private resizeSyncFrameId: number | null = null;
   private readonly rendererRegistry = rendererRegistry;
   private readonly lobbyScene = new LobbyScene((event) => {
     void this.handleLobbyEvent(event);
@@ -117,6 +121,7 @@ export class PlaygridApp {
 
   async init(container: HTMLElement): Promise<void> {
     const gameContainer = this.getGameContainer(container);
+    this.gameContainer = gameContainer;
 
     this.createVersionFooter();
 
@@ -147,6 +152,9 @@ export class PlaygridApp {
     this.gameOverOverlay = new GameOverOverlay();
     window.addEventListener("beforeunload", () => this.persistSessionForRefresh());
     window.addEventListener("pagehide", () => this.persistSessionForRefresh());
+    window.addEventListener("resize", () => this.scheduleViewportSync());
+    window.addEventListener(GAME_LAYOUT_CHANGE_EVENT, () => this.scheduleViewportSync());
+    this.observeGameContainer(gameContainer);
     this.layoutStatusText();
 
     this.pixiApp.ticker.add(() => {
@@ -425,6 +433,7 @@ export class PlaygridApp {
     this.sceneManager.resize(this.pixiApp.screen.width, this.pixiApp.screen.height);
     this.pixiApp.stage.addChild(this.statusText);
     this.layoutStatusText();
+    this.scheduleViewportSync();
   }
 
   private setStatus(message: string, options: StatusOptions = {}): void {
@@ -737,6 +746,36 @@ export class PlaygridApp {
     this.statusText.y = STATUS_MARGIN;
     this.statusText.visible =
       this.statusText.text.length > 0 && (!this.gameRoom || this.statusVisibleInGame);
+  }
+
+  private observeGameContainer(gameContainer: HTMLElement): void {
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    this.gameContainerResizeObserver?.disconnect();
+    this.gameContainerResizeObserver = new ResizeObserver(() => {
+      this.scheduleViewportSync();
+    });
+    this.gameContainerResizeObserver.observe(gameContainer);
+  }
+
+  private scheduleViewportSync(): void {
+    if (this.resizeSyncFrameId !== null) {
+      window.cancelAnimationFrame(this.resizeSyncFrameId);
+    }
+
+    this.resizeSyncFrameId = window.requestAnimationFrame(() => {
+      this.resizeSyncFrameId = null;
+
+      if (!this.pixiApp || !this.sceneManager || !this.gameContainer) {
+        return;
+      }
+
+      this.pixiApp.resize();
+      this.sceneManager.resize(this.pixiApp.screen.width, this.pixiApp.screen.height);
+      this.layoutStatusText();
+    });
   }
 
   private getGameContainer(container: HTMLElement): HTMLElement {

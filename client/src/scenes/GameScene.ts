@@ -1,8 +1,8 @@
 import type { Room } from "@colyseus/sdk";
 import { Container, Text } from "pixi.js";
-import { RendererRegistry, type GameRenderer, type GameRendererHUDStatus } from "../renderers";
+import { RendererRegistry, type GameRenderer } from "../renderers";
 import type { Scene } from "./Scene";
-import { HUD, type HUDEvent, type HUDPlayer } from "../ui/HUD";
+import { HUD, type HUDEvent } from "../ui/HUD";
 
 export interface GameSceneEnterData {
   room: Room;
@@ -43,6 +43,9 @@ export class GameScene implements Scene {
     this.container.addChild(this.messageText);
     this.hud = new HUD();
     this.hud.onEvent((event) => this.handleHUDEvent(event));
+    this.hud.onTimerChange((gameTimer, showTimer) => {
+      this.renderer?.setTurnClock?.(gameTimer, showTimer);
+    });
   }
 
   onEnter(data?: unknown): void {
@@ -61,7 +64,12 @@ export class GameScene implements Scene {
     }
 
     this.renderer = this.rendererRegistry.create(enterData.gameType);
-    this.renderer.init(this.room.state, { room: this.room });
+    this.renderer.init(this.room.state, {
+      room: this.room,
+      requestLeave: () => {
+        void this.onEventCallback({ type: "leave_game" });
+      },
+    });
     this.container.addChild(this.renderer.container);
 
     this.stateChangeHandler = (state) => {
@@ -69,6 +77,7 @@ export class GameScene implements Scene {
       this.updateHUD(state);
     };
     this.room.onStateChange(this.stateChangeHandler);
+    this.hud?.setSidebarActive(true);
 
     if (this.width > 0 && this.height > 0) {
       this.renderer.resize(this.width, this.height);
@@ -100,6 +109,7 @@ export class GameScene implements Scene {
 
     this.stateChangeHandler = null;
     this.room = null;
+    this.hud?.setSidebarActive(false);
     this.hud?.hide();
     this.hideMessage();
 
@@ -116,86 +126,27 @@ export class GameScene implements Scene {
   }
 
   private initHUD(): void {
-    if (!this.room || !this.hud) {
+    if (!this.hud) {
       return;
     }
 
-    const players = this.extractPlayersFromState(this.room.state);
-    const currentTurn = this.extractCurrentTurn(this.room.state);
-    const turnTimeRemaining = this.extractTurnTimeRemaining(this.room.state);
-    const showTimer = turnTimeRemaining > 0;
-    const status = this.extractHUDStatus(this.room.state);
-
-    this.hud.show(this.room, {
-      players,
-      currentTurn,
+    const turnTimeRemaining = this.room ? this.extractTurnTimeRemaining(this.room.state) : 0;
+    this.hud.show({
       gameTimer: turnTimeRemaining,
-      showTimer,
-      status,
+      showTimer: turnTimeRemaining > 0,
     });
   }
 
   private updateHUD(state: unknown): void {
-    if (!this.hud || !this.room) {
+    if (!this.hud) {
       return;
     }
 
-    const players = this.extractPlayersFromState(state);
-    const currentTurn = this.extractCurrentTurn(state);
     const turnTimeRemaining = this.extractTurnTimeRemaining(state);
-    const showTimer = turnTimeRemaining > 0;
-    const status = this.extractHUDStatus(state);
-
     this.hud.update({
-      players,
-      currentTurn,
       gameTimer: turnTimeRemaining,
-      showTimer,
-      status,
+      showTimer: turnTimeRemaining > 0,
     });
-  }
-
-  private extractPlayersFromState(state: unknown): HUDPlayer[] {
-    const players: HUDPlayer[] = [];
-
-    if (typeof state !== "object" || state === null) {
-      return players;
-    }
-
-    const stateObj = state as Record<string, unknown>;
-
-    if (Array.isArray(stateObj.players)) {
-      for (const player of stateObj.players) {
-        if (typeof player === "object" && player !== null) {
-          const playerObj = player as Record<string, unknown>;
-          players.push({
-            userId: String(playerObj.userId ?? ""),
-            displayName: String(playerObj.displayName ?? "Player"),
-            score: typeof playerObj.score === "number" ? playerObj.score : 0,
-            isCurrent: false,
-          });
-        }
-      }
-    }
-
-    const currentTurn = this.extractCurrentTurn(state);
-    if (currentTurn) {
-      const currentPlayerIndex = players.findIndex((p) => p.userId === currentTurn);
-      if (currentPlayerIndex !== -1) {
-        players[currentPlayerIndex].isCurrent = true;
-      }
-    }
-
-    return players;
-  }
-
-  private extractCurrentTurn(state: unknown): string | undefined {
-    if (typeof state !== "object" || state === null) {
-      return undefined;
-    }
-
-    const stateObj = state as Record<string, unknown>;
-    return typeof stateObj.currentTurn === "string" ? stateObj.currentTurn : undefined;
   }
 
   private extractTurnTimeRemaining(state: unknown): number {
@@ -205,10 +156,6 @@ export class GameScene implements Scene {
 
     const stateObj = state as Record<string, unknown>;
     return typeof stateObj.turnTimeRemaining === "number" ? stateObj.turnTimeRemaining : 0;
-  }
-
-  private extractHUDStatus(state: unknown): GameRendererHUDStatus | undefined {
-    return this.renderer?.getHUDStatus?.(state) ?? undefined;
   }
 
   private handleHUDEvent(event: HUDEvent): void {

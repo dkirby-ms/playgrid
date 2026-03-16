@@ -591,3 +591,114 @@ Real-time activity feed in lobby showing:
 **Impact:**
 Lobby now provides real-time situational awareness. Players can see activity without manually checking panels. Excellent addition to the pre-game experience.
 
+
+## Session: Redesign Package Analysis & Decomposition (2026-03-15)
+
+**Status:** ✅ Complete  
+**Deliverables:**
+- Comprehensive implementation plan: `/home/saitcho/.copilot/session-state/8d799195-d99c-423c-adab-b96d65264eaa/plan.md`
+- Architectural decision: `.squad/decisions/inbox/hal-redesign-decomposition.md`
+
+**Context:**
+User provided redesign package at `docs/designs/redesign/` with React/Tailwind reference implementations for:
+- Lobby redesign (181 lines)
+- Game redesigns: Checkers (272 lines), Backgammon (325 lines), Risk (385 lines)
+- New games: Scrabble (364 lines), Hungry Hippos (373 lines), Catan (415 lines)
+
+**Key Decisions:**
+
+1. **Sidebar Architecture:** Create separate `GameSidebar.ts` component (not expand HUD)
+   - Separation of concerns: HUD = top-bar status, Sidebar = game-specific panels
+   - Game-specific customization via panel API
+   - Files: `client/src/ui/GameSidebar.ts`, per-game sidebars in `client/src/games/*/`
+
+2. **Design System Extraction:** Centralized reference documents
+   - `docs/design-system.md` — human-readable color palette, typography, visual patterns
+   - `client/src/renderers/DesignTokens.ts` — PixiJS hex constants
+   - Dark zinc/violet theme, glass-morphism patterns, player color system
+
+3. **New Game Order:** Complexity-based sequencing (simplest → hardest)
+   - Scrabble (grid-based, 10 days) → Hungry Hippos (real-time, 15 days) → Catan (hex grid, 24 days)
+   - Rationale: Validate patterns early, learn lessons before most complex game
+
+4. **Risk Renderer:** Fix crash bugs (4.1) before visual redesign (4.4)
+   - Stability first, visual polish second
+   - Time-box investigation to 3 days
+
+5. **Ship Strategy:** 5 incremental milestones (not big-bang)
+   - M1: Design + Lobby + Sidebar (3 weeks)
+   - M2: Existing game visuals (2 weeks)
+   - M3: Scrabble (2 weeks)
+   - M4: Hungry Hippos (3 weeks)
+   - M5: Catan (4-6 weeks)
+
+**Parallelization Strategy:**
+- Stream A: Design System + Lobby (low risk, UI agent)
+- Stream B: Sidebar System (medium risk, UI agent)
+- Stream C: Visual Redesigns (high risk, renderer agent)
+- Stream D/E/F: New Games (independent, full-stack agents)
+- Potential: 4 agents working simultaneously
+
+**Complexity Estimates:**
+- Total: 82 days (16 weeks)
+- With 1 dev: 4-5 months
+- With 2 devs: 2-3 months
+- With 4 devs: 6-8 weeks
+
+**Risk Assessment:**
+- High Risk: Risk crash (unknown scope), Catan complexity, Hungry Hippos physics
+- Medium Risk: Sidebar integration, Backgammon visual (large file)
+- Low Risk: Design extraction, Lobby redesign, Scrabble
+
+**Files Created:**
+- 17 new files (design system, sidebars, 3 new games × 3 files each)
+- 5 modified files (lobby, HUD, 3 game renderers)
+
+## Learnings
+
+### Architecture Patterns
+
+1. **Sidebar Component Pattern**
+   - When UI grows complex, separate concerns rather than expanding monolithic components
+   - Panel API (`addPanel(id, title, content)`) provides clean extension point
+   - Game-specific sidebars in `client/src/games/*/` co-located with game logic
+
+2. **Design System Bridge**
+   - React/Tailwind designs → PixiJS requires translation layer
+   - Dual artifacts: human docs + typed constants
+   - Color conversion: oklch → hex for PixiJS, CSS variables for HTML/DOM
+
+3. **Visual Design Language**
+   - Dark theme: zinc-900 base, violet-950 accents
+   - Glass-morphism: `bg-zinc-800/50 backdrop-blur-sm`
+   - Piece gradients: 3-color (`from-X via-Y to-Z`) with inner highlight for glossy effect
+   - Hover effects: scale-105, brightness-110, shadow-violet-500/20
+
+4. **New Game Complexity Tiers**
+   - Simple: Grid-based, turn-based (Checkers, Scrabble)
+   - Medium: Real-time input, physics/animation (Hungry Hippos)
+   - Complex: Hex grids, resource management, multi-phase (Risk, Catan)
+
+### User Preferences
+
+1. **Incremental Delivery:** User prefers shipping in milestones over big-bang releases
+2. **Visual Priority:** Design system and lobby refresh are high priority (quick wins)
+3. **Stability First:** Fix crash bugs before visual polish
+
+### Key File Paths
+
+- Design reference: `docs/designs/redesign/src/app/pages/*.tsx`
+- Design system: `docs/designs/redesign/src/styles/theme.css`
+- Existing renderers: `client/src/renderers/*.ts`
+- Game sidebars: `client/src/games/*/\*Sidebar.ts` (new pattern)
+- Shared schemas: `shared/src/games/*/\*State.ts`
+- Server rooms: `server/src/rooms/*Room.ts`
+
+### Technical Insights
+
+1. **PixiJS Gradients:** Use `FillGradient` for multi-color piece effects (already in CheckersRenderer)
+2. **Glass-morphism CSS:** `backdrop-blur-sm` requires browser support, fallback to solid bg
+3. **Hex Grid Math:** Catan will need axial/cube coordinate system for hex layout
+4. **Real-time Physics:** Hungry Hippos may need hybrid client prediction + server authority
+5. **Word Validation:** Scrabble needs dictionary (SOWPODS or TWL), decide client vs server validation
+

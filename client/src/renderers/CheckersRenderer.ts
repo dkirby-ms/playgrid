@@ -15,6 +15,38 @@ import {
   getValidMoves,
   type CheckersMove,
 } from "../games/checkers/checkersClientLogic";
+import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
+import {
+  ACCENT_VIOLET,
+  BG_PRIMARY,
+  BLACK as TOKEN_BLACK,
+  BOARD_DARK_SQUARE,
+  BOARD_LIGHT_SQUARE,
+  BORDER_LIGHT,
+  BORDER_LIGHT_ALPHA,
+  CHECKERS_GRID_SHADOW,
+  CHECKERS_GRID_SHADOW_ALPHA,
+  CHECKERS_SELECTION_OFFSET,
+  CHECKERS_SELECTION_RING,
+  createBoardFrameGradient,
+  createCheckersDarkSquareGradient,
+  createCheckersLightSquareGradient,
+  createPieceBodyGradient,
+  createPieceHighlightGradient,
+  KING_CROWN_RING_ALPHA,
+  KING_CROWN_SHADOW,
+  KING_CROWN_SHADOW_ALPHA,
+  KING_MARKER,
+  PIECE_BLACK_BORDER,
+  PIECE_BLACK_GLOW,
+  PIECE_RED_BORDER,
+  PIECE_RED_GLOW,
+  STATUS_ONLINE,
+  TEXT_PRIMARY,
+  TEXT_SECONDARY,
+  TEXT_SUBTLE,
+  WHITE,
+} from "./DesignTokens";
 import type {
   GameRenderer,
   GameRendererContext,
@@ -26,32 +58,45 @@ const BOARD_DIMENSION = 8;
 const BOARD_CELL_COUNT = BOARD_DIMENSION * BOARD_DIMENSION;
 const DEFAULT_WIDTH = 800;
 const DEFAULT_HEIGHT = 600;
-const LIGHT_SQUARE_COLOR = 0xf0d9b5;
-const DARK_SQUARE_COLOR = 0xb58863;
-const BLACK_PIECE_COLOR = 0x333333;
-const RED_PIECE_COLOR = 0xcc3333;
-const KING_MARKER_COLOR = 0xf7e36a;
-const PIECE_OUTLINE_COLOR = 0x111111;
-const SELECTED_SQUARE_COLOR = 0xf7e36a;
-const VALID_TARGET_COLOR = 0x53d769;
-const VALID_TARGET_ALPHA = 0.8;
-const HUD_TEXT_COLOR = 0xffffff;
-const SUBTLE_TEXT_COLOR = 0xd7d9df;
-const TURN_READY_COLOR = 0x53d769;
-const TURN_WAITING_COLOR = 0xc0c4cf;
-const OVERLAY_BACKDROP_COLOR = 0x000000;
+const LIGHT_SQUARE_COLOR = BOARD_LIGHT_SQUARE.from;
+const LIGHT_SQUARE_ALT_COLOR = BOARD_LIGHT_SQUARE.via;
+const DARK_SQUARE_COLOR = BOARD_DARK_SQUARE.from;
+const DARK_SQUARE_ALT_COLOR = BOARD_DARK_SQUARE.via;
+const DARK_SQUARE_SHADOW_COLOR = CHECKERS_GRID_SHADOW;
+const KING_MARKER_COLOR = KING_MARKER;
+const PIECE_DROP_SHADOW_COLOR = TOKEN_BLACK;
+const VALID_TARGET_COLOR = ACCENT_VIOLET;
+const VALID_TARGET_ALPHA = 0.35;
+const BOARD_FRAME_WIDTH = 24;
+const HUD_TEXT_COLOR = TEXT_PRIMARY;
+const SUBTLE_TEXT_COLOR = TEXT_SUBTLE;
+const TURN_READY_COLOR = STATUS_ONLINE;
+const TURN_WAITING_COLOR = TEXT_SECONDARY;
+const OVERLAY_BACKDROP_COLOR = BG_PRIMARY;
 const OVERLAY_BACKDROP_ALPHA = 0.66;
+const CAPTURED_PIECE_TOTAL = 12;
+const CAPTURED_PIECES_PER_ROW = 6;
+const HOVER_PIECE_SCALE = 1.05;
+const SELECTED_PIECE_SCALE = 0.95;
 const VIEW_PADDING = 24;
 const TOP_HUD_SPACE = 104;
-const BOTTOM_HUD_SPACE = 60;
+const BOTTOM_HUD_SPACE = 96;
 const GAME_ENDED_MESSAGE = "game-end";
 const NO_FORCED_CAPTURE = -1;
+const MAX_SIDEBAR_HISTORY_ITEMS = 8;
 
 function toCssHexColor(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
 }
 
+function boardIndexToNotation(index: number): string {
+  const column = index % BOARD_DIMENSION;
+  const row = Math.floor(index / BOARD_DIMENSION);
+  return `${String.fromCharCode(65 + column)}${BOARD_DIMENSION - row}`;
+}
+
 type PlayerSnapshot = {
+  displayName: string;
   playerIndex: number;
   isSpectator: boolean;
 };
@@ -61,6 +106,7 @@ export class CheckersRenderer implements GameRenderer {
   readonly container = new Container();
 
   private readonly boardLayer = new Container();
+  private readonly boardFrame = new Graphics();
   private readonly piecesLayer = new Container();
   private readonly overlayLayer = new Container();
   private readonly overlayBackground = new Graphics();
@@ -70,7 +116,7 @@ export class CheckersRenderer implements GameRenderer {
       fontFamily: "sans-serif",
       fontSize: 20,
       fontWeight: "600",
-      fill: HUD_TEXT_COLOR,
+      fill: TEXT_SECONDARY,
     },
   });
   private readonly redCountText = new Text({
@@ -79,7 +125,7 @@ export class CheckersRenderer implements GameRenderer {
       fontFamily: "sans-serif",
       fontSize: 20,
       fontWeight: "600",
-      fill: RED_PIECE_COLOR,
+      fill: TEXT_SECONDARY,
     },
   });
   private readonly overlayTitleText = new Text({
@@ -106,8 +152,13 @@ export class CheckersRenderer implements GameRenderer {
       wordWrapWidth: DEFAULT_WIDTH * 0.7,
     },
   });
+  private readonly capturedPiecesGraphics = new Graphics();
   private readonly squareGraphics: Graphics[] = [];
   private room: Room | null = null;
+  private requestLeave: (() => void) | null = null;
+  private sidebar: GameSidebar | null = null;
+  private turnClockSeconds: number | null = null;
+  private showTurnClock = false;
   private unsubscribeGameEnded: (() => void) | null = null;
   private board: number[] = Array.from({ length: BOARD_CELL_COUNT }, () => EMPTY);
   private phase = "waiting";
@@ -116,7 +167,9 @@ export class CheckersRenderer implements GameRenderer {
   private players = new Map<string, PlayerSnapshot>();
   private gameResult: GameResult | null = null;
   private selectedIndex: number | null = null;
+  private hoveredIndex: number | null = null;
   private validTargetIndexes = new Set<number>();
+  private moveHistory: string[] = [];
   private isFlipped = false;
   private width = DEFAULT_WIDTH;
   private height = DEFAULT_HEIGHT;
@@ -129,10 +182,11 @@ export class CheckersRenderer implements GameRenderer {
 
   constructor() {
     this.piecesLayer.eventMode = "none";
+    this.capturedPiecesGraphics.eventMode = "none";
     this.overlayLayer.eventMode = "none";
     this.overlayLayer.visible = false;
-    this.blackCountText.anchor.set(0, 0.5);
-    this.redCountText.anchor.set(1, 0.5);
+    this.blackCountText.anchor.set(0, 0);
+    this.redCountText.anchor.set(1, 0);
     this.overlayTitleText.anchor.set(0.5);
     this.overlaySubtitleText.anchor.set(0.5);
 
@@ -144,13 +198,21 @@ export class CheckersRenderer implements GameRenderer {
       square.on("pointertap", () => {
         this.handleSquareClick(index);
       });
+      square.on("pointerover", () => {
+        this.handleSquareHover(index);
+      });
+      square.on("pointerout", () => {
+        this.handleSquareHover(null);
+      });
       this.squareGraphics.push(square);
       this.boardLayer.addChild(square);
     }
 
     this.container.addChild(
+      this.boardFrame,
       this.boardLayer,
       this.piecesLayer,
+      this.capturedPiecesGraphics,
       this.blackCountText,
       this.redCountText,
       this.overlayLayer,
@@ -160,9 +222,20 @@ export class CheckersRenderer implements GameRenderer {
   init(state: unknown, context?: GameRendererContext): void {
     this.unsubscribeFromRoomEvents();
     this.room = context?.room ?? null;
+    this.requestLeave = context?.requestLeave ?? null;
     this.gameResult = null;
     this.selectedIndex = null;
+    this.hoveredIndex = null;
     this.validTargetIndexes.clear();
+    this.moveHistory = [];
+    this.turnClockSeconds = null;
+    this.showTurnClock = false;
+    this.sidebar?.destroy();
+    this.sidebar = new GameSidebar();
+    this.sidebar.addPanel("game-info", "Game Info");
+    this.sidebar.addPanel("move-history", "Move History");
+    this.sidebar.addPanel("controls", "Controls");
+    this.sidebar.show();
     this.subscribeToRoomEvents();
     this.applyState(state);
     this.layout();
@@ -170,6 +243,7 @@ export class CheckersRenderer implements GameRenderer {
     this.redrawPieces();
     this.updateHud();
     this.updateGameOverOverlay();
+    this.updateSidebar();
   }
 
   onStateChange(state: unknown): void {
@@ -179,6 +253,7 @@ export class CheckersRenderer implements GameRenderer {
     this.redrawPieces();
     this.updateHud();
     this.updateGameOverOverlay();
+    this.updateSidebar();
   }
 
   update(_deltaTime: number): void {}
@@ -195,6 +270,12 @@ export class CheckersRenderer implements GameRenderer {
 
   handleInput(_event: RendererInputEvent): void {}
 
+  setTurnClock(seconds: number | null, visible: boolean): void {
+    this.turnClockSeconds = seconds !== null ? Math.max(0, Math.floor(seconds)) : null;
+    this.showTurnClock = visible && seconds !== null;
+    this.updateSidebar();
+  }
+
   getHUDStatus(_state: unknown): GameRendererHUDStatus {
     const { text, color } = this.getStatusLabel();
     const detail = this.getPlayerColorLabel();
@@ -210,9 +291,17 @@ export class CheckersRenderer implements GameRenderer {
   destroy(): void {
     this.unsubscribeFromRoomEvents();
     this.room = null;
+    this.requestLeave = null;
     this.players.clear();
+    this.hoveredIndex = null;
     this.validTargetIndexes.clear();
+    this.moveHistory = [];
+    this.turnClockSeconds = null;
+    this.showTurnClock = false;
+    this.sidebar?.destroy();
+    this.sidebar = null;
     this.clearPieces();
+    this.capturedPiecesGraphics.clear();
     this.squareGraphics.length = 0;
     this.container.destroy({ children: true });
   }
@@ -225,40 +314,77 @@ export class CheckersRenderer implements GameRenderer {
     this.boardOffsetX = (this.width - this.boardSize) / 2;
     this.boardOffsetY = TOP_HUD_SPACE + ((availableHeight - this.boardSize) / 2);
 
-    this.blackCountText.position.set(this.boardOffsetX, this.boardOffsetY + this.boardSize + 28);
-    this.redCountText.position.set(this.boardOffsetX + this.boardSize, this.boardOffsetY + this.boardSize + 28);
+    this.blackCountText.position.set(this.boardOffsetX, this.boardOffsetY + this.boardSize + 12);
+    this.redCountText.position.set(this.boardOffsetX + this.boardSize, this.boardOffsetY + this.boardSize + 12);
     this.overlayTitleText.style.wordWrapWidth = this.boardSize * 0.75;
     this.overlaySubtitleText.style.wordWrapWidth = this.boardSize * 0.75;
   }
 
   private redrawBoard(): void {
+    const fw = BOARD_FRAME_WIDTH;
+    const frameX = this.boardOffsetX - fw;
+    const frameY = this.boardOffsetY - fw;
+    const frameSize = this.boardSize + (fw * 2);
+    const frameRadius = Math.max(18, this.squareSize * 0.36);
+    const boardRadius = Math.max(14, this.squareSize * 0.18);
+    const bevelWidth = Math.max(1, this.squareSize * 0.035);
+    const lightSquareGradient = createCheckersLightSquareGradient();
+    const darkSquareGradient = createCheckersDarkSquareGradient();
+
+    this.boardFrame.clear();
+    this.boardFrame
+      .roundRect(frameX + 6, frameY + 10, frameSize, frameSize, frameRadius + 6)
+      .fill({ color: CHECKERS_GRID_SHADOW, alpha: CHECKERS_GRID_SHADOW_ALPHA + 0.24 });
+    this.boardFrame
+      .roundRect(frameX - 4, frameY - 4, frameSize + 8, frameSize + 8, frameRadius + 8)
+      .fill(BG_PRIMARY);
+    this.boardFrame
+      .roundRect(frameX, frameY, frameSize, frameSize, frameRadius + 6)
+      .fill(createBoardFrameGradient())
+      .stroke({ color: BORDER_LIGHT, alpha: BORDER_LIGHT_ALPHA, width: 2 });
+    this.boardFrame
+      .roundRect(this.boardOffsetX, this.boardOffsetY, this.boardSize, this.boardSize, boardRadius)
+      .fill({ color: BG_PRIMARY, alpha: 1 })
+      .stroke({ color: CHECKERS_SELECTION_OFFSET, alpha: 0.4, width: 2 });
+
     for (let displayIndex = 0; displayIndex < BOARD_CELL_COUNT; displayIndex += 1) {
       const boardIndex = this.toBoardIndex(displayIndex);
       const row = Math.floor(displayIndex / BOARD_DIMENSION);
       const column = displayIndex % BOARD_DIMENSION;
       const square = this.squareGraphics[displayIndex];
-      const squareColor = (row + column) % 2 === 0 ? LIGHT_SQUARE_COLOR : DARK_SQUARE_COLOR;
+      const isDark = (row + column) % 2 !== 0;
       const x = this.boardOffsetX + (column * this.squareSize);
       const y = this.boardOffsetY + (row * this.squareSize);
-      const isSelected = this.selectedIndex === boardIndex;
       const isValidTarget = this.validTargetIndexes.has(boardIndex);
+      const squareGradient = isDark ? darkSquareGradient : lightSquareGradient;
+      const squareBorderColor = isDark ? DARK_SQUARE_COLOR : LIGHT_SQUARE_COLOR;
+      const squareBevelColor = isDark ? DARK_SQUARE_ALT_COLOR : LIGHT_SQUARE_ALT_COLOR;
+      const innerHighlightAlpha = isDark ? 0.05 : 0.1;
+      const innerShadowAlpha = isDark ? 0.2 : 0.12;
 
       square.clear();
-      square.rect(x, y, this.squareSize, this.squareSize).fill(squareColor);
-
-      if (isSelected) {
-        square.stroke({
-          color: SELECTED_SQUARE_COLOR,
-          width: Math.max(3, this.squareSize * 0.08),
-        });
-      }
+      square
+        .rect(x, y, this.squareSize, this.squareSize)
+        .fill(squareGradient)
+        .stroke({ color: squareBorderColor, alpha: 0.28, width: 1 });
+      square.rect(x + 1, y + 1, this.squareSize - 2, bevelWidth).fill({ color: squareBevelColor, alpha: innerHighlightAlpha + 0.02 });
+      square.rect(x + 1, y + 1, bevelWidth, this.squareSize - 2).fill({ color: WHITE, alpha: innerHighlightAlpha * 0.75 });
+      square.rect(x + 1, y + this.squareSize - bevelWidth - 1, this.squareSize - 2, bevelWidth)
+        .fill({ color: DARK_SQUARE_SHADOW_COLOR, alpha: innerShadowAlpha });
+      square.rect(x + this.squareSize - bevelWidth - 1, y + 1, bevelWidth, this.squareSize - 2)
+        .fill({ color: DARK_SQUARE_SHADOW_COLOR, alpha: innerShadowAlpha * 0.85 });
 
       if (isValidTarget) {
         square.circle(
           x + (this.squareSize / 2),
           y + (this.squareSize / 2),
-          this.squareSize * 0.14,
+          this.squareSize * 0.18,
         ).fill({ color: VALID_TARGET_COLOR, alpha: VALID_TARGET_ALPHA });
+        square.circle(
+          x + (this.squareSize / 2),
+          y + (this.squareSize / 2),
+          this.squareSize * 0.24,
+        ).stroke({ color: CHECKERS_SELECTION_RING, alpha: 0.42, width: Math.max(2, this.squareSize * 0.04) });
       }
 
       square.cursor = this.isSquareActionable(boardIndex) ? "pointer" : "default";
@@ -269,8 +395,12 @@ export class CheckersRenderer implements GameRenderer {
     this.clearPieces();
 
     const pieceGraphics = new Graphics();
-    const pieceRadius = this.squareSize * 0.35;
+    const pieceRadius = this.squareSize * 0.32;
     const outlineWidth = Math.max(1, this.squareSize * 0.04);
+    const selectionRingWidth = Math.max(3, this.squareSize * 0.075);
+    const blackGradient = createPieceBodyGradient("black");
+    const redGradient = createPieceBodyGradient("red");
+    const highlightGradient = createPieceHighlightGradient();
 
     for (const [index, piece] of this.board.entries()) {
       if (piece === EMPTY) {
@@ -282,42 +412,124 @@ export class CheckersRenderer implements GameRenderer {
       const column = displayIndex % BOARD_DIMENSION;
       const centerX = this.boardOffsetX + (column * this.squareSize) + (this.squareSize / 2);
       const centerY = this.boardOffsetY + (row * this.squareSize) + (this.squareSize / 2);
-      const pieceColor = piece === BLACK || piece === BLACK_KING ? BLACK_PIECE_COLOR : RED_PIECE_COLOR;
+      const isBlackPiece = piece === BLACK || piece === BLACK_KING;
+      const isSelected = this.selectedIndex === index;
+      const isHovered = this.hoveredIndex === index && this.isHoverablePiece(index);
+      const radiusScale = isSelected ? SELECTED_PIECE_SCALE : isHovered ? HOVER_PIECE_SCALE : 1;
+      const radius = pieceRadius * radiusScale;
+      const pieceGradient = isBlackPiece ? blackGradient : redGradient;
+      const pieceBorder = isBlackPiece ? PIECE_BLACK_BORDER : PIECE_RED_BORDER;
+      const pieceGlow = isBlackPiece ? PIECE_BLACK_GLOW : PIECE_RED_GLOW;
+      const shadowAlpha = isHovered ? 0.44 : 0.36;
+      const glowAlpha = isSelected ? 0.3 : isHovered ? 0.22 : 0.16;
+
+      if (isSelected) {
+        pieceGraphics.circle(centerX, centerY, radius + (selectionRingWidth * 0.62)).stroke({
+          color: CHECKERS_SELECTION_OFFSET,
+          alpha: 0.55,
+          width: selectionRingWidth + 2,
+        });
+        pieceGraphics.circle(centerX, centerY, radius + (selectionRingWidth * 0.36)).stroke({
+          color: CHECKERS_SELECTION_RING,
+          alpha: 0.96,
+          width: selectionRingWidth,
+        });
+      }
 
       pieceGraphics
-        .circle(centerX, centerY, pieceRadius)
-        .fill(pieceColor)
-        .stroke({ color: PIECE_OUTLINE_COLOR, width: outlineWidth });
+        .circle(centerX + (this.squareSize * 0.04), centerY + (this.squareSize * 0.06), radius * 1.08)
+        .fill({ color: PIECE_DROP_SHADOW_COLOR, alpha: shadowAlpha });
+      pieceGraphics
+        .circle(centerX, centerY, radius * 1.08)
+        .fill({ color: pieceGlow, alpha: glowAlpha });
+      pieceGraphics
+        .circle(centerX, centerY, radius)
+        .fill(pieceGradient)
+        .stroke({ color: pieceBorder, width: outlineWidth });
+      pieceGraphics
+        .circle(centerX - (radius * 0.15), centerY - (radius * 0.2), radius * 0.38)
+        .fill(highlightGradient);
+
+      if (isHovered) {
+        pieceGraphics
+          .circle(centerX, centerY, radius * 0.94)
+          .fill({ color: WHITE, alpha: 0.06 });
+      }
 
       if (piece === BLACK_KING || piece === RED_KING) {
-        const kingMarker = new Text({
-          text: "K",
-          style: {
-            fontFamily: "sans-serif",
-            fontSize: this.squareSize * 0.34,
-            fontWeight: "700",
-            fill: KING_MARKER_COLOR,
-            align: "center",
-          },
+        pieceGraphics.circle(centerX, centerY, radius * 0.64).stroke({
+          color: KING_CROWN_SHADOW,
+          alpha: KING_CROWN_SHADOW_ALPHA,
+          width: Math.max(4, outlineWidth + 3),
         });
-        kingMarker.anchor.set(0.5);
-        kingMarker.position.set(centerX, centerY);
-        this.piecesLayer.addChild(kingMarker);
+        pieceGraphics.circle(centerX, centerY, radius * 0.58).stroke({
+          color: KING_MARKER_COLOR,
+          alpha: KING_CROWN_RING_ALPHA,
+          width: Math.max(3, this.squareSize * 0.05),
+        });
       }
     }
 
-    this.piecesLayer.addChildAt(pieceGraphics, 0);
+    this.piecesLayer.addChild(pieceGraphics);
   }
 
   private updateHud(): void {
     const { blackCount, redCount } = this.countPieces();
+    const blackCaptured = CAPTURED_PIECE_TOTAL - blackCount;
+    const redCaptured = CAPTURED_PIECE_TOTAL - redCount;
+    const labelFontSize = Math.max(13, this.squareSize * 0.24);
 
-    this.blackCountText.text = `⚫ Black: ${blackCount}`;
-    this.blackCountText.style.fontSize = Math.max(16, this.squareSize * 0.32);
-    this.blackCountText.style.fill = HUD_TEXT_COLOR;
-    this.redCountText.text = `🔴 Red: ${redCount}`;
-    this.redCountText.style.fontSize = Math.max(16, this.squareSize * 0.32);
-    this.redCountText.style.fill = RED_PIECE_COLOR;
+    this.blackCountText.text = `Black captured ${blackCaptured}`;
+    this.blackCountText.style.fontSize = labelFontSize;
+    this.blackCountText.style.fill = TEXT_SECONDARY;
+    this.redCountText.text = `Red captured ${redCaptured}`;
+    this.redCountText.style.fontSize = labelFontSize;
+    this.redCountText.style.fill = TEXT_SECONDARY;
+
+    this.drawCapturedPieces(blackCaptured, redCaptured);
+  }
+
+  private drawCapturedPieces(blackCaptured: number, redCaptured: number): void {
+    this.capturedPiecesGraphics.clear();
+
+    const pipRadius = Math.max(4, this.squareSize * 0.1);
+    const pipGap = Math.max(4, pipRadius * 0.75);
+    const pipRowGap = Math.max(6, pipRadius * 1.55);
+    const pipStartY = this.boardOffsetY + this.boardSize + Math.max(30, this.squareSize * 0.34);
+    const blackGradient = createPieceBodyGradient("black");
+    const redGradient = createPieceBodyGradient("red");
+
+    for (let index = 0; index < blackCaptured; index += 1) {
+      const row = Math.floor(index / CAPTURED_PIECES_PER_ROW);
+      const column = index % CAPTURED_PIECES_PER_ROW;
+      const centerX = this.boardOffsetX + pipRadius + (column * ((pipRadius * 2) + pipGap));
+      const centerY = pipStartY + (row * ((pipRadius * 2) + pipRowGap));
+      this.drawCapturedPiece(centerX, centerY, pipRadius, blackGradient, PIECE_BLACK_BORDER);
+    }
+
+    for (let index = 0; index < redCaptured; index += 1) {
+      const row = Math.floor(index / CAPTURED_PIECES_PER_ROW);
+      const column = index % CAPTURED_PIECES_PER_ROW;
+      const centerX = this.boardOffsetX + this.boardSize - pipRadius - (column * ((pipRadius * 2) + pipGap));
+      const centerY = pipStartY + (row * ((pipRadius * 2) + pipRowGap));
+      this.drawCapturedPiece(centerX, centerY, pipRadius, redGradient, PIECE_RED_BORDER);
+    }
+  }
+
+  private drawCapturedPiece(
+    centerX: number,
+    centerY: number,
+    radius: number,
+    gradient: ReturnType<typeof createPieceBodyGradient>,
+    borderColor: number,
+  ): void {
+    this.capturedPiecesGraphics
+      .circle(centerX + 1.5, centerY + 2, radius * 1.06)
+      .fill({ color: PIECE_DROP_SHADOW_COLOR, alpha: 0.26 });
+    this.capturedPiecesGraphics
+      .circle(centerX, centerY, radius)
+      .fill(gradient)
+      .stroke({ color: borderColor, width: Math.max(1, radius * 0.16) });
   }
 
   private updateGameOverOverlay(): void {
@@ -360,6 +572,20 @@ export class CheckersRenderer implements GameRenderer {
     }
   }
 
+  private handleSquareHover(displayIndex: number | null): void {
+    const hoveredIndex = displayIndex === null ? null : this.toBoardIndex(displayIndex);
+    const nextHoveredIndex = hoveredIndex !== null && this.isHoverablePiece(hoveredIndex)
+      ? hoveredIndex
+      : null;
+
+    if (this.hoveredIndex === nextHoveredIndex) {
+      return;
+    }
+
+    this.hoveredIndex = nextHoveredIndex;
+    this.redrawPieces();
+  }
+
   private handleSquareClick(displayIndex: number): void {
     const boardIndex = this.toBoardIndex(displayIndex);
 
@@ -399,6 +625,7 @@ export class CheckersRenderer implements GameRenderer {
       this.gameResult = result;
       this.updateHud();
       this.updateGameOverOverlay();
+      this.updateSidebar();
     });
   }
 
@@ -408,6 +635,9 @@ export class CheckersRenderer implements GameRenderer {
   }
 
   private applyState(state: unknown): void {
+    const previousBoard = [...this.board];
+    const previousCurrentTurn = this.currentTurn;
+    const previousPlayers = new Map(this.players);
     const nextState = state as Partial<CheckersState> | null;
     this.board = this.parseBoard(nextState);
     this.phase = typeof nextState?.phase === "string" ? nextState.phase : "waiting";
@@ -417,6 +647,7 @@ export class CheckersRenderer implements GameRenderer {
       : NO_FORCED_CAPTURE;
     this.players = this.parsePlayers(nextState);
     this.isFlipped = this.getLocalPlayerColor() === BLACK;
+    this.recordMove(previousBoard, previousCurrentTurn, previousPlayers);
   }
 
   private syncSelectionWithState(): void {
@@ -437,6 +668,7 @@ export class CheckersRenderer implements GameRenderer {
     this.selectedIndex = index;
     this.updateValidTargets(index);
     this.redrawBoard();
+    this.redrawPieces();
   }
 
   private clearSelection(redraw = true): void {
@@ -445,6 +677,7 @@ export class CheckersRenderer implements GameRenderer {
 
     if (redraw) {
       this.redrawBoard();
+      this.redrawPieces();
     }
   }
 
@@ -564,6 +797,10 @@ export class CheckersRenderer implements GameRenderer {
     return this.isSelectableSquare(index);
   }
 
+  private isHoverablePiece(index: number): boolean {
+    return this.board[index] !== EMPTY && this.isSquareActionable(index);
+  }
+
   private isSelectableSquare(index: number): boolean {
     const localPlayerColor = this.getLocalPlayerColor();
     if (localPlayerColor === null || getPieceColor(this.board[index]) !== localPlayerColor) {
@@ -613,6 +850,173 @@ export class CheckersRenderer implements GameRenderer {
     return getValidMoves(this.board, index, this.mustCaptureFrom);
   }
 
+  private updateSidebar(): void {
+    if (!this.sidebar) {
+      return;
+    }
+
+    const { blackCount, redCount } = this.countPieces();
+    const notes: string[] = [];
+    const playerColorLabel = this.getPlayerColorLabel();
+    if (playerColorLabel.length > 0) {
+      notes.push(`<div class="sidebar-note">${escapeHtml(playerColorLabel)}</div>`);
+    }
+    if (this.mustCaptureFrom !== NO_FORCED_CAPTURE) {
+      notes.push(
+        `<div class="sidebar-note">Forced capture continues from ${escapeHtml(boardIndexToNotation(this.mustCaptureFrom))}.</div>`,
+      );
+    }
+
+    this.sidebar.updatePanel(
+      "game-info",
+      `<div class="sidebar-stat-list">
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Current turn</span><span class="sidebar-stat-value">${escapeHtml(this.getCurrentTurnLabel())}</span></div>
+        ${getTurnClockMarkup(this.turnClockSeconds, this.showTurnClock)}
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Black pieces</span><span class="sidebar-stat-value">⚫ ${blackCount}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Red pieces</span><span class="sidebar-stat-value">🔴 ${redCount}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Status</span><span class="sidebar-stat-value">${escapeHtml(this.getSidebarStatus())}</span></div>
+      </div>${notes.join("")}`,
+    );
+
+    const historyMarkup = this.moveHistory.length > 0
+      ? `<div class="sidebar-history-list">${this.moveHistory.map((move, index) => `
+          <div class="sidebar-history-item">
+            <span class="sidebar-history-index">${index + 1}</span>
+            <span class="sidebar-history-text">${escapeHtml(move)}</span>
+          </div>
+        `).join("")}</div>`
+      : `<div class="sidebar-empty">Moves will appear here once the first turn is made.</div>`;
+    this.sidebar.updatePanel("move-history", historyMarkup);
+
+    this.sidebar.updatePanel(
+      "controls",
+      `<div class="sidebar-button-group">
+        <button type="button" class="sidebar-button sidebar-button--danger" data-action="resign"${this.requestLeave ? "" : " disabled"}>Resign</button>
+        <button type="button" class="sidebar-button sidebar-button--secondary" data-action="offer-draw" disabled>Offer Draw</button>
+      </div>
+      <div class="sidebar-note">Use the HUD Leave Game button or resign here to concede. Draw offers are not available yet.</div>`,
+    );
+
+    const controlsPanel = this.sidebar.getPanelContent("controls");
+    const resignButton = controlsPanel?.querySelector('[data-action="resign"]');
+    if (resignButton instanceof HTMLButtonElement) {
+      resignButton.onclick = () => {
+        this.requestLeave?.();
+      };
+    }
+  }
+
+  private getCurrentTurnLabel(): string {
+    if (!this.currentTurn) {
+      return "Waiting";
+    }
+
+    if (this.room?.sessionId === this.currentTurn) {
+      return "You";
+    }
+
+    const currentPlayer = this.players.get(this.currentTurn);
+    if (currentPlayer?.displayName) {
+      return currentPlayer.displayName;
+    }
+
+    const currentPlayerColor = currentPlayer
+      ? getPlayerColorFromPlayerIndex(currentPlayer.playerIndex)
+      : null;
+    if (currentPlayerColor === BLACK) {
+      return "Black";
+    }
+    if (currentPlayerColor === RED) {
+      return "Red";
+    }
+
+    return "Player";
+  }
+
+  private getSidebarStatus(): string {
+    if (this.phase === "waiting") {
+      return "Waiting for both players to join.";
+    }
+
+    if (this.phase === "ended") {
+      return this.getGameOverSubtitle() || "Match complete.";
+    }
+
+    const localPlayer = this.getLocalPlayer();
+    if (!localPlayer) {
+      return "Waiting for players.";
+    }
+
+    if (localPlayer.isSpectator) {
+      return "Spectating the live board.";
+    }
+
+    if (this.mustCaptureFrom !== NO_FORCED_CAPTURE) {
+      return "Capture chain in progress.";
+    }
+
+    return this.isLocalPlayersTurn() ? "Make a move on the board." : "Waiting for the opponent.";
+  }
+
+  private recordMove(
+    previousBoard: number[],
+    previousCurrentTurn: string,
+    previousPlayers: Map<string, PlayerSnapshot>,
+  ): void {
+    if (previousCurrentTurn.length === 0 || previousBoard.every((piece) => piece === EMPTY)) {
+      return;
+    }
+
+    const mover = previousPlayers.get(previousCurrentTurn);
+    if (!mover || mover.isSpectator) {
+      return;
+    }
+
+    const moverColor = getPlayerColorFromPlayerIndex(mover.playerIndex);
+    if (moverColor !== BLACK && moverColor !== RED) {
+      return;
+    }
+
+    const kingPiece = moverColor === BLACK ? BLACK_KING : RED_KING;
+    let fromIndex: number | null = null;
+    let toIndex: number | null = null;
+
+    for (let index = 0; index < BOARD_CELL_COUNT; index += 1) {
+      const previousPiece = previousBoard[index];
+      const nextPiece = this.board[index];
+      if (previousPiece === nextPiece) {
+        continue;
+      }
+
+      const movedFrom = (previousPiece === moverColor || previousPiece === kingPiece) && nextPiece === EMPTY;
+      const movedTo = (nextPiece === moverColor || nextPiece === kingPiece) && previousPiece !== nextPiece;
+      if (movedFrom) {
+        fromIndex = index;
+      }
+      if (movedTo) {
+        toIndex = index;
+      }
+    }
+
+    if (fromIndex === null || toIndex === null) {
+      return;
+    }
+
+    const isCapture = Math.abs(Math.floor(fromIndex / BOARD_DIMENSION) - Math.floor(toIndex / BOARD_DIMENSION)) > 1;
+    const promoted = previousBoard[toIndex] !== kingPiece && this.board[toIndex] === kingPiece;
+    const moverLabel = moverColor === BLACK ? "Black" : "Red";
+    this.pushMoveHistory(
+      `${moverLabel}: ${boardIndexToNotation(fromIndex)} → ${boardIndexToNotation(toIndex)}${isCapture ? " ×" : ""}${promoted ? " (king)" : ""}`,
+    );
+  }
+
+  private pushMoveHistory(move: string): void {
+    this.moveHistory.unshift(move);
+    if (this.moveHistory.length > MAX_SIDEBAR_HISTORY_ITEMS) {
+      this.moveHistory.length = MAX_SIDEBAR_HISTORY_ITEMS;
+    }
+  }
+
   private parseBoard(state: Partial<CheckersState> | null): number[] {
     const normalizedBoard = state?.board ? Array.from(state.board, (cell) => Number(cell)) : [];
 
@@ -631,6 +1035,7 @@ export class CheckersRenderer implements GameRenderer {
 
     for (const [sessionId, player] of state?.players?.entries() ?? []) {
       players.set(sessionId, {
+        displayName: typeof player.displayName === "string" ? player.displayName : "Player",
         playerIndex: Number(player.playerIndex ?? -1),
         isSpectator: Boolean(player.isSpectator),
       });
