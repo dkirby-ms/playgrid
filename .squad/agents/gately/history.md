@@ -813,3 +813,13 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - Used `requestAnimationFrame` via existing game loop update() method (no setTimeout)
 
 **Decision merged to `.squad/decisions.md`**
+
+---
+
+## Learnings
+
+### 2026-03-16: Checkers turn emphasis should stay inside the sidebar
+
+- **What changed:** Removed the temporary Pixi turn banner from `client/src/renderers/CheckersRenderer.ts`, deleted the banner view-model test files, and moved the emphasis back into the existing Game Info panel by rendering a highlighted `Current turn` row that reads `Your Turn` for the active local player.
+- **Pattern discovered:** `client/src/ui/GameSidebar.ts` is the right place for reusable turn-state treatment. Adding opt-in sidebar row/value classes plus CSS custom properties let the renderer dial in game-specific accent colors while keeping the layout inside the shared glass-panel system.
+- **User preference:** Turn prompts should be unmistakable but non-obstructive. Prefer a brighter, slightly animated sidebar treatment over any overlay/banner that sits on top of the board.
