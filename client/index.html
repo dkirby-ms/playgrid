@@ -151,23 +151,28 @@
 
       /* Header */
       .lobby-header {
-        border-bottom: 1px solid #27272a;
-        background: rgba(24, 24, 27, 0.5);
-        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border-default);
+        background: var(--bg-dark);
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
         position: sticky;
         top: 0;
         z-index: 20;
+        height: 64px;
+        display: flex;
+        align-items: center;
       }
 
       .lobby-header-inner {
         max-width: 1280px;
         margin: 0 auto;
-        padding: 1rem 1.5rem;
+        padding: 0 var(--space-lg);
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 1rem;
-        flex-wrap: wrap;
+        flex: 1;
+        height: 100%;
       }
 
       .lobby-header-left {
@@ -213,7 +218,7 @@
       .lobby-header-right {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 1rem;
       }
 
       .lobby-header-button {
@@ -508,8 +513,8 @@
         background: var(--glass-bg);
         backdrop-filter: blur(var(--glass-blur));
         -webkit-backdrop-filter: blur(var(--glass-blur));
-        border: 1px solid var(--border-light);
-        padding: 1rem;
+        border: 1px solid var(--glass-border);
+        padding: var(--space-lg);
       }
 
       .panel-header {
@@ -540,12 +545,22 @@
         gap: 0.75rem;
       }
 
+      .panel-empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+        text-align: center;
+        color: var(--text-muted);
+        font-size: 0.875rem;
+      }
+
       /* Active Game Card */
       .active-game-card {
         border-radius: 0.5rem;
         background: var(--bg-card-dark);
         padding: 0.75rem;
-        border: 1px solid var(--border-light);
+        border: 1px solid var(--glass-border);
         transition: all 0.2s;
       }
 
@@ -663,6 +678,7 @@
         padding: 0.5rem;
         border-radius: 0.5rem;
         background: var(--bg-card-dark);
+        border: 1px solid var(--glass-border);
         transition: all 0.2s;
       }
 
@@ -727,13 +743,6 @@
         color: var(--text-secondary);
         font-size: 0.75rem;
         text-transform: capitalize;
-      }
-
-      .panel-empty {
-        text-align: center;
-        padding: 2rem 1rem;
-        color: var(--text-muted);
-        font-size: 0.875rem;
       }
 
       /* Message Log Panel */

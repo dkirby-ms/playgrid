@@ -1,6 +1,15 @@
 const GAME_SIDEBAR_STYLE_ID = "playgrid-game-sidebar-styles";
 const VISIBLE_CLASS = "is-visible";
 
+export function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function createElement<K extends keyof HTMLElementTagNameMap>(
   tagName: K,
   className?: string,
@@ -14,6 +23,10 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
     element.textContent = textContent;
   }
   return element;
+}
+
+function setPanelMarkup(element: HTMLDivElement, content: string): void {
+  element.innerHTML = content;
 }
 
 function injectStyles(): void {
@@ -96,14 +109,21 @@ function injectStyles(): void {
     }
 
     .sidebar-panel-content {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
       min-height: 0;
       overflow-y: auto;
       color: var(--text-secondary);
       font-size: var(--font-sm);
       line-height: 1.5;
-      white-space: pre-wrap;
+      white-space: normal;
       scrollbar-width: thin;
       scrollbar-color: var(--glass-border) transparent;
+    }
+
+    .sidebar-panel-content > * {
+      margin: 0;
     }
 
     .sidebar-panel-content::-webkit-scrollbar {
@@ -117,6 +137,135 @@ function injectStyles(): void {
     .sidebar-panel-content::-webkit-scrollbar-thumb {
       background: var(--glass-border);
       border-radius: 999px;
+    }
+
+    .sidebar-stat-list,
+    .sidebar-history-list,
+    .sidebar-player-list,
+    .sidebar-button-group {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+
+    .sidebar-stat-row,
+    .sidebar-player-row,
+    .sidebar-history-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .sidebar-player-row,
+    .sidebar-history-item {
+      align-items: flex-start;
+      justify-content: flex-start;
+    }
+
+    .sidebar-stat-label,
+    .sidebar-player-meta,
+    .sidebar-empty {
+      color: var(--text-secondary);
+    }
+
+    .sidebar-stat-value,
+    .sidebar-player-name,
+    .sidebar-history-text {
+      min-width: 0;
+      color: var(--text-primary);
+      font-weight: 600;
+      word-break: break-word;
+    }
+
+    .sidebar-stat-value {
+      text-align: right;
+    }
+
+    .sidebar-player-copy {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .sidebar-player-meta {
+      font-size: 0.78rem;
+    }
+
+    .sidebar-history-item {
+      gap: 10px;
+    }
+
+    .sidebar-history-index,
+    .sidebar-tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 28px;
+      height: 28px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: rgba(126, 207, 255, 0.14);
+      color: var(--text-primary);
+      font-size: 0.72rem;
+      font-weight: 600;
+      line-height: 1;
+      flex: 0 0 auto;
+    }
+
+    .sidebar-note {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(126, 207, 255, 0.16);
+      background: rgba(126, 207, 255, 0.08);
+      color: var(--text-secondary);
+    }
+
+    .sidebar-button {
+      appearance: none;
+      width: 100%;
+      min-height: 44px;
+      padding: 0 14px;
+      border: 1px solid rgba(126, 207, 255, 0.22);
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(126, 207, 255, 0.24), rgba(126, 207, 255, 0.12));
+      color: var(--text-primary);
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition:
+        transform 140ms ease,
+        border-color 140ms ease,
+        opacity 140ms ease,
+        background 140ms ease;
+    }
+
+    .sidebar-button:not(:disabled):hover {
+      transform: translateY(-1px);
+      border-color: rgba(126, 207, 255, 0.42);
+    }
+
+    .sidebar-button--secondary {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .sidebar-button--danger {
+      background: linear-gradient(135deg, rgba(190, 41, 41, 0.28), rgba(122, 22, 22, 0.2));
+      border-color: rgba(255, 107, 107, 0.3);
+      color: #ffe2e2;
+    }
+
+    .sidebar-button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
     }
 
     @media (max-width: 767px) {
@@ -152,7 +301,7 @@ export class GameSidebar {
         existingTitle.textContent = title;
       }
       if (content !== undefined && existingContent instanceof HTMLDivElement) {
-        existingContent.textContent = content;
+        setPanelMarkup(existingContent, content);
       }
       return existingPanel;
     }
@@ -165,7 +314,7 @@ export class GameSidebar {
     const contentEl = createElement("div", "sidebar-panel-content") as HTMLDivElement;
 
     if (content !== undefined) {
-      contentEl.textContent = content;
+      setPanelMarkup(contentEl, content);
     }
 
     header.appendChild(heading);
@@ -183,7 +332,7 @@ export class GameSidebar {
       return;
     }
 
-    contentEl.textContent = content;
+    setPanelMarkup(contentEl, content);
   }
 
   removePanel(id: string): void {

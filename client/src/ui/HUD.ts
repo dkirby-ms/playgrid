@@ -19,6 +19,11 @@ export interface HUDOptions {
 export type HUDEvent = { type: "leave" } | { type: "chat_toggle" };
 type HUDEventCallback = (event: HUDEvent) => void;
 
+const HUD_EDGE_OFFSET = 16;
+const GAME_SIDEBAR_WIDTH = 304;
+const GAME_SIDEBAR_RIGHT_OFFSET = 16;
+const GAME_SIDEBAR_BREAKPOINT = 768;
+
 export class HUD {
   private readonly container: HTMLElement;
   private readonly statusPanel: HTMLElement;
@@ -40,6 +45,7 @@ export class HUD {
   private status: GameRendererHUDStatus | null = null;
   private timerIntervalId: number | null = null;
   private isChatOpen = false;
+  private isSidebarActive = false;
 
   constructor() {
     this.container = this.createContainer();
@@ -63,6 +69,7 @@ export class HUD {
     );
 
     document.body.appendChild(this.container);
+    this.applyLayout();
   }
 
   onEvent(callback: HUDEventCallback): void {
@@ -77,6 +84,7 @@ export class HUD {
     this.showTimer = options.showTimer ?? false;
     this.status = options.status ?? null;
 
+    this.applyLayout();
     this.render();
     this.container.style.display = "block";
 
@@ -120,7 +128,33 @@ export class HUD {
       this.status = options.status ?? null;
     }
 
+    this.applyLayout();
     this.render();
+  }
+
+  setSidebarActive(active: boolean): void {
+    this.isSidebarActive = active;
+    this.applyLayout();
+  }
+
+  private applyLayout(): void {
+    const sidebarInset = this.getSidebarInset();
+    const hudRightOffset = HUD_EDGE_OFFSET + sidebarInset;
+
+    this.statusPanel.style.right = `${hudRightOffset}px`;
+    this.statusPanel.style.width = sidebarInset > 0
+      ? `min(300px, calc(100vw - ${152 + sidebarInset}px))`
+      : "min(300px, calc(100vw - 152px))";
+    this.chatToggle.style.right = `${hudRightOffset}px`;
+    this.chatPlaceholder.style.right = `${hudRightOffset}px`;
+  }
+
+  private getSidebarInset(): number {
+    if (!this.isSidebarActive || window.innerWidth < GAME_SIDEBAR_BREAKPOINT) {
+      return 0;
+    }
+
+    return GAME_SIDEBAR_WIDTH + GAME_SIDEBAR_RIGHT_OFFSET;
   }
 
   private createContainer(): HTMLElement {

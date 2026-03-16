@@ -61,7 +61,12 @@ export class GameScene implements Scene {
     }
 
     this.renderer = this.rendererRegistry.create(enterData.gameType);
-    this.renderer.init(this.room.state, { room: this.room });
+    this.renderer.init(this.room.state, {
+      room: this.room,
+      requestLeave: () => {
+        void this.onEventCallback({ type: "leave_game" });
+      },
+    });
     this.container.addChild(this.renderer.container);
 
     this.stateChangeHandler = (state) => {
@@ -69,6 +74,7 @@ export class GameScene implements Scene {
       this.updateHUD(state);
     };
     this.room.onStateChange(this.stateChangeHandler);
+    this.hud?.setSidebarActive(true);
 
     if (this.width > 0 && this.height > 0) {
       this.renderer.resize(this.width, this.height);
@@ -100,6 +106,7 @@ export class GameScene implements Scene {
 
     this.stateChangeHandler = null;
     this.room = null;
+    this.hud?.setSidebarActive(false);
     this.hud?.hide();
     this.hideMessage();
 

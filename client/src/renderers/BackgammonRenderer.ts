@@ -6,6 +6,7 @@ import {
   type GameResult,
 } from "@eschaton/shared";
 import { Container, Graphics, Text } from "pixi.js";
+import { GameSidebar, escapeHtml } from "../ui/GameSidebar";
 import type { GameRenderer, GameRendererContext, RendererInputEvent } from "./GameRenderer";
 
 const BOARD_POINT_COUNT = 24;
@@ -46,6 +47,7 @@ const DIE_PIP_COLOR = 0x1f1f1f;
 const USED_DIE_ALPHA = 0.35;
 const GAME_ENDED_MESSAGE = "game-end";
 const MAX_VISIBLE_STACK = 5;
+const MAX_SIDEBAR_HISTORY_ITEMS = 8;
 const EMPTY_POINT = 0;
 
 type BackgammonColor = typeof BLACK | typeof RED;
@@ -60,6 +62,7 @@ type BackgammonMove = {
 };
 
 type PlayerSnapshot = {
+  displayName: string;
   playerIndex: number;
   isSpectator: boolean;
 };
@@ -78,6 +81,16 @@ type Rect = {
   y: number;
   width: number;
   height: number;
+};
+
+type BackgammonSnapshot = {
+  points: number[];
+  blackBar: number;
+  redBar: number;
+  blackBorneOff: number;
+  redBorneOff: number;
+  currentTurn: string;
+  players: Map<string, PlayerSnapshot>;
 };
 
 function getPlayerColorFromPlayerIndex(playerIndex: number): BackgammonColor | null {
@@ -344,6 +357,8 @@ export class BackgammonRenderer implements GameRenderer {
   });
 
   private room: Room | null = null;
+  private requestLeave: (() => void) | null = null;
+  private sidebar: GameSidebar | null = null;
   private unsubscribeGameEnded: (() => void) | null = null;
   private points: number[] = Array.from({ length: BOARD_POINT_COUNT }, () => EMPTY_POINT);
   private blackBar = 0;
@@ -359,6 +374,7 @@ export class BackgammonRenderer implements GameRenderer {
   private selectedSource: BackgammonSource | null = null;
   private validMoves: BackgammonMove[] = [];
   private validTargetKeys = new Set<string>();
+  private moveHistory: string[] = [];
   private width = DEFAULT_WIDTH;
   private height = DEFAULT_HEIGHT;
   private pointWidth = DEFAULT_WIDTH / BOARD_WIDTH_UNITS;
@@ -444,10 +460,18 @@ export class BackgammonRenderer implements GameRenderer {
   init(state: unknown, context?: GameRendererContext): void {
     this.unsubscribeFromRoomEvents();
     this.room = context?.room ?? null;
+    this.requestLeave = context?.requestLeave ?? null;
     this.gameResult = null;
     this.selectedSource = null;
     this.validMoves = [];
     this.validTargetKeys.clear();
+    this.moveHistory = [];
+    this.sidebar?.destroy();
+    this.sidebar = new GameSidebar();
+    this.sidebar.addPanel("game-info", "Game Info");
+    this.sidebar.addPanel("move-history", "Move History");
+    this.sidebar.addPanel("controls", "Controls");
+    this.sidebar.show();
     this.subscribeToRoomEvents();
     this.applyState(state);
     this.layout();
@@ -455,6 +479,7 @@ export class BackgammonRenderer implements GameRenderer {
     this.redrawPieces();
     this.updateHud();
     this.updateGameOverOverlay();
+    this.updateSidebar();
   }
 
   onStateChange(state: unknown): void {
@@ -464,6 +489,7 @@ export class BackgammonRenderer implements GameRenderer {
     this.redrawPieces();
     this.updateHud();
     this.updateGameOverOverlay();
+    this.updateSidebar();
   }
 
   update(_deltaTime: number): void {}
@@ -483,9 +509,13 @@ export class BackgammonRenderer implements GameRenderer {
   destroy(): void {
     this.unsubscribeFromRoomEvents();
     this.room = null;
+    this.requestLeave = null;
     this.players.clear();
     this.validMoves = [];
     this.validTargetKeys.clear();
+    this.moveHistory = [];
+    this.sidebar?.destroy();
+    this.sidebar = null;
     this.clearPieces();
     this.pointGraphics.length = 0;
     this.container.destroy({ children: true });
@@ -960,6 +990,7 @@ export class BackgammonRenderer implements GameRenderer {
       this.gameResult = result;
       this.updateHud();
       this.updateGameOverOverlay();
+      this.updateSidebar();
     });
   }
 
@@ -969,6 +1000,15 @@ export class BackgammonRenderer implements GameRenderer {
   }
 
   private applyState(state: unknown): void {
+    const previousSnapshot: BackgammonSnapshot = {
+      points: [...this.points],
+      blackBar: this.blackBar,
+      redBar: this.redBar,
+      blackBorneOff: this.blackBorneOff,
+      redBorneOff: this.redBorneOff,
+      currentTurn: this.currentTurn,
+      players: new Map(this.players),
+    };
     const nextState = state as Partial<BackgammonState> | null;
     this.points = this.parsePoints(nextState);
     this.blackBar = this.toCount(nextState?.blackBar);
@@ -984,6 +1024,8 @@ export class BackgammonRenderer implements GameRenderer {
     if (this.phase !== "ended") {
       this.gameResult = null;
     }
+
+    this.recordMove(previousSnapshot);
   }
 
   private syncSelectionWithState(): void {
@@ -1359,6 +1401,209 @@ export class BackgammonRenderer implements GameRenderer {
     return typeof target === "number" ? `point:${target}` : "off";
   }
 
+  private updateSidebar(): void {
+    if (!this.sidebar) {
+      return;
+    }
+
+    const notes: string[] = [];
+    const playerColorLabel = this.getPlayerColorLabel();
+    if (playerColorLabel.length > 0) {
+      notes.push(`<div class="sidebar-note">${escapeHtml(playerColorLabel)}</div>`);
+    }
+    const statusText = this.phase === "ended"
+      ? this.getGameOverSubtitle() || this.getStatusLabel().text
+      : this.getStatusLabel().text;
+    if (statusText.length > 0) {
+      notes.push(`<div class="sidebar-note">${escapeHtml(statusText)}</div>`);
+    }
+
+    const { black, red } = this.getPipCounts();
+    this.sidebar.updatePanel(
+      "game-info",
+      `<div class="sidebar-stat-list">
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Current turn</span><span class="sidebar-stat-value">${escapeHtml(this.getCurrentTurnLabel())}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Dice</span><span class="sidebar-stat-value">${escapeHtml(this.getDiceLabel())}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Black pip count</span><span class="sidebar-stat-value">${black}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Red pip count</span><span class="sidebar-stat-value">${red}</span></div>
+      </div>${notes.join("")}`,
+    );
+
+    const historyMarkup = this.moveHistory.length > 0
+      ? `<div class="sidebar-history-list">${this.moveHistory.map((move, index) => `
+          <div class="sidebar-history-item">
+            <span class="sidebar-history-index">${index + 1}</span>
+            <span class="sidebar-history-text">${escapeHtml(move)}</span>
+          </div>
+        `).join("")}</div>`
+      : '<div class="sidebar-empty">Moves will appear here after the opening roll.</div>';
+    this.sidebar.updatePanel("move-history", historyMarkup);
+
+    this.sidebar.updatePanel(
+      "controls",
+      `<div class="sidebar-button-group">
+        <button type="button" class="sidebar-button sidebar-button--secondary" data-action="roll-dice" disabled>Roll Dice</button>
+        <button type="button" class="sidebar-button sidebar-button--danger" data-action="resign"${this.requestLeave ? "" : " disabled"}>Resign</button>
+      </div>
+      <div class="sidebar-note">Dice are rolled automatically at the start of each turn. Use resign to concede the match.</div>`,
+    );
+
+    const controlsPanel = this.sidebar.getPanelContent("controls");
+    const resignButton = controlsPanel?.querySelector('[data-action="resign"]');
+    if (resignButton instanceof HTMLButtonElement) {
+      resignButton.onclick = () => {
+        this.requestLeave?.();
+      };
+    }
+  }
+
+  private getCurrentTurnLabel(): string {
+    if (!this.currentTurn) {
+      return "Waiting";
+    }
+
+    if (this.room?.sessionId === this.currentTurn) {
+      return "You";
+    }
+
+    const currentPlayer = this.players.get(this.currentTurn);
+    if (currentPlayer?.displayName) {
+      return currentPlayer.displayName;
+    }
+
+    const currentPlayerColor = currentPlayer
+      ? getPlayerColorFromPlayerIndex(currentPlayer.playerIndex)
+      : null;
+    if (currentPlayerColor === BLACK) {
+      return "Black";
+    }
+    if (currentPlayerColor === RED) {
+      return "Red";
+    }
+
+    return "Player";
+  }
+
+  private getDiceLabel(): string {
+    const [die1, die2] = this.dice;
+    if (die1 <= 0 || die2 <= 0) {
+      return "Awaiting roll";
+    }
+
+    const values = [
+      this.usedDice[0] ? `${die1} used` : String(die1),
+      this.usedDice[1] ? `${die2} used` : String(die2),
+    ];
+    return values.join(" • ");
+  }
+
+  private getPipCounts(): { black: number; red: number } {
+    let black = this.blackBar * 25;
+    let red = this.redBar * 25;
+
+    for (let index = 0; index < BOARD_POINT_COUNT; index += 1) {
+      const count = this.points[index];
+      if (count > 0) {
+        black += count * (BOARD_POINT_COUNT - index);
+      } else if (count < 0) {
+        red += Math.abs(count) * (index + 1);
+      }
+    }
+
+    return { black, red };
+  }
+
+  private recordMove(previous: BackgammonSnapshot): void {
+    const hasPreviousState = previous.currentTurn.length > 0
+      && (
+        previous.points.some((count) => count !== 0)
+        || previous.blackBar > 0
+        || previous.redBar > 0
+        || previous.blackBorneOff > 0
+        || previous.redBorneOff > 0
+      );
+    if (!hasPreviousState) {
+      return;
+    }
+
+    const mover = previous.players.get(previous.currentTurn);
+    if (!mover || mover.isSpectator) {
+      return;
+    }
+
+    const moverColor = getPlayerColorFromPlayerIndex(mover.playerIndex);
+    if (moverColor === null) {
+      return;
+    }
+
+    const from = this.getMoveSource(previous, moverColor);
+    const to = this.getMoveTarget(previous, moverColor);
+    if (!from || !to) {
+      return;
+    }
+
+    const hit = moverColor === BLACK
+      ? this.redBar > previous.redBar
+      : this.blackBar > previous.blackBar;
+    const moverLabel = moverColor === BLACK ? "Black" : "Red";
+    this.pushMoveHistory(`${moverLabel}: ${from} → ${to}${hit ? " (hit)" : ""}`);
+  }
+
+  private getMoveSource(previous: BackgammonSnapshot, moverColor: BackgammonColor): string | null {
+    if (moverColor === BLACK) {
+      if (this.blackBar < previous.blackBar) {
+        return "Bar";
+      }
+      for (let index = 0; index < BOARD_POINT_COUNT; index += 1) {
+        if (previous.points[index] > 0 && this.points[index] < previous.points[index]) {
+          return `P${index + 1}`;
+        }
+      }
+      return null;
+    }
+
+    if (this.redBar < previous.redBar) {
+      return "Bar";
+    }
+    for (let index = 0; index < BOARD_POINT_COUNT; index += 1) {
+      if (previous.points[index] < 0 && this.points[index] > previous.points[index]) {
+        return `P${index + 1}`;
+      }
+    }
+    return null;
+  }
+
+  private getMoveTarget(previous: BackgammonSnapshot, moverColor: BackgammonColor): string | null {
+    if (moverColor === BLACK) {
+      if (this.blackBorneOff > previous.blackBorneOff) {
+        return "Off";
+      }
+      for (let index = 0; index < BOARD_POINT_COUNT; index += 1) {
+        if (this.points[index] > 0 && this.points[index] > previous.points[index]) {
+          return `P${index + 1}`;
+        }
+      }
+      return null;
+    }
+
+    if (this.redBorneOff > previous.redBorneOff) {
+      return "Off";
+    }
+    for (let index = 0; index < BOARD_POINT_COUNT; index += 1) {
+      if (this.points[index] < 0 && this.points[index] < previous.points[index]) {
+        return `P${index + 1}`;
+      }
+    }
+    return null;
+  }
+
+  private pushMoveHistory(move: string): void {
+    this.moveHistory.unshift(move);
+    if (this.moveHistory.length > MAX_SIDEBAR_HISTORY_ITEMS) {
+      this.moveHistory.length = MAX_SIDEBAR_HISTORY_ITEMS;
+    }
+  }
+
   private parsePoints(state: Partial<BackgammonState> | null): number[] {
     const normalizedPoints = state?.points ? Array.from(state.points, (count) => Number(count)) : [];
 
@@ -1390,6 +1635,7 @@ export class BackgammonRenderer implements GameRenderer {
 
     for (const [sessionId, player] of state?.players?.entries() ?? []) {
       players.set(sessionId, {
+        displayName: typeof player.displayName === "string" ? player.displayName : "Player",
         playerIndex: Number(player.playerIndex ?? -1),
         isSpectator: Boolean(player.isSpectator),
       });

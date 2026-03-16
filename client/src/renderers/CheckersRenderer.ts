@@ -15,6 +15,7 @@ import {
   getValidMoves,
   type CheckersMove,
 } from "../games/checkers/checkersClientLogic";
+import { GameSidebar, escapeHtml } from "../ui/GameSidebar";
 import type {
   GameRenderer,
   GameRendererContext,
@@ -59,12 +60,20 @@ const TOP_HUD_SPACE = 104;
 const BOTTOM_HUD_SPACE = 60;
 const GAME_ENDED_MESSAGE = "game-end";
 const NO_FORCED_CAPTURE = -1;
+const MAX_SIDEBAR_HISTORY_ITEMS = 8;
 
 function toCssHexColor(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
 }
 
+function boardIndexToNotation(index: number): string {
+  const column = index % BOARD_DIMENSION;
+  const row = Math.floor(index / BOARD_DIMENSION);
+  return `${String.fromCharCode(65 + column)}${BOARD_DIMENSION - row}`;
+}
+
 type PlayerSnapshot = {
+  displayName: string;
   playerIndex: number;
   isSpectator: boolean;
 };
@@ -122,6 +131,8 @@ export class CheckersRenderer implements GameRenderer {
   });
   private readonly squareGraphics: Graphics[] = [];
   private room: Room | null = null;
+  private requestLeave: (() => void) | null = null;
+  private sidebar: GameSidebar | null = null;
   private unsubscribeGameEnded: (() => void) | null = null;
   private board: number[] = Array.from({ length: BOARD_CELL_COUNT }, () => EMPTY);
   private phase = "waiting";
@@ -131,6 +142,7 @@ export class CheckersRenderer implements GameRenderer {
   private gameResult: GameResult | null = null;
   private selectedIndex: number | null = null;
   private validTargetIndexes = new Set<number>();
+  private moveHistory: string[] = [];
   private isFlipped = false;
   private width = DEFAULT_WIDTH;
   private height = DEFAULT_HEIGHT;
@@ -175,9 +187,17 @@ export class CheckersRenderer implements GameRenderer {
   init(state: unknown, context?: GameRendererContext): void {
     this.unsubscribeFromRoomEvents();
     this.room = context?.room ?? null;
+    this.requestLeave = context?.requestLeave ?? null;
     this.gameResult = null;
     this.selectedIndex = null;
     this.validTargetIndexes.clear();
+    this.moveHistory = [];
+    this.sidebar?.destroy();
+    this.sidebar = new GameSidebar();
+    this.sidebar.addPanel("game-info", "Game Info");
+    this.sidebar.addPanel("move-history", "Move History");
+    this.sidebar.addPanel("controls", "Controls");
+    this.sidebar.show();
     this.subscribeToRoomEvents();
     this.applyState(state);
     this.layout();
@@ -185,6 +205,7 @@ export class CheckersRenderer implements GameRenderer {
     this.redrawPieces();
     this.updateHud();
     this.updateGameOverOverlay();
+    this.updateSidebar();
   }
 
   onStateChange(state: unknown): void {
@@ -194,6 +215,7 @@ export class CheckersRenderer implements GameRenderer {
     this.redrawPieces();
     this.updateHud();
     this.updateGameOverOverlay();
+    this.updateSidebar();
   }
 
   update(_deltaTime: number): void {}
@@ -225,8 +247,12 @@ export class CheckersRenderer implements GameRenderer {
   destroy(): void {
     this.unsubscribeFromRoomEvents();
     this.room = null;
+    this.requestLeave = null;
     this.players.clear();
     this.validTargetIndexes.clear();
+    this.moveHistory = [];
+    this.sidebar?.destroy();
+    this.sidebar = null;
     this.clearPieces();
     this.squareGraphics.length = 0;
     this.container.destroy({ children: true });
@@ -491,6 +517,7 @@ export class CheckersRenderer implements GameRenderer {
       this.gameResult = result;
       this.updateHud();
       this.updateGameOverOverlay();
+      this.updateSidebar();
     });
   }
 
@@ -500,6 +527,9 @@ export class CheckersRenderer implements GameRenderer {
   }
 
   private applyState(state: unknown): void {
+    const previousBoard = [...this.board];
+    const previousCurrentTurn = this.currentTurn;
+    const previousPlayers = new Map(this.players);
     const nextState = state as Partial<CheckersState> | null;
     this.board = this.parseBoard(nextState);
     this.phase = typeof nextState?.phase === "string" ? nextState.phase : "waiting";
@@ -509,6 +539,7 @@ export class CheckersRenderer implements GameRenderer {
       : NO_FORCED_CAPTURE;
     this.players = this.parsePlayers(nextState);
     this.isFlipped = this.getLocalPlayerColor() === BLACK;
+    this.recordMove(previousBoard, previousCurrentTurn, previousPlayers);
   }
 
   private syncSelectionWithState(): void {
@@ -705,6 +736,172 @@ export class CheckersRenderer implements GameRenderer {
     return getValidMoves(this.board, index, this.mustCaptureFrom);
   }
 
+  private updateSidebar(): void {
+    if (!this.sidebar) {
+      return;
+    }
+
+    const { blackCount, redCount } = this.countPieces();
+    const notes: string[] = [];
+    const playerColorLabel = this.getPlayerColorLabel();
+    if (playerColorLabel.length > 0) {
+      notes.push(`<div class="sidebar-note">${escapeHtml(playerColorLabel)}</div>`);
+    }
+    if (this.mustCaptureFrom !== NO_FORCED_CAPTURE) {
+      notes.push(
+        `<div class="sidebar-note">Forced capture continues from ${escapeHtml(boardIndexToNotation(this.mustCaptureFrom))}.</div>`,
+      );
+    }
+
+    this.sidebar.updatePanel(
+      "game-info",
+      `<div class="sidebar-stat-list">
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Current turn</span><span class="sidebar-stat-value">${escapeHtml(this.getCurrentTurnLabel())}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Black pieces</span><span class="sidebar-stat-value">⚫ ${blackCount}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Red pieces</span><span class="sidebar-stat-value">🔴 ${redCount}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Status</span><span class="sidebar-stat-value">${escapeHtml(this.getSidebarStatus())}</span></div>
+      </div>${notes.join("")}`,
+    );
+
+    const historyMarkup = this.moveHistory.length > 0
+      ? `<div class="sidebar-history-list">${this.moveHistory.map((move, index) => `
+          <div class="sidebar-history-item">
+            <span class="sidebar-history-index">${index + 1}</span>
+            <span class="sidebar-history-text">${escapeHtml(move)}</span>
+          </div>
+        `).join("")}</div>`
+      : `<div class="sidebar-empty">Moves will appear here once the first turn is made.</div>`;
+    this.sidebar.updatePanel("move-history", historyMarkup);
+
+    this.sidebar.updatePanel(
+      "controls",
+      `<div class="sidebar-button-group">
+        <button type="button" class="sidebar-button sidebar-button--danger" data-action="resign"${this.requestLeave ? "" : " disabled"}>Resign</button>
+        <button type="button" class="sidebar-button sidebar-button--secondary" data-action="offer-draw" disabled>Offer Draw</button>
+      </div>
+      <div class="sidebar-note">Use the HUD Leave Game button or resign here to concede. Draw offers are not available yet.</div>`,
+    );
+
+    const controlsPanel = this.sidebar.getPanelContent("controls");
+    const resignButton = controlsPanel?.querySelector('[data-action="resign"]');
+    if (resignButton instanceof HTMLButtonElement) {
+      resignButton.onclick = () => {
+        this.requestLeave?.();
+      };
+    }
+  }
+
+  private getCurrentTurnLabel(): string {
+    if (!this.currentTurn) {
+      return "Waiting";
+    }
+
+    if (this.room?.sessionId === this.currentTurn) {
+      return "You";
+    }
+
+    const currentPlayer = this.players.get(this.currentTurn);
+    if (currentPlayer?.displayName) {
+      return currentPlayer.displayName;
+    }
+
+    const currentPlayerColor = currentPlayer
+      ? getPlayerColorFromPlayerIndex(currentPlayer.playerIndex)
+      : null;
+    if (currentPlayerColor === BLACK) {
+      return "Black";
+    }
+    if (currentPlayerColor === RED) {
+      return "Red";
+    }
+
+    return "Player";
+  }
+
+  private getSidebarStatus(): string {
+    if (this.phase === "waiting") {
+      return "Waiting for both players to join.";
+    }
+
+    if (this.phase === "ended") {
+      return this.getGameOverSubtitle() || "Match complete.";
+    }
+
+    const localPlayer = this.getLocalPlayer();
+    if (!localPlayer) {
+      return "Waiting for players.";
+    }
+
+    if (localPlayer.isSpectator) {
+      return "Spectating the live board.";
+    }
+
+    if (this.mustCaptureFrom !== NO_FORCED_CAPTURE) {
+      return "Capture chain in progress.";
+    }
+
+    return this.isLocalPlayersTurn() ? "Make a move on the board." : "Waiting for the opponent.";
+  }
+
+  private recordMove(
+    previousBoard: number[],
+    previousCurrentTurn: string,
+    previousPlayers: Map<string, PlayerSnapshot>,
+  ): void {
+    if (previousCurrentTurn.length === 0 || previousBoard.every((piece) => piece === EMPTY)) {
+      return;
+    }
+
+    const mover = previousPlayers.get(previousCurrentTurn);
+    if (!mover || mover.isSpectator) {
+      return;
+    }
+
+    const moverColor = getPlayerColorFromPlayerIndex(mover.playerIndex);
+    if (moverColor !== BLACK && moverColor !== RED) {
+      return;
+    }
+
+    const kingPiece = moverColor === BLACK ? BLACK_KING : RED_KING;
+    let fromIndex: number | null = null;
+    let toIndex: number | null = null;
+
+    for (let index = 0; index < BOARD_CELL_COUNT; index += 1) {
+      const previousPiece = previousBoard[index];
+      const nextPiece = this.board[index];
+      if (previousPiece === nextPiece) {
+        continue;
+      }
+
+      const movedFrom = (previousPiece === moverColor || previousPiece === kingPiece) && nextPiece === EMPTY;
+      const movedTo = (nextPiece === moverColor || nextPiece === kingPiece) && previousPiece !== nextPiece;
+      if (movedFrom) {
+        fromIndex = index;
+      }
+      if (movedTo) {
+        toIndex = index;
+      }
+    }
+
+    if (fromIndex === null || toIndex === null) {
+      return;
+    }
+
+    const isCapture = Math.abs(Math.floor(fromIndex / BOARD_DIMENSION) - Math.floor(toIndex / BOARD_DIMENSION)) > 1;
+    const promoted = previousBoard[toIndex] !== kingPiece && this.board[toIndex] === kingPiece;
+    const moverLabel = moverColor === BLACK ? "Black" : "Red";
+    this.pushMoveHistory(
+      `${moverLabel}: ${boardIndexToNotation(fromIndex)} → ${boardIndexToNotation(toIndex)}${isCapture ? " ×" : ""}${promoted ? " (king)" : ""}`,
+    );
+  }
+
+  private pushMoveHistory(move: string): void {
+    this.moveHistory.unshift(move);
+    if (this.moveHistory.length > MAX_SIDEBAR_HISTORY_ITEMS) {
+      this.moveHistory.length = MAX_SIDEBAR_HISTORY_ITEMS;
+    }
+  }
+
   private parseBoard(state: Partial<CheckersState> | null): number[] {
     const normalizedBoard = state?.board ? Array.from(state.board, (cell) => Number(cell)) : [];
 
@@ -723,6 +920,7 @@ export class CheckersRenderer implements GameRenderer {
 
     for (const [sessionId, player] of state?.players?.entries() ?? []) {
       players.set(sessionId, {
+        displayName: typeof player.displayName === "string" ? player.displayName : "Player",
         playerIndex: Number(player.playerIndex ?? -1),
         isSpectator: Boolean(player.isSpectator),
       });

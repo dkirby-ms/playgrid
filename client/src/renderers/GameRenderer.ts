@@ -10,6 +10,7 @@ export interface RendererInputEvent {
 
 export interface GameRendererContext {
   room?: Room;
+  requestLeave?: () => void;
 }
 
 export interface GameRendererHUDStatus {

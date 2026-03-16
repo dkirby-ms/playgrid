@@ -1,6 +1,7 @@
 import type { Room } from "@colyseus/sdk";
 import type { RiskState } from "@eschaton/shared";
 import { Container, Graphics, Text } from "pixi.js";
+import { GameSidebar, escapeHtml } from "../ui/GameSidebar";
 import type { GameRenderer, GameRendererContext, RendererInputEvent } from "./GameRenderer";
 import { canPlaceArmy, canSelectForAttack, canSelectForFortify } from "../games/risk/riskClientLogic";
 
@@ -169,6 +170,7 @@ export class RiskRenderer implements GameRenderer {
   });
 
   private room: Room | null = null;
+  private sidebar: GameSidebar | null = null;
   private state: RiskState | null = null;
   private selectedTerritory: string | null = null;
   private validTargets = new Set<string>();
@@ -228,10 +230,17 @@ export class RiskRenderer implements GameRenderer {
     this.state = state as RiskState;
     this.selectedTerritory = null;
     this.validTargets.clear();
+    this.sidebar?.destroy();
+    this.sidebar = new GameSidebar();
+    this.sidebar.addPanel("game-info", "Game Info");
+    this.sidebar.addPanel("players", "Players");
+    this.sidebar.addPanel("controls", "Controls");
+    this.sidebar.show();
     this.createTerritories();
     this.layout();
     this.redrawMap();
     this.updateHUD();
+    this.updateSidebar();
   }
 
   onStateChange(state: unknown): void {
@@ -239,6 +248,7 @@ export class RiskRenderer implements GameRenderer {
     this.syncSelectionWithState();
     this.redrawMap();
     this.updateHUD();
+    this.updateSidebar();
   }
 
   update(_deltaTime: number): void {}
@@ -256,6 +266,8 @@ export class RiskRenderer implements GameRenderer {
   destroy(): void {
     this.room = null;
     this.state = null;
+    this.sidebar?.destroy();
+    this.sidebar = null;
     this.territoryGraphics.clear();
     this.validTargets.clear();
     this.container.destroy({ children: true });
@@ -411,19 +423,8 @@ export class RiskRenderer implements GameRenderer {
   private updateButtons(): void {
     if (!this.state) return;
 
-    const sessionId = this.room?.sessionId ?? "";
-    const isMyTurn = this.state.currentTurn === sessionId;
-    
-    const canEndPhase = isMyTurn && (
-      this.state.turnPhase === "attack" ||
-      this.state.turnPhase === "fortify" ||
-      (this.state.turnPhase === "reinforce" && this.getArmiesToPlace() === 0)
-    );
-
-    const riskPlayer = this.state.riskPlayers?.get(sessionId);
-    const canTradeCards = isMyTurn && 
-      this.state.turnPhase === "reinforce" && 
-      (riskPlayer?.cardsHeld ?? 0) >= 3;
+    const canEndPhase = this.canEndPhase();
+    const canTradeCards = this.canTradeCards();
 
     const buttonWidth = 120;
     const buttonHeight = 36;
@@ -458,6 +459,148 @@ export class RiskRenderer implements GameRenderer {
       this.tradeCardsButton.cursor = "pointer";
       this.tradeCardsButton.visible = true;
     }
+  }
+
+  private updateSidebar(): void {
+    if (!this.sidebar) {
+      return;
+    }
+
+    if (!this.state) {
+      this.sidebar.updatePanel("game-info", '<div class="sidebar-empty">Waiting for game state.</div>');
+      this.sidebar.updatePanel("players", '<div class="sidebar-empty">Player stats will appear once the match starts.</div>');
+      this.sidebar.updatePanel("controls", '<div class="sidebar-empty">Controls unlock when the match is ready.</div>');
+      return;
+    }
+
+    this.sidebar.updatePanel(
+      "game-info",
+      `<div class="sidebar-stat-list">
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Phase</span><span class="sidebar-stat-value">${escapeHtml(this.getPhaseLabel())}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Current turn</span><span class="sidebar-stat-value">${escapeHtml(this.getCurrentTurnLabel())}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Armies to place</span><span class="sidebar-stat-value">${this.getArmiesToPlace()}</span></div>
+      </div>`,
+    );
+
+    const players = Array.from(this.state.players?.values() ?? [])
+      .sort((left, right) => Number(left.playerIndex ?? 0) - Number(right.playerIndex ?? 0));
+    const playersMarkup = players.length > 0
+      ? `<div class="sidebar-player-list">${players.map((player) => {
+          const displayName = typeof player.displayName === "string" && player.displayName.length > 0
+            ? player.displayName
+            : "Player";
+          const riskPlayer = this.state?.riskPlayers?.get(player.sessionId);
+          const tags = [
+            player.sessionId === this.room?.sessionId ? '<span class="sidebar-tag">You</span>' : "",
+            player.sessionId === this.state?.currentTurn ? '<span class="sidebar-tag">Turn</span>' : "",
+          ].join("");
+          return `<div class="sidebar-player-row"><div class="sidebar-player-copy"><div class="sidebar-player-name">${escapeHtml(displayName)}</div><div class="sidebar-player-meta">${riskPlayer?.territoriesOwned ?? 0} territories • ${this.getPlayerArmyCount(player.sessionId)} armies</div></div>${tags}</div>`;
+        }).join("")}</div>`
+      : '<div class="sidebar-empty">Waiting for players.</div>';
+    this.sidebar.updatePanel("players", playersMarkup);
+
+    this.sidebar.updatePanel(
+      "controls",
+      `<div class="sidebar-button-group">
+        <button type="button" class="sidebar-button" data-action="end-phase"${this.canEndPhase() ? "" : " disabled"}>End Phase</button>
+        <button type="button" class="sidebar-button sidebar-button--secondary" data-action="fortify"${this.canEnterFortify() ? "" : " disabled"}>Fortify</button>
+        <button type="button" class="sidebar-button sidebar-button--secondary" data-action="trade-cards"${this.canTradeCards() ? "" : " disabled"}>Trade Cards</button>
+      </div>
+      <div class="sidebar-note">Place armies, attack, and move units directly on the map. These shortcuts advance the active turn phase.</div>`,
+    );
+
+    const controlsPanel = this.sidebar.getPanelContent("controls");
+    const endPhaseButton = controlsPanel?.querySelector('[data-action="end-phase"]');
+    if (endPhaseButton instanceof HTMLButtonElement) {
+      endPhaseButton.onclick = () => {
+        if (this.canEndPhase()) {
+          this.handleEndPhase();
+        }
+      };
+    }
+
+    const fortifyButton = controlsPanel?.querySelector('[data-action="fortify"]');
+    if (fortifyButton instanceof HTMLButtonElement) {
+      fortifyButton.onclick = () => {
+        if (this.canEnterFortify()) {
+          this.handleEndPhase();
+        }
+      };
+    }
+
+    const tradeCardsButton = controlsPanel?.querySelector('[data-action="trade-cards"]');
+    if (tradeCardsButton instanceof HTMLButtonElement) {
+      tradeCardsButton.onclick = () => {
+        if (this.canTradeCards()) {
+          this.handleTradeCards();
+        }
+      };
+    }
+  }
+
+  private canEndPhase(): boolean {
+    if (!this.state || !this.room) {
+      return false;
+    }
+
+    const isMyTurn = this.state.currentTurn === this.room.sessionId;
+    if (!isMyTurn) {
+      return false;
+    }
+
+    return this.state.turnPhase === "attack"
+      || this.state.turnPhase === "fortify"
+      || (this.state.turnPhase === "reinforce" && this.getArmiesToPlace() === 0);
+  }
+
+  private canTradeCards(): boolean {
+    if (!this.state || !this.room) {
+      return false;
+    }
+
+    const isMyTurn = this.state.currentTurn === this.room.sessionId;
+    const riskPlayer = this.state.riskPlayers?.get(this.room.sessionId);
+    return isMyTurn && this.state.turnPhase === "reinforce" && (riskPlayer?.cardsHeld ?? 0) >= 3;
+  }
+
+  private canEnterFortify(): boolean {
+    return Boolean(this.state && this.room && this.state.currentTurn === this.room.sessionId && this.state.turnPhase === "attack");
+  }
+
+  private getCurrentTurnLabel(): string {
+    if (!this.state?.currentTurn) {
+      return "Waiting";
+    }
+
+    return this.getDisplayName(this.state.currentTurn);
+  }
+
+  private getDisplayName(sessionId: string): string {
+    if (this.room?.sessionId === sessionId) {
+      return "You";
+    }
+
+    const player = this.state?.players?.get(sessionId);
+    if (typeof player?.displayName === "string" && player.displayName.length > 0) {
+      return player.displayName;
+    }
+
+    return "Player";
+  }
+
+  private getPlayerArmyCount(sessionId: string): number {
+    if (!this.state) {
+      return 0;
+    }
+
+    let armies = 0;
+    for (const territory of this.state.territories?.values() ?? []) {
+      if (territory.owner === sessionId) {
+        armies += territory.armyCount ?? 0;
+      }
+    }
+
+    return armies;
   }
 
   private handleTerritoryClick(territoryId: string): void {
