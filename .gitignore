@@ -6,3 +6,4 @@ dist/
 playwright-report/
 test-results/
 infra/set-repo-secrets.sh
+docs/designs/redesign/
