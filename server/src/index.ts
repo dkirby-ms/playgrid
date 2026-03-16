@@ -1,6 +1,6 @@
 import { createServer, type RequestListener } from "node:http";
 import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
@@ -31,8 +31,10 @@ type ExpressModule = {
 const require = createRequire(import.meta.url);
 const express = require("express") as ExpressModule;
 
-const currentDir = dirname(fileURLToPath(import.meta.url));
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDir = dirname(currentFilePath);
 const clientDistDir = resolve(currentDir, "..", "..", "client", "dist");
+const isBuiltServer = currentFilePath.includes(`${sep}dist${sep}`);
 const app = express();
 
 app.get("/health", (_req, res) => {
@@ -61,7 +63,15 @@ const startServer = async () => {
     initializeTelemetry();
     // Listen first so health probes can respond during DB init
     await server.listen(config.port);
-    console.log(`[playgrid] Server listening on http://localhost:${config.port} and ws://localhost:${config.port}`);
+
+    const serverHttpUrl = `http://localhost:${config.port}`;
+    const serverWsUrl = `ws://localhost:${config.port}`;
+    const clientUrl = isBuiltServer ? serverHttpUrl : "http://localhost:3000";
+
+    console.log(
+      `[playgrid] Startup ready.\n  Client: ${clientUrl}\n  Server: ${serverHttpUrl}\n  WebSocket: ${serverWsUrl}`
+    );
+
     await connectDb();
     console.log("[playgrid] Database connected.");
   } catch (error) {
