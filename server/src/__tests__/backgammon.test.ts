@@ -607,10 +607,8 @@ describe("Backgammon Plugin — Integration", () => {
       expect(state.blackBorneOff).toBe(0);
       expect(state.redBorneOff).toBe(0);
 
-      expect(state.dice[0]).toBeGreaterThanOrEqual(1);
-      expect(state.dice[0]).toBeLessThanOrEqual(6);
-      expect(state.dice[1]).toBeGreaterThanOrEqual(1);
-      expect(state.dice[1]).toBeLessThanOrEqual(6);
+      expect(state.dice[0]).toBe(0);
+      expect(state.dice[1]).toBe(0);
     });
   });
 

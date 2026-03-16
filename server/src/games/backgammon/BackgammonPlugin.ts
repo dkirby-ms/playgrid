@@ -137,10 +137,9 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
         players[1].playerIndex = 1;
       }
 
-      // Roll dice for first turn
-      const [die1, die2] = rollDice();
-      state.dice[0] = die1;
-      state.dice[1] = die2;
+      // Dice start at 0,0 - first player must roll
+      state.dice[0] = 0;
+      state.dice[1] = 0;
       state.usedDice[0] = false;
       state.usedDice[1] = false;
     },
@@ -165,6 +164,31 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
     },
   },
   actions: {
+    roll(state, client): ActionResult {
+      const player = state.players.get(client.sessionId);
+      if (!player) {
+        return { success: false, error: "Player not found." };
+      }
+
+      // Check if dice are already rolled
+      const [die1, die2] = state.dice;
+      if (die1 > 0 || die2 > 0) {
+        return { success: false, error: "Dice already rolled." };
+      }
+
+      // Roll the dice
+      const [nextDie1, nextDie2] = rollDice();
+      state.dice[0] = nextDie1;
+      state.dice[1] = nextDie2;
+      state.usedDice[0] = false;
+      state.usedDice[1] = false;
+
+      return {
+        success: true,
+        endsTurn: false,
+        endsGame: false,
+      };
+    },
     move(state, client, payload): ActionResult {
       if (!isMovePayload(payload)) {
         return { success: false, error: "Invalid move payload." };
@@ -254,10 +278,9 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
       const endsTurn = remainingDice.length === 0 || !hasMoreMoves;
 
       if (endsTurn) {
-        // Roll dice for next turn
-        const [nextDie1, nextDie2] = rollDice();
-        state.dice[0] = nextDie1;
-        state.dice[1] = nextDie2;
+        // Reset dice to 0,0 - next player must roll
+        state.dice[0] = 0;
+        state.dice[1] = 0;
         state.usedDice[0] = false;
         state.usedDice[1] = false;
       }
@@ -281,15 +304,21 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
       return buildGameResult(state, winnerColor);
     },
     validateAction(state, client, actionType, payload) {
-      if (actionType !== "move") {
-        return false;
-      }
-
       if (state.currentTurn !== client.sessionId) {
         return false;
       }
 
-      return validateMoveAction(state, client.sessionId, payload);
+      if (actionType === "roll") {
+        // Allow roll if dice are not yet rolled (both are 0)
+        const [die1, die2] = state.dice;
+        return die1 === 0 && die2 === 0;
+      }
+
+      if (actionType === "move") {
+        return validateMoveAction(state, client.sessionId, payload);
+      }
+
+      return false;
     },
   },
 };

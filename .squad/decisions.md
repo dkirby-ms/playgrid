@@ -2397,3 +2397,24 @@ Prioritize clarity fixes over further visual polish in Checkers. The next UX pas
 - On narrow viewports, compact or relocate HUD chrome so the board can sit closer to the top safe area.
 - Prefer a shape-based king marker (double ring or vector crown badge) over the current text glyph.
 
+
+---
+
+### 2026-03-16T01:16Z: User directive
+**By:** dkirby-ms (via Copilot)
+**What:** The old HUD status panel (turn info, player list, timer) is redundant now that the GameSidebar exists. Remove the status panel overlay and move the turn clock into the sidebar's game info panel instead.
+**Why:** User request — captured for team memory
+
+---
+
+### 2026-03-16T01:23Z: Game sidebar reserves board space on desktop
+**By:** Gately
+**What:** When the in-game sidebar is visible on desktop, reserve a right-side layout lane for it by shrinking `#game-container` instead of floating the sidebar over the Pixi canvas. Coordinate HUD/canvas updates through a shared layout event and `ResizeObserver`.
+**Why:** User request — the board must remain fully visible, and DOM overlay chrome should anchor to the board column instead of obscuring gameplay.
+
+---
+
+### 2026-03-16T02:22Z: Shared game status lives in the sidebar, not the HUD overlay
+**By:** Gately
+**What:** Remove the redundant shared HUD status card and keep `HUD.ts` focused on overlay chrome (Leave + chat) plus turn-clock timing. Renderer sidebars now own the visible game status, player info, and turn clock via a shared `GameSidebar` clock helper and `GameRenderer.setTurnClock()` hook.
+**Why:** User request — the sidebar already surfaces game status and players, so duplicating that data in the HUD wasted screen space and split the same state across two UI surfaces. Centralizing visible status inside sidebar panels keeps the board column cleaner while preserving one shared countdown source.
