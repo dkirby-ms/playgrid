@@ -18,6 +18,13 @@ type GradientStop = {
   color: number | string;
 };
 
+export function withAlpha(color: number, alpha: number): string {
+  const red = (color >> 16) & 0xFF;
+  const green = (color >> 8) & 0xFF;
+  const blue = color & 0xFF;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
 // === Base Neutrals ===
 export const WHITE = 0xFFFFFF;
 export const BLACK = 0x000000;
@@ -106,6 +113,8 @@ export const ZINC_950 = 0x09090B;
 export const SLATE_100 = 0xF1F5F9;
 export const SLATE_300 = 0xCBD5E1;
 export const SLATE_400 = 0x94A3B8;
+export const SLATE_700 = 0x334155;
+export const SLATE_900 = 0x0F172A;
 
 // === Gradient Backgrounds ===
 export const PAGE_BG_FROM = BG_PRIMARY;
@@ -189,10 +198,20 @@ export const PLAYER_COLORS = {
 export const CHECKERS_LIGHT_SQUARE_FROM = 0xD2B48C;
 export const CHECKERS_LIGHT_SQUARE_VIA = 0xB99B7D;
 export const CHECKERS_LIGHT_SQUARE_TO = 0xA0826D;
+export const BOARD_LIGHT_SQUARE = {
+  from: CHECKERS_LIGHT_SQUARE_FROM,
+  via: CHECKERS_LIGHT_SQUARE_VIA,
+  to: CHECKERS_LIGHT_SQUARE_TO,
+} as const;
 
 export const CHECKERS_DARK_SQUARE_FROM = 0x8B8680;
 export const CHECKERS_DARK_SQUARE_VIA = 0x655950;
 export const CHECKERS_DARK_SQUARE_TO = 0x44403C;
+export const BOARD_DARK_SQUARE = {
+  from: CHECKERS_DARK_SQUARE_FROM,
+  via: CHECKERS_DARK_SQUARE_VIA,
+  to: CHECKERS_DARK_SQUARE_TO,
+} as const;
 
 export const CHECKERS_GRID_SHADOW = ZINC_950;
 export const CHECKERS_GRID_SHADOW_ALPHA = 0.3;
@@ -211,7 +230,8 @@ export const PIECE_BLACK_VIA = ZINC_800;
 export const PIECE_BLACK_TO = ZINC_900;
 export const PIECE_BLACK_BORDER = ZINC_950;
 
-export const PIECE_WHITE_FROM = SLATE_100;
+export const PIECE_WHITE_FROM = WHITE;
+export const PIECE_WHITE_VIA = SLATE_100;
 export const PIECE_WHITE_TO = SLATE_300;
 export const PIECE_WHITE_BORDER = SLATE_400;
 
@@ -224,6 +244,7 @@ export const KING_CROWN_RING = YELLOW_400;
 export const KING_CROWN_RING_ALPHA = 0.8;
 export const KING_CROWN_SHADOW = YELLOW_400;
 export const KING_CROWN_SHADOW_ALPHA = 0.3;
+export const KING_MARKER = KING_CROWN_RING;
 
 export const DICE_FACE = WHITE;
 export const DICE_TEXT = BG_PRIMARY;
@@ -231,9 +252,33 @@ export const DICE_TEXT = BG_PRIMARY;
 export const BACKGAMMON_BOARD_FROM = AMBER_900;
 export const BACKGAMMON_BOARD_VIA = AMBER_950;
 export const BACKGAMMON_BOARD_TO = CHECKERS_DARK_SQUARE_TO;
+export const BACKGAMMON_POINT_DARK_FROM = AMBER_800;
+export const BACKGAMMON_POINT_DARK_VIA = AMBER_900;
+export const BACKGAMMON_POINT_DARK_TO = AMBER_950;
+export const BACKGAMMON_POINT_LIGHT_FROM = SLATE_700;
+export const BACKGAMMON_POINT_LIGHT_VIA = ZINC_700;
+export const BACKGAMMON_POINT_LIGHT_TO = SLATE_900;
 export const BACKGAMMON_CENTER_STRIP_FROM = CHECKERS_DARK_SQUARE_TO;
 export const BACKGAMMON_CENTER_STRIP_VIA = AMBER_950;
 export const BACKGAMMON_CENTER_STRIP_TO = CHECKERS_DARK_SQUARE_TO;
+export const BACKGAMMON_HOME_FROM = BOARD_FRAME_GRADIENT_VIA;
+export const BACKGAMMON_HOME_VIA = AMBER_950;
+export const BACKGAMMON_HOME_TO = CHECKERS_DARK_SQUARE_TO;
+export const BACKGAMMON_DICE_TRAY_FROM = BOARD_FRAME_GRADIENT_FROM;
+export const BACKGAMMON_DICE_TRAY_VIA = BACKGAMMON_CENTER_STRIP_VIA;
+export const BACKGAMMON_DICE_TRAY_TO = BOARD_FRAME_GRADIENT_TO;
+export const BACKGAMMON_TARGET_MARKER_ALPHA = 0.82;
+export const BACKGAMMON_USED_DIE_ALPHA = 0.35;
+export const BACKGAMMON_OVERLAY_ALPHA = 0.66;
+
+export const RISK_BOARD_FROM = BG_DARK;
+export const RISK_BOARD_VIA = BG_CARD;
+export const RISK_BOARD_TO = BG_PRIMARY;
+export const RISK_MAP_FROM = BG_CARD;
+export const RISK_MAP_VIA = BG_DARK;
+export const RISK_MAP_TO = BG_PRIMARY;
+export const RISK_OCEAN_BLUE = BLUE_700;
+export const RISK_OCEAN_GREEN = GREEN_700;
 
 function createLinearGradient(stops: GradientStop[], start = { x: 0, y: 0 }, end = { x: 1, y: 1 }): FillGradient {
   return new FillGradient({
@@ -274,8 +319,8 @@ export function createPageBackgroundGradient(): FillGradient {
 export function createPhaseBannerGradient(): FillGradient {
   return createLinearGradient(
     [
-      { offset: 0, color: `rgba(76, 29, 149, ${PHASE_BANNER_ALPHA})` },
-      { offset: 1, color: `rgba(88, 28, 146, ${PHASE_BANNER_ALPHA})` },
+      { offset: 0, color: withAlpha(PHASE_BANNER_FROM, PHASE_BANNER_ALPHA) },
+      { offset: 1, color: withAlpha(PHASE_BANNER_TO, PHASE_BANNER_ALPHA) },
     ],
     { x: 0, y: 0.5 },
     { x: 1, y: 0.5 },
@@ -328,6 +373,72 @@ export function createBackgammonBoardGradient(): FillGradient {
   ]);
 }
 
+export function createBackgammonPointGradient(isDark: boolean): FillGradient {
+  return createLinearGradient(
+    isDark
+      ? [
+        { offset: 0, color: BACKGAMMON_POINT_DARK_FROM },
+        { offset: 0.45, color: BACKGAMMON_POINT_DARK_VIA },
+        { offset: 1, color: BACKGAMMON_POINT_DARK_TO },
+      ]
+      : [
+        { offset: 0, color: BACKGAMMON_POINT_LIGHT_FROM },
+        { offset: 0.45, color: BACKGAMMON_POINT_LIGHT_VIA },
+        { offset: 1, color: BACKGAMMON_POINT_LIGHT_TO },
+      ],
+    { x: 0.5, y: 0 },
+    { x: 0.5, y: 1 },
+  );
+}
+
+export function createBackgammonCenterStripGradient(): FillGradient {
+  return createLinearGradient([
+    { offset: 0, color: BACKGAMMON_CENTER_STRIP_FROM },
+    { offset: 0.5, color: BACKGAMMON_CENTER_STRIP_VIA },
+    { offset: 1, color: BACKGAMMON_CENTER_STRIP_TO },
+  ]);
+}
+
+export function createBackgammonHomeGradient(): FillGradient {
+  return createLinearGradient([
+    { offset: 0, color: BACKGAMMON_HOME_FROM },
+    { offset: 0.5, color: BACKGAMMON_HOME_VIA },
+    { offset: 1, color: BACKGAMMON_HOME_TO },
+  ]);
+}
+
+export function createBackgammonDiceTrayGradient(): FillGradient {
+  return createLinearGradient([
+    { offset: 0, color: BACKGAMMON_DICE_TRAY_FROM },
+    { offset: 0.5, color: BACKGAMMON_DICE_TRAY_VIA },
+    { offset: 1, color: BACKGAMMON_DICE_TRAY_TO },
+  ]);
+}
+
+export function createRiskBoardGradient(): FillGradient {
+  return createLinearGradient([
+    { offset: 0, color: RISK_BOARD_FROM },
+    { offset: 0.45, color: RISK_BOARD_VIA },
+    { offset: 1, color: RISK_BOARD_TO },
+  ]);
+}
+
+export function createRiskMapGradient(): FillGradient {
+  return createLinearGradient([
+    { offset: 0, color: RISK_MAP_FROM },
+    { offset: 0.55, color: RISK_MAP_VIA },
+    { offset: 1, color: RISK_MAP_TO },
+  ]);
+}
+
+export function createRiskOceanGradient(): FillGradient {
+  return createLinearGradient([
+    { offset: 0, color: withAlpha(RISK_OCEAN_BLUE, 0.18) },
+    { offset: 0.55, color: withAlpha(BG_PRIMARY, 0) },
+    { offset: 1, color: withAlpha(RISK_OCEAN_GREEN, 0.14) },
+  ]);
+}
+
 export function createPieceBodyGradient(variant: PieceGradientVariant): FillGradient {
   if (variant === "red") {
     return createRadialGradient([
@@ -341,6 +452,7 @@ export function createPieceBodyGradient(variant: PieceGradientVariant): FillGrad
     return createRadialGradient(
       [
         { offset: 0, color: PIECE_WHITE_FROM },
+        { offset: 0.52, color: PIECE_WHITE_VIA },
         { offset: 1, color: PIECE_WHITE_TO },
       ],
       { x: 0.38, y: 0.3 },
@@ -366,14 +478,11 @@ export function createPieceHighlightGradient(): FillGradient {
     scale: 0.55,
     rotation: -Math.PI / 6,
     colorStops: [
-      { offset: 0, color: `rgba(255, 255, 255, ${PIECE_HIGHLIGHT_ALPHA})` },
-      { offset: 1, color: `rgba(255, 255, 255, ${PIECE_HIGHLIGHT_ALPHA_EDGE})` },
+      { offset: 0, color: withAlpha(WHITE, PIECE_HIGHLIGHT_ALPHA) },
+      { offset: 1, color: withAlpha(WHITE, PIECE_HIGHLIGHT_ALPHA_EDGE) },
     ],
     textureSpace: "local",
   });
 }
 
 // Notes for future renderer refactors:
-// - CheckersRenderer.ts still hardcodes board-frame, square, piece, selection, and HUD colors near the file header.
-// - RiskRenderer.ts still hardcodes continent, player, button, selection, and HUD colors near the file header.
-// - BackgammonRenderer.ts still hardcodes wood board, point, piece, dice, selection, and HUD colors near the file header.

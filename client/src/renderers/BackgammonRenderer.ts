@@ -7,6 +7,31 @@ import {
 } from "@eschaton/shared";
 import { Container, Graphics, Text } from "pixi.js";
 import { GameSidebar, escapeHtml } from "../ui/GameSidebar";
+import {
+  ACCENT_VIOLET,
+  BACKGAMMON_OVERLAY_ALPHA,
+  BACKGAMMON_TARGET_MARKER_ALPHA,
+  BACKGAMMON_USED_DIE_ALPHA,
+  BLACK as COLOR_BLACK,
+  BORDER_DEFAULT,
+  BORDER_LIGHT,
+  DICE_FACE,
+  DICE_TEXT,
+  GREEN_500,
+  PIECE_BLACK_BORDER,
+  PIECE_WHITE_BORDER,
+  TEXT_PRIMARY,
+  TEXT_SECONDARY,
+  TEXT_SUBTLE,
+  createBackgammonBoardGradient,
+  createBackgammonCenterStripGradient,
+  createBackgammonDiceTrayGradient,
+  createBackgammonHomeGradient,
+  createBackgammonPointGradient,
+  createBoardFrameGradient,
+  createPieceBodyGradient,
+  createPieceHighlightGradient,
+} from "./DesignTokens";
 import type { GameRenderer, GameRendererContext, RendererInputEvent } from "./GameRenderer";
 
 const BOARD_POINT_COUNT = 24;
@@ -24,27 +49,11 @@ const BAR_WIDTH_UNITS = 0.9;
 const CENTER_GAP_UNITS = 1.1;
 const OFF_GAP_UNITS = 0.45;
 const OFF_AREA_WIDTH_UNITS = 1.75;
-const BOARD_BACKGROUND_COLOR = 0xcda56a;
-const BOARD_BORDER_COLOR = 0x6f4621;
-const POINT_DARK_COLOR = 0x8b4513;
-const POINT_LIGHT_COLOR = 0xdeb887;
-const BAR_COLOR = 0x6f3f16;
-const OFF_AREA_COLOR = 0xb98958;
-const BLACK_PIECE_COLOR = 0x252525;
-const RED_PIECE_COLOR = 0xc64040;
-const PIECE_OUTLINE_COLOR = 0x111111;
-const SELECTED_SOURCE_COLOR = 0xf7e36a;
-const VALID_TARGET_COLOR = 0x53d769;
-const VALID_TARGET_ALPHA = 0.82;
-const HUD_TEXT_COLOR = 0xffffff;
-const SUBTLE_TEXT_COLOR = 0xd7d9df;
-const TURN_READY_COLOR = 0x53d769;
-const TURN_WAITING_COLOR = 0xc0c4cf;
-const OVERLAY_BACKDROP_COLOR = 0x000000;
-const OVERLAY_BACKDROP_ALPHA = 0.66;
-const DIE_FACE_COLOR = 0xf8f5ef;
-const DIE_PIP_COLOR = 0x1f1f1f;
-const USED_DIE_ALPHA = 0.35;
+const PIECE_SHADOW_ALPHA = 0.2;
+const PIECE_HOVER_RING_ALPHA = 0.45;
+const PIECE_SELECTION_RING_ALPHA = 0.92;
+const DICE_TRAY_ALPHA = 0.94;
+const OFF_AREA_FILL_ALPHA = 0.88;
 const GAME_ENDED_MESSAGE = "game-end";
 const MAX_VISIBLE_STACK = 5;
 const MAX_SIDEBAR_HISTORY_ITEMS = 8;
@@ -296,7 +305,7 @@ export class BackgammonRenderer implements GameRenderer {
       fontFamily: "sans-serif",
       fontSize: 28,
       fontWeight: "700",
-      fill: TURN_WAITING_COLOR,
+      fill: TEXT_SECONDARY,
       align: "center",
     },
   });
@@ -306,7 +315,7 @@ export class BackgammonRenderer implements GameRenderer {
       fontFamily: "sans-serif",
       fontSize: 18,
       fontWeight: "600",
-      fill: SUBTLE_TEXT_COLOR,
+      fill: TEXT_SUBTLE,
       align: "center",
     },
   });
@@ -316,7 +325,7 @@ export class BackgammonRenderer implements GameRenderer {
       fontFamily: "sans-serif",
       fontSize: 20,
       fontWeight: "700",
-      fill: BLACK_PIECE_COLOR,
+      fill: TEXT_PRIMARY,
       align: "center",
     },
   });
@@ -326,7 +335,7 @@ export class BackgammonRenderer implements GameRenderer {
       fontFamily: "sans-serif",
       fontSize: 20,
       fontWeight: "700",
-      fill: RED_PIECE_COLOR,
+      fill: PIECE_WHITE_BORDER,
       align: "center",
     },
   });
@@ -337,7 +346,7 @@ export class BackgammonRenderer implements GameRenderer {
       fontFamily: "sans-serif",
       fontSize: 40,
       fontWeight: "800",
-      fill: HUD_TEXT_COLOR,
+      fill: TEXT_PRIMARY,
       align: "center",
       wordWrap: true,
       wordWrapWidth: DEFAULT_WIDTH * 0.7,
@@ -349,7 +358,7 @@ export class BackgammonRenderer implements GameRenderer {
       fontFamily: "sans-serif",
       fontSize: 20,
       fontWeight: "500",
-      fill: SUBTLE_TEXT_COLOR,
+      fill: TEXT_SUBTLE,
       align: "center",
       wordWrap: true,
       wordWrapWidth: DEFAULT_WIDTH * 0.7,
@@ -372,6 +381,7 @@ export class BackgammonRenderer implements GameRenderer {
   private players = new Map<string, PlayerSnapshot>();
   private gameResult: GameResult | null = null;
   private selectedSource: BackgammonSource | null = null;
+  private hoveredSource: BackgammonSource | null = null;
   private validMoves: BackgammonMove[] = [];
   private validTargetKeys = new Set<string>();
   private moveHistory: string[] = [];
@@ -417,6 +427,12 @@ export class BackgammonRenderer implements GameRenderer {
       pointGraphic.on("pointertap", () => {
         this.handlePointClick(index);
       });
+      pointGraphic.on("pointerover", () => {
+        this.setHoveredSource(index);
+      });
+      pointGraphic.on("pointerout", () => {
+        this.clearHoveredSource(index);
+      });
       this.pointGraphics.push(pointGraphic);
       this.boardLayer.addChild(pointGraphic);
     }
@@ -425,9 +441,21 @@ export class BackgammonRenderer implements GameRenderer {
     this.barTopArea.on("pointertap", () => {
       this.handleBarClick(BLACK);
     });
+    this.barTopArea.on("pointerover", () => {
+      this.setHoveredSource("bar");
+    });
+    this.barTopArea.on("pointerout", () => {
+      this.clearHoveredSource("bar");
+    });
     this.barBottomArea.eventMode = "static";
     this.barBottomArea.on("pointertap", () => {
       this.handleBarClick(RED);
+    });
+    this.barBottomArea.on("pointerover", () => {
+      this.setHoveredSource("bar");
+    });
+    this.barBottomArea.on("pointerout", () => {
+      this.clearHoveredSource("bar");
     });
     this.offTopArea.eventMode = "static";
     this.offTopArea.on("pointertap", () => {
@@ -560,21 +588,63 @@ export class BackgammonRenderer implements GameRenderer {
   }
 
   private redrawBoard(): void {
+    const frameRadius = Math.max(12, this.pointWidth * 0.24);
+    const frameInset = Math.max(6, this.pointWidth * 0.1);
+    const innerRadius = Math.max(10, frameRadius - frameInset);
+    const homeInset = Math.max(6, this.pointWidth * 0.12);
+    const homeWidth = (POINTS_PER_QUADRANT * this.pointWidth) - (homeInset * 2);
+    const topHomeHeight = Math.max(0, (this.topTipY - this.playY) - (homeInset * 2));
+    const bottomHomeHeight = Math.max(0, ((this.playY + this.playHeight) - this.bottomTipY) - (homeInset * 2));
+    const homeX = this.playX + (POINTS_PER_QUADRANT * this.pointWidth) + this.barWidth + homeInset;
+
     this.boardBackground.clear();
     this.boardBackground.roundRect(
       this.boardOffsetX,
       this.boardOffsetY,
       this.boardWidth,
       this.boardHeight,
-      Math.max(12, this.pointWidth * 0.24),
-    ).fill(BOARD_BACKGROUND_COLOR).stroke({ color: BOARD_BORDER_COLOR, width: Math.max(2, this.pointWidth * 0.06) });
+      frameRadius,
+    ).fill(createBoardFrameGradient());
 
-    this.boardBackground.rect(
+    this.boardBackground.roundRect(
+      this.boardOffsetX + frameInset,
+      this.boardOffsetY + frameInset,
+      this.boardWidth - (frameInset * 2),
+      this.boardHeight - (frameInset * 2),
+      innerRadius,
+    ).fill(createBackgammonBoardGradient()).stroke({
+      color: BORDER_DEFAULT,
+      width: Math.max(1, this.pointWidth * 0.04),
+      alpha: 0.72,
+    });
+
+    this.boardBackground.roundRect(
+      homeX,
+      this.playY + homeInset,
+      homeWidth,
+      topHomeHeight,
+      Math.max(10, this.pointWidth * 0.14),
+    ).fill(createBackgammonHomeGradient());
+
+    this.boardBackground.roundRect(
+      homeX,
+      this.bottomTipY + homeInset,
+      homeWidth,
+      bottomHomeHeight,
+      Math.max(10, this.pointWidth * 0.14),
+    ).fill(createBackgammonHomeGradient());
+
+    this.boardBackground.roundRect(
       this.playX + (POINTS_PER_QUADRANT * this.pointWidth),
       this.playY,
       this.barWidth,
       this.playHeight,
-    ).fill(BAR_COLOR);
+      Math.max(10, this.pointWidth * 0.16),
+    ).fill(createBackgammonCenterStripGradient()).stroke({
+      color: BORDER_LIGHT,
+      width: Math.max(1, this.pointWidth * 0.03),
+      alpha: 0.55,
+    });
 
     for (let index = 0; index < BOARD_POINT_COUNT; index += 1) {
       this.redrawPoint(index);
@@ -590,8 +660,6 @@ export class BackgammonRenderer implements GameRenderer {
   private redrawPoint(index: number): void {
     const point = this.pointGraphics[index];
     const geometry = this.getPointGeometry(index);
-    const color = this.getPointColor(index);
-    const isSelected = this.selectedSource === index;
     const isValidTarget = this.validTargetKeys.has(this.toTargetKey(index));
     const centerX = geometry.x + (geometry.width / 2);
     const markerY = geometry.isTopRow
@@ -603,15 +671,13 @@ export class BackgammonRenderer implements GameRenderer {
       .lineTo(geometry.x + geometry.width, geometry.baseY)
       .lineTo(centerX, geometry.tipY)
       .closePath()
-      .fill(color);
-
-    if (isSelected) {
-      point.stroke({ color: SELECTED_SOURCE_COLOR, width: Math.max(3, this.pointWidth * 0.08) });
-    }
+      .fill(createBackgammonPointGradient(this.isDarkPoint(index)))
+      .stroke({ color: BORDER_DEFAULT, width: Math.max(1, this.pointWidth * 0.03), alpha: 0.35 });
 
     if (isValidTarget) {
-      point.circle(centerX, markerY, this.pointWidth * 0.15)
-        .fill({ color: VALID_TARGET_COLOR, alpha: VALID_TARGET_ALPHA });
+      point.circle(centerX, markerY, this.pointWidth * 0.16)
+        .fill({ color: GREEN_500, alpha: BACKGAMMON_TARGET_MARKER_ALPHA })
+        .stroke({ color: TEXT_PRIMARY, width: Math.max(1, this.pointWidth * 0.02), alpha: 0.22 });
     }
 
     point.cursor = this.isPointActionable(index) ? "pointer" : "default";
@@ -621,6 +687,7 @@ export class BackgammonRenderer implements GameRenderer {
     const rect = this.getBarZoneRect(zoneColor);
     const localColor = this.getLocalPlayerColor();
     const isSelected = this.selectedSource === "bar" && localColor === zoneColor;
+    const isHovered = this.hoveredSource === "bar" && localColor === zoneColor && this.selectedSource === null;
     const isActionable = this.isBarActionable(zoneColor);
 
     graphics.clear();
@@ -630,11 +697,14 @@ export class BackgammonRenderer implements GameRenderer {
       rect.width,
       rect.height,
       Math.max(8, this.pointWidth * 0.12),
-    ).fill({ color: isSelected ? SELECTED_SOURCE_COLOR : BAR_COLOR, alpha: isSelected ? 0.2 : 0.001 });
-
-    if (isSelected) {
-      graphics.stroke({ color: SELECTED_SOURCE_COLOR, width: Math.max(3, this.pointWidth * 0.08) });
-    }
+    ).fill({
+      fill: createBackgammonCenterStripGradient(),
+      alpha: isSelected ? 0.32 : isHovered ? 0.24 : isActionable ? 0.14 : 0.06,
+    }).stroke({
+      color: isSelected ? ACCENT_VIOLET : BORDER_LIGHT,
+      width: isSelected ? Math.max(2, this.pointWidth * 0.06) : Math.max(1, this.pointWidth * 0.025),
+      alpha: isSelected ? 0.75 : 0.28,
+    });
 
     graphics.cursor = isActionable ? "pointer" : "default";
   }
@@ -651,9 +721,10 @@ export class BackgammonRenderer implements GameRenderer {
       rect.width,
       rect.height,
       Math.max(10, this.pointWidth * 0.15),
-    ).fill({ color: OFF_AREA_COLOR, alpha: 0.55 }).stroke({
-      color: isValidTarget ? VALID_TARGET_COLOR : BOARD_BORDER_COLOR,
+    ).fill({ fill: createBackgammonHomeGradient(), alpha: OFF_AREA_FILL_ALPHA }).stroke({
+      color: isValidTarget ? GREEN_500 : BORDER_LIGHT,
       width: isValidTarget ? Math.max(3, this.pointWidth * 0.08) : Math.max(1, this.pointWidth * 0.04),
+      alpha: isValidTarget ? 1 : 0.6,
     });
 
     if (isValidTarget) {
@@ -661,7 +732,7 @@ export class BackgammonRenderer implements GameRenderer {
         rect.x + (rect.width / 2),
         rect.y + (rect.height / 2),
         this.pointWidth * 0.18,
-      ).fill({ color: VALID_TARGET_COLOR, alpha: VALID_TARGET_ALPHA });
+      ).fill({ color: GREEN_500, alpha: BACKGAMMON_TARGET_MARKER_ALPHA });
     }
 
     graphics.cursor = this.isOffActionable(zoneColor) ? "pointer" : "default";
@@ -680,9 +751,26 @@ export class BackgammonRenderer implements GameRenderer {
     const totalWidth = (dieSize * 2) + dieGap;
     const startX = this.diceCenterX - (totalWidth / 2);
     const y = this.playY + (this.playHeight / 2) - (dieSize / 2);
+    const trayPadding = dieSize * 0.32;
+    const trayX = startX - trayPadding;
+    const trayY = y - (trayPadding * 0.55);
+    const trayWidth = totalWidth + (trayPadding * 2);
+    const trayHeight = dieSize + (trayPadding * 1.1);
 
-    this.drawDie(startX, y, dieSize, die1, this.usedDice[0] ? USED_DIE_ALPHA : 1);
-    this.drawDie(startX + dieSize + dieGap, y, dieSize, die2, this.usedDice[1] ? USED_DIE_ALPHA : 1);
+    this.diceLayer.roundRect(
+      trayX,
+      trayY,
+      trayWidth,
+      trayHeight,
+      Math.max(10, dieSize * 0.24),
+    ).fill({ fill: createBackgammonDiceTrayGradient(), alpha: DICE_TRAY_ALPHA }).stroke({
+      color: BORDER_LIGHT,
+      width: Math.max(1, dieSize * 0.06),
+      alpha: 0.65,
+    });
+
+    this.drawDie(startX, y, dieSize, die1, this.usedDice[0] ? BACKGAMMON_USED_DIE_ALPHA : 1);
+    this.drawDie(startX + dieSize + dieGap, y, dieSize, die2, this.usedDice[1] ? BACKGAMMON_USED_DIE_ALPHA : 1);
   }
 
   private drawDie(x: number, y: number, size: number, value: number, alpha: number): void {
@@ -695,9 +783,15 @@ export class BackgammonRenderer implements GameRenderer {
     const middleY = y + (size / 2);
     const bottom = y + (size * 0.74);
 
+    this.diceLayer.roundRect(x + (size * 0.04), y + (size * 0.08), size, size, cornerRadius)
+      .fill({ color: COLOR_BLACK, alpha: 0.16 * alpha });
+
     this.diceLayer.roundRect(x, y, size, size, cornerRadius)
-      .fill({ color: DIE_FACE_COLOR, alpha })
-      .stroke({ color: PIECE_OUTLINE_COLOR, width: Math.max(2, size * 0.06) });
+      .fill({ color: DICE_FACE, alpha })
+      .stroke({ color: BORDER_LIGHT, width: Math.max(2, size * 0.06), alpha: 0.85 });
+
+    this.diceLayer.circle(x + (size * 0.34), y + (size * 0.32), size * 0.16)
+      .fill({ color: TEXT_PRIMARY, alpha: 0.14 * alpha });
 
     const pipPatterns: Record<number, Array<[number, number]>> = {
       1: [[centerX, middleY]],
@@ -709,7 +803,7 @@ export class BackgammonRenderer implements GameRenderer {
     };
 
     for (const [pipX, pipY] of pipPatterns[value] ?? []) {
-      this.diceLayer.circle(pipX, pipY, pipRadius).fill({ color: DIE_PIP_COLOR, alpha });
+      this.diceLayer.circle(pipX, pipY, pipRadius).fill({ color: DICE_TEXT, alpha });
     }
   }
 
@@ -719,7 +813,7 @@ export class BackgammonRenderer implements GameRenderer {
     const pieceGraphics = new Graphics();
     const discRadius = Math.max(10, this.pointWidth * 0.38);
     const outlineWidth = Math.max(1, this.pointWidth * 0.05);
-    const stackSpacing = discRadius * 0.62;
+    const stackSpacing = discRadius * 0.56;
     const edgePadding = Math.max(8, this.pointWidth * 0.14);
 
     for (let index = 0; index < BOARD_POINT_COUNT; index += 1) {
@@ -739,7 +833,8 @@ export class BackgammonRenderer implements GameRenderer {
       this.drawStack(
         pieceGraphics,
         Math.abs(count),
-        count > 0 ? BLACK_PIECE_COLOR : RED_PIECE_COLOR,
+        count > 0 ? BLACK : RED,
+        index,
         centerX,
         originY,
         direction,
@@ -753,7 +848,8 @@ export class BackgammonRenderer implements GameRenderer {
     this.drawStack(
       pieceGraphics,
       this.blackBar,
-      BLACK_PIECE_COLOR,
+      BLACK,
+      "bar",
       barCenterX,
       this.playY + discRadius + edgePadding,
       1,
@@ -764,7 +860,8 @@ export class BackgammonRenderer implements GameRenderer {
     this.drawStack(
       pieceGraphics,
       this.redBar,
-      RED_PIECE_COLOR,
+      RED,
+      "bar",
       barCenterX,
       this.playY + this.playHeight - discRadius - edgePadding,
       -1,
@@ -779,7 +876,8 @@ export class BackgammonRenderer implements GameRenderer {
   private drawStack(
     graphics: Graphics,
     count: number,
-    color: number,
+    pieceColor: BackgammonColor,
+    source: BackgammonSource,
     centerX: number,
     startY: number,
     direction: number,
@@ -792,14 +890,43 @@ export class BackgammonRenderer implements GameRenderer {
     }
 
     const visibleCount = Math.min(count, MAX_VISIBLE_STACK);
+    const bodyGradient = createPieceBodyGradient(this.getPieceVariant(pieceColor));
+    const highlightGradient = createPieceHighlightGradient();
     let lastY = startY;
 
     for (let index = 0; index < visibleCount; index += 1) {
       const y = startY + (spacing * index * direction);
       lastY = y;
+      graphics.ellipse(centerX + (radius * 0.04), y + (radius * 0.14), radius * 0.9, radius * 0.58)
+        .fill({ color: COLOR_BLACK, alpha: PIECE_SHADOW_ALPHA });
       graphics.circle(centerX, y, radius)
-        .fill(color)
-        .stroke({ color: PIECE_OUTLINE_COLOR, width: outlineWidth });
+        .fill(bodyGradient)
+        .stroke({ color: this.getPieceBorderColor(pieceColor), width: outlineWidth, alpha: 0.95 });
+      graphics.circle(centerX, y, radius * 0.76)
+        .stroke({
+          color: pieceColor === BLACK ? TEXT_SECONDARY : BORDER_LIGHT,
+          width: Math.max(1, outlineWidth * 0.65),
+          alpha: pieceColor === BLACK ? 0.22 : 0.5,
+        });
+      graphics.circle(centerX, y, radius * 0.92)
+        .fill(highlightGradient);
+    }
+
+    const isSelected = this.isSelectedSource(source, pieceColor);
+    const isHovered = !isSelected
+      && this.hoveredSource === source
+      && (source !== "bar" || this.getLocalPlayerColor() === pieceColor);
+    if (isSelected || isHovered) {
+      graphics.circle(centerX, lastY, radius * 1.14)
+        .stroke({
+          color: ACCENT_VIOLET,
+          width: Math.max(2, outlineWidth * 1.4),
+          alpha: isSelected ? PIECE_SELECTION_RING_ALPHA : PIECE_HOVER_RING_ALPHA,
+        });
+      if (isSelected) {
+        graphics.circle(centerX, lastY, radius * 1.26)
+          .stroke({ color: ACCENT_VIOLET, width: Math.max(3, outlineWidth * 1.8), alpha: 0.24 });
+      }
     }
 
     if (count > MAX_VISIBLE_STACK) {
@@ -809,7 +936,7 @@ export class BackgammonRenderer implements GameRenderer {
           fontFamily: "sans-serif",
           fontSize: Math.max(14, radius * 1.2),
           fontWeight: "800",
-          fill: HUD_TEXT_COLOR,
+          fill: this.getStackCountFill(pieceColor),
           align: "center",
         },
       });
@@ -828,12 +955,13 @@ export class BackgammonRenderer implements GameRenderer {
     this.playerColorText.text = this.getPlayerColorLabel();
     this.playerColorText.visible = this.playerColorText.text.length > 0;
     this.playerColorText.style.fontSize = Math.max(16, this.pointWidth * 0.3);
-    this.blackOffText.text = `⚫ Off\n${this.blackBorneOff}`;
+    this.playerColorText.style.fill = this.getPlayerIndicatorColor(this.getLocalPlayerColor());
+    this.blackOffText.text = `⚫ Black Off\n${this.blackBorneOff}`;
     this.blackOffText.style.fontSize = Math.max(16, this.pointWidth * 0.3);
-    this.blackOffText.style.fill = BLACK_PIECE_COLOR;
-    this.redOffText.text = `🔴 Off\n${this.redBorneOff}`;
+    this.blackOffText.style.fill = this.getPlayerIndicatorColor(BLACK);
+    this.redOffText.text = `⚪ White Off\n${this.redBorneOff}`;
     this.redOffText.style.fontSize = Math.max(16, this.pointWidth * 0.3);
-    this.redOffText.style.fill = RED_PIECE_COLOR;
+    this.redOffText.style.fill = this.getPlayerIndicatorColor(RED);
   }
 
   private updateGameOverOverlay(): void {
@@ -853,7 +981,7 @@ export class BackgammonRenderer implements GameRenderer {
       this.boardWidth,
       this.boardHeight,
       Math.max(12, this.pointWidth * 0.24),
-    ).fill({ color: OVERLAY_BACKDROP_COLOR, alpha: OVERLAY_BACKDROP_ALPHA });
+    ).fill({ color: COLOR_BLACK, alpha: BACKGAMMON_OVERLAY_ALPHA });
 
     this.overlayTitleText.text = this.getGameOverTitle();
     this.overlayTitleText.style.fontSize = Math.max(28, this.pointWidth * 0.7);
@@ -1010,6 +1138,7 @@ export class BackgammonRenderer implements GameRenderer {
       players: new Map(this.players),
     };
     const nextState = state as Partial<BackgammonState> | null;
+    this.hoveredSource = null;
     this.points = this.parsePoints(nextState);
     this.blackBar = this.toCount(nextState?.blackBar);
     this.redBar = this.toCount(nextState?.redBar);
@@ -1050,18 +1179,49 @@ export class BackgammonRenderer implements GameRenderer {
 
   private setSelection(source: BackgammonSource): void {
     this.selectedSource = source;
+    this.hoveredSource = null;
     this.updateValidTargets(source);
     this.redrawBoard();
+    this.redrawPieces();
   }
 
   private clearSelection(redraw = true): void {
     this.selectedSource = null;
+    this.hoveredSource = null;
     this.validMoves = [];
     this.validTargetKeys.clear();
 
     if (redraw) {
       this.redrawBoard();
+      this.redrawPieces();
     }
+  }
+
+  private setHoveredSource(source: BackgammonSource): void {
+    if (!this.isLocalPlayersTurn() || this.selectedSource !== null) {
+      return;
+    }
+
+    const isHoverable = source === "bar" ? this.isSelectableBar() : this.isSelectablePoint(source);
+    if (!isHoverable || this.hoveredSource === source) {
+      return;
+    }
+
+    this.hoveredSource = source;
+    this.redrawPieces();
+  }
+
+  private clearHoveredSource(source?: BackgammonSource): void {
+    if (this.hoveredSource === null) {
+      return;
+    }
+
+    if (source !== undefined && this.hoveredSource !== source) {
+      return;
+    }
+
+    this.hoveredSource = null;
+    this.redrawPieces();
   }
 
   private updateValidTargets(source: BackgammonSource): void {
@@ -1243,23 +1403,23 @@ export class BackgammonRenderer implements GameRenderer {
 
   private getStatusLabel(): { text: string; color: number } {
     if (this.phase === "waiting") {
-      return { text: "Waiting for players", color: TURN_WAITING_COLOR };
+      return { text: "Waiting for players", color: TEXT_SECONDARY };
     }
 
     if (this.phase === "ended") {
-      return { text: "Game over", color: TURN_WAITING_COLOR };
+      return { text: "Game over", color: TEXT_SECONDARY };
     }
 
     const localPlayer = this.getLocalPlayer();
     if (!localPlayer || localPlayer.isSpectator) {
-      return { text: "Spectating", color: TURN_WAITING_COLOR };
+      return { text: "Spectating", color: TEXT_SECONDARY };
     }
 
     if (this.isLocalPlayersTurn()) {
-      return { text: "Your turn", color: TURN_READY_COLOR };
+      return { text: "Your turn", color: GREEN_500 };
     }
 
-    return { text: "Opponent's turn", color: TURN_WAITING_COLOR };
+    return { text: "Opponent's turn", color: TEXT_SECONDARY };
   }
 
   private getPlayerColorLabel(): string {
@@ -1278,7 +1438,7 @@ export class BackgammonRenderer implements GameRenderer {
     }
 
     if (localPlayerColor === RED) {
-      return "You are playing as 🔴 Red";
+      return "You are playing as ⚪ White";
     }
 
     return "";
@@ -1308,7 +1468,7 @@ export class BackgammonRenderer implements GameRenderer {
     }
 
     if (winnerColor === RED) {
-      return "Red bears off all checkers.";
+      return "White bears off all checkers.";
     }
 
     if (this.gameResult?.type === "draw") {
@@ -1343,9 +1503,45 @@ export class BackgammonRenderer implements GameRenderer {
     };
   }
 
-  private getPointColor(index: number): number {
+  private isDarkPoint(index: number): boolean {
     const column = index < POINTS_PER_ROW ? index : index - POINTS_PER_ROW;
-    return column % 2 === 0 ? POINT_DARK_COLOR : POINT_LIGHT_COLOR;
+    return column % 2 === 0;
+  }
+
+  private getPieceVariant(color: BackgammonColor): "black" | "white" {
+    return color === BLACK ? "black" : "white";
+  }
+
+  private getPieceBorderColor(color: BackgammonColor): number {
+    return color === BLACK ? PIECE_BLACK_BORDER : PIECE_WHITE_BORDER;
+  }
+
+  private getStackCountFill(color: BackgammonColor): number {
+    return color === BLACK ? TEXT_PRIMARY : DICE_TEXT;
+  }
+
+  private getPlayerIndicatorColor(color: BackgammonColor | null): number {
+    if (color === BLACK) {
+      return TEXT_PRIMARY;
+    }
+
+    if (color === RED) {
+      return PIECE_WHITE_BORDER;
+    }
+
+    return TEXT_SECONDARY;
+  }
+
+  private isSelectedSource(source: BackgammonSource, pieceColor: BackgammonColor): boolean {
+    if (this.selectedSource !== source) {
+      return false;
+    }
+
+    if (source !== "bar") {
+      return true;
+    }
+
+    return this.getLocalPlayerColor() === pieceColor;
   }
 
   private getPointOwner(count: number): BackgammonColor | null {
@@ -1425,7 +1621,7 @@ export class BackgammonRenderer implements GameRenderer {
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Current turn</span><span class="sidebar-stat-value">${escapeHtml(this.getCurrentTurnLabel())}</span></div>
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Dice</span><span class="sidebar-stat-value">${escapeHtml(this.getDiceLabel())}</span></div>
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Black pip count</span><span class="sidebar-stat-value">${black}</span></div>
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Red pip count</span><span class="sidebar-stat-value">${red}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">White pip count</span><span class="sidebar-stat-value">${red}</span></div>
       </div>${notes.join("")}`,
     );
 
@@ -1478,7 +1674,7 @@ export class BackgammonRenderer implements GameRenderer {
       return "Black";
     }
     if (currentPlayerColor === RED) {
-      return "Red";
+      return "White";
     }
 
     return "Player";
@@ -1545,7 +1741,7 @@ export class BackgammonRenderer implements GameRenderer {
     const hit = moverColor === BLACK
       ? this.redBar > previous.redBar
       : this.blackBar > previous.blackBar;
-    const moverLabel = moverColor === BLACK ? "Black" : "Red";
+    const moverLabel = moverColor === BLACK ? "Black" : "White";
     this.pushMoveHistory(`${moverLabel}: ${from} → ${to}${hit ? " (hit)" : ""}`);
   }
 

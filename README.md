@@ -2,23 +2,33 @@
 
 > Multiplayer classic board games, real-time. Built for friends.
 
-PlayGrid brings timeless games like chess, checkers, and cards to life with real-time multiplayer gameplay powered by Colyseus and PixiJS. Start a match, challenge a friend, play instantly.
+**PlayGrid** is a multiplayer board game platform where players create lobbies, challenge friends, and play classic games in real-time. Built with TypeScript, Colyseus (real-time server), and PixiJS (game rendering), it's designed to be fast, responsive, and fun.
+
+## Games
+
+PlayGrid currently features:
+- **Checkers** — Classic two-player checkers with smooth piece movement
+- **Risk** — Territory control strategy game for multiple players
+
+More games coming soon, including Backgammon!
 
 ## Features
 
-- ⚡ Real-time multiplayer using WebSockets
-- 🎨 Smooth, responsive gameplay with HTML5 Canvas
-- 🏗️ Built on the [Eschaton Studio](https://github.com/dkirby-ms/eschaton-studio) game development framework
-- 🧪 Fully tested with Vitest
+- ⚡ Real-time multiplayer using WebSockets (Colyseus)
+- 🎨 Smooth game rendering with PixiJS and HTML5 Canvas
+- 🎯 Web-based lobby for discovering and joining games
+- 🏗️ Plugin-based game architecture — easy to add new games
+- 🧪 Fully tested with Vitest (unit) and Playwright (E2E)
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Server | Colyseus (WebSocket game server) |
-| Client | PixiJS + Vite (HTML5 Canvas) |
-| Shared | Pure TypeScript types and constants |
-| Testing | Vitest |
+| **Client** | TypeScript, PixiJS v8, Vite, React |
+| **Server** | TypeScript, Colyseus, Node.js, Express |
+| **Shared** | TypeScript schemas and game constants |
+| **Infrastructure** | Docker, Azure Container Apps, PostgreSQL |
+| **Testing** | Vitest (unit), Playwright (E2E) |
 
 ## Getting Started
 
@@ -154,6 +164,23 @@ We welcome contributions! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for g
 
 For a deep dive into the architecture, see [`docs/architecture.md`](./docs/architecture.md).
 
-## Squad Team
+## The Squad
 
-This project is managed by the Eschaton Studio squad. See [`.squad/team.md`](./.squad/team.md) for the team roster.
+This project is developed by a team of specialists working together:
+
+| Name | Role | Status |
+|------|------|--------|
+| Hal | Lead | ✅ Active |
+| Gately | Game Dev (Rendering) | ✅ Active |
+| Pemulis | Systems Dev (Backend) | ✅ Active |
+| Steeply | Tester | ✅ Active |
+| Marathe | DevOps / CI-CD | ✅ Active |
+| Joelle | Community / DevRel | ✅ Active |
+| Mario | UX Consultant | ✅ Active |
+| Scribe | Session Logger | 📋 Silent |
+| Ralph | Work Monitor | 🔄 Monitor |
+| Copilot | Coding Agent | 🤖 Autonomous |
+
+Plus: **GitHub Copilot** helping us code faster and smarter.
+
+For detailed team info, see [`.squad/team.md`](./.squad/team.md).
