@@ -6,6 +6,98 @@
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <title>Playgrid - Online Board Games</title>
     <style>
+      :root {
+        /* === Base Neutrals === */
+        --bg-primary: #0A0A0A;          /* zinc-900 */
+        --bg-dark: #18181B;             /* zinc-800 */
+        --bg-card: #27272A;             /* zinc-700 */
+        --bg-glass: rgba(24, 24, 27, 0.5);  /* zinc-800/50 */
+        --bg-card-dark: rgba(9, 9, 11, 0.5); /* zinc-900/50 */
+        
+        /* === Text Colors === */
+        --text-primary: #FFFFFF;
+        --text-secondary: #A1A1A1;      /* zinc-400 */
+        --text-muted: #71717A;          /* zinc-500 */
+        
+        /* === Border Colors === */
+        --border-default: #18181B;      /* zinc-800 */
+        --border-light: rgba(63, 63, 70, 0.5); /* zinc-700/50 */
+        
+        /* === Accent Colors === */
+        --accent-violet: #A78BFA;       /* violet-400 */
+        --accent-purple: #9333EA;       /* purple-600 */
+        --accent-violet-bg: #7C3AED;    /* violet-600 */
+        
+        /* === Status Colors === */
+        --status-online: #22C55E;       /* green-500 */
+        --status-ingame: #F59E0B;       /* amber-500 */
+        --status-away: #71717A;         /* zinc-500 */
+        --status-danger: rgba(127, 29, 29, 0.5); /* red-900/50 */
+        
+        /* === Player Colors === */
+        --player-red: #DC2626;
+        --player-blue: #2563EB;
+        --player-green: #16A34A;
+        --player-yellow: #CA8A04;
+        --player-purple: #9333EA;
+        --player-orange: #EA580C;
+        
+        /* === Gradients === */
+        --gradient-page: linear-gradient(to bottom right, #0A0A0A, #0A0A0A, #3F1659);
+        --gradient-phase-banner: linear-gradient(to right, rgba(76, 29, 149, 0.5), rgba(88, 28, 146, 0.5));
+        --gradient-button-primary: linear-gradient(to bottom right, #7C3AED, #9333EA);
+        --gradient-button-danger: linear-gradient(to bottom right, #DC2626, #B91C1C);
+        
+        /* === Glass-morphism === */
+        --glass-bg: rgba(24, 24, 27, 0.5);
+        --glass-blur: 4px;
+        --glass-border: rgba(63, 63, 70, 0.5);
+        --glass-radius: 0.75rem;        /* rounded-xl */
+        
+        /* === Spacing === */
+        --space-xs: 0.25rem;
+        --space-sm: 0.5rem;
+        --space-md: 1rem;
+        --space-lg: 1.5rem;
+        --space-xl: 2rem;
+        
+        /* === Typography === */
+        --font-base: 1rem;
+        --font-sm: 0.875rem;
+        --font-xs: 0.75rem;
+        --font-lg: 1.125rem;
+        --font-xl: 1.25rem;
+        --font-2xl: 1.5rem;
+      }
+
+      /* === Utility Classes === */
+      .glass-panel {
+        background: var(--glass-bg);
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
+        border: 1px solid var(--glass-border);
+        border-radius: var(--glass-radius);
+      }
+
+      .status-dot {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        display: inline-block;
+      }
+
+      .status-dot.online {
+        background: var(--status-online);
+      }
+
+      .status-dot.ingame {
+        background: var(--status-ingame);
+      }
+
+      .status-dot.away {
+        background: var(--status-away);
+      }
+
       * {
         margin: 0;
         padding: 0;

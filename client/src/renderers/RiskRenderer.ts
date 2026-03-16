@@ -591,10 +591,13 @@ export class RiskRenderer implements GameRenderer {
       return { text: "Waiting for game", color: TURN_WAITING_COLOR };
     }
 
-    const sessionId = this.room?.sessionId ?? "";
-    const isMyTurn = this.state.currentTurn === sessionId;
+    const sessionId = this.room?.sessionId;
+    const currentTurn = this.state.currentTurn;
+    if (!sessionId || !currentTurn) {
+      return { text: "", color: TEXT_COLOR };
+    }
 
-    if (isMyTurn) {
+    if (currentTurn === sessionId) {
       return { text: "Your turn", color: TURN_READY_COLOR };
     }
 
@@ -602,7 +605,8 @@ export class RiskRenderer implements GameRenderer {
   }
 
   private getPhaseLabel(): string {
-    if (!this.state) return "";
+    const turnPhase = this.state?.turnPhase;
+    if (!turnPhase) return "";
 
     const phaseLabels: Record<string, string> = {
       "setup-pick": "Setup: Pick Territories",
@@ -612,7 +616,7 @@ export class RiskRenderer implements GameRenderer {
       "fortify": "Fortify Phase",
     };
 
-    return phaseLabels[this.state.turnPhase] ?? this.state.turnPhase;
+    return phaseLabels[turnPhase] ?? turnPhase;
   }
 
   private getArmiesToPlace(): number {
