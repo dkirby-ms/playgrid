@@ -367,7 +367,6 @@ describeLobby("LobbyRoom pregame flow", () => {
     const gameId = await createGame(room, host, { gameType: "checkers", maxPlayers: 2, cpuOpponent: true });
 
     host.send.mockClear();
-
     await room.handleStartGame(host);
 
     expect(mockCreateRoom).toHaveBeenCalledWith("game", {
@@ -379,6 +378,29 @@ describeLobby("LobbyRoom pregame flow", () => {
     });
     expect(getGame(room, gameId)?.status).toBe("in_progress");
     expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
+  });
+
+  it("starts a shared-device game with only the host and passes the room flag through", async () => {
+    const gameId = await createGame(room, host, { headToHeadMode: true });
+
+    host.send.mockClear();
+    await room.handleStartGame(host);
+
+    expect(mockCreateRoom).toHaveBeenCalledWith("game", {
+      gameId,
+      gameType: "checkers",
+      headToHeadMode: true,
+      maxPlayers: 4,
+      expectedPlayers: 1,
+      cpuOpponent: false,
+    });
+    expect(getGame(room, gameId)).toMatchObject({ headToHeadMode: true, status: "in_progress", playerCount: 1 });
+    expect(findPayload(host, GAME_STARTED)).toEqual({
+      gameId,
+      roomId: "game-room-123",
+      gameType: "checkers",
+      headToHeadMode: true,
+    });
   });
 
   it("supports the full create → join → ready → start path", async () => {
@@ -425,6 +447,15 @@ describeLobby("LobbyRoom pregame flow", () => {
     await room.handleJoinGame(guest, { gameId });
 
     expectLobbyError(guest, "full");
+  });
+
+  it("rejects extra joins for shared-device waiting games", async () => {
+    const gameId = await createGame(room, host, { headToHeadMode: true });
+
+    await room.handleJoinGame(guest, { gameId });
+
+    expectLobbyError(guest, /shared device|one shared device/i);
+    expect(getGame(room, gameId)?.playerCount).toBe(1);
   });
 
   it("skips game type validation when no plugins are registered", async () => {

@@ -21,6 +21,7 @@ interface BaseGameRoomOptions extends GameOptions {
   cpuOpponent?: boolean;
   gameId?: string;
   gameType?: string;
+  headToHeadMode?: boolean;
   maxPlayers?: number;
   expectedPlayers?: number;
   reconnectionTimeout?: number;
@@ -32,6 +33,8 @@ const CPU_TURN_DELAY_MS = 200;
 const DEFAULT_ACTION_ERROR = "Action failed.";
 const DEFAULT_RECONNECTION_TIMEOUT = 30;
 const GAME_ENDED_MESSAGE = "game-end";
+const HEAD_TO_HEAD_OPPONENT_DISPLAY_NAME = "Player 2";
+const HEAD_TO_HEAD_OPPONENT_SESSION_ID = "shared-device-opponent";
 const INVALID_ACTION_ERROR = "Invalid action.";
 const ROOM_ERROR_MESSAGE = "error";
 
@@ -47,6 +50,7 @@ export class BaseGameRoom extends Room {
   private gameStartTime?: number;
   private cpuOpponentEnabled = false;
   private pendingCpuTurn?: Delayed;
+  private headToHeadMode = false;
 
   override async onCreate(options: BaseGameRoomOptions = {}) {
     const gameType = typeof options.gameType === "string" ? options.gameType.trim() : "";
@@ -56,6 +60,7 @@ export class BaseGameRoom extends Room {
 
     this.plugin = gameRegistry.get(gameType) as unknown as GamePlugin<BaseGameState>;
     this.cpuOpponentEnabled = options.cpuOpponent === true && gameType === "checkers";
+    this.headToHeadMode = options.headToHeadMode === true && gameType === "checkers";
 
     const [minPlayers, maxPlayers] = this.plugin.metadata.playerCount;
     const maxPlayersConfig = Math.min(
@@ -141,6 +146,7 @@ export class BaseGameRoom extends Room {
     player.playerIndex = playerIndex;
     player.isSpectator = isSpectator;
     player.isConnected = true;
+    player.controllerSessionId = client.sessionId;
 
     this.state.players.set(client.sessionId, player);
     this.plugin.lifecycle.onPlayerJoin?.(this.state, client, playerIndex);
@@ -166,6 +172,7 @@ export class BaseGameRoom extends Room {
 
     if (!isSpectator) {
       this.ensureCpuParticipant();
+      this.ensureHeadToHeadParticipant(client);
       if (this.shouldStartGame()) {
         this.startGame();
       }
@@ -188,9 +195,9 @@ export class BaseGameRoom extends Room {
     });
 
     if (
-      this.state.phase === "playing" &&
-      !player.isSpectator &&
-      code !== CloseCode.CONSENTED
+      this.state.phase === "playing"
+      && !player.isSpectator
+      && code !== CloseCode.CONSENTED
     ) {
       this.pauseTurnTimerFor(client.sessionId);
 
@@ -278,9 +285,10 @@ export class BaseGameRoom extends Room {
       return false;
     }
 
+    const actingClient = this.resolveActingClient(client);
     const isValid = this.plugin.conditions.validateAction(
       this.state,
-      client,
+      actingClient,
       actionType,
       payload,
     );
@@ -292,7 +300,7 @@ export class BaseGameRoom extends Room {
       return false;
     }
 
-    const result = handler(this.state, client, payload);
+    const result = handler(this.state, actingClient, payload);
     if (!result.success) {
       if (sendErrors) {
         client.send(ROOM_ERROR_MESSAGE, { message: result.error ?? DEFAULT_ACTION_ERROR });
@@ -489,6 +497,41 @@ export class BaseGameRoom extends Room {
     }
   }
 
+  private ensureHeadToHeadParticipant(client: Client) {
+    if (!this.headToHeadMode || this.state.players.has(HEAD_TO_HEAD_OPPONENT_SESSION_ID)) {
+      return;
+    }
+
+    const playerIndex = this.getParticipatingPlayers().length;
+    const player = new PlayerInfo();
+    player.sessionId = HEAD_TO_HEAD_OPPONENT_SESSION_ID;
+    player.displayName = HEAD_TO_HEAD_OPPONENT_DISPLAY_NAME;
+    player.playerIndex = playerIndex;
+    player.isSpectator = false;
+    player.isConnected = true;
+    player.controllerSessionId = client.sessionId;
+
+    this.state.players.set(HEAD_TO_HEAD_OPPONENT_SESSION_ID, player);
+    this.plugin.lifecycle.onPlayerJoin?.(
+      this.state,
+      this.createSyntheticClient(HEAD_TO_HEAD_OPPONENT_SESSION_ID),
+      playerIndex,
+    );
+
+    if (this.gameId) {
+      try {
+        const pool = getPool();
+        void gameRepository.addParticipant(pool, {
+          gameId: this.gameId,
+          userId: HEAD_TO_HEAD_OPPONENT_SESSION_ID,
+          role: "player",
+        });
+      } catch (error) {
+        console.error("[BaseGameRoom] Failed to add head-to-head participant to DB:", error);
+      }
+    }
+  }
+
   private queueCpuTurnIfNeeded() {
     this.cancelPendingCpuTurn();
 
@@ -550,7 +593,21 @@ export class BaseGameRoom extends Room {
     this.queueCpuTurnIfNeeded();
   }
 
-  private createSyntheticClient(sessionId: string) {
+  private resolveActingClient(client: Client) {
+    const currentTurnPlayer = this.state.players.get(this.state.currentTurn);
+    if (
+      !currentTurnPlayer
+      || currentTurnPlayer.isSpectator
+      || currentTurnPlayer.sessionId === client.sessionId
+      || currentTurnPlayer.controllerSessionId !== client.sessionId
+    ) {
+      return client;
+    }
+
+    return this.createSyntheticClient(currentTurnPlayer.sessionId);
+  }
+
+  private createSyntheticClient(sessionId: string): Client {
     return {
       sessionId,
       send: () => undefined,
@@ -571,10 +628,7 @@ export class BaseGameRoom extends Room {
   }
 
   private pauseTurnTimerFor(sessionId: string) {
-    if (
-      !this.turnManager?.isActive()
-      || this.state.currentTurn !== sessionId
-    ) {
+    if (!this.turnManager?.isActive() || !this.isTurnControlledBy(sessionId)) {
       return;
     }
 
@@ -582,14 +636,21 @@ export class BaseGameRoom extends Room {
   }
 
   private resumeTurnTimerFor(sessionId: string) {
-    if (
-      !this.turnManager?.isActive()
-      || this.state.currentTurn !== sessionId
-    ) {
+    if (!this.turnManager?.isActive() || !this.isTurnControlledBy(sessionId)) {
       return;
     }
 
     this.turnManager.resume();
+  }
+
+  private isTurnControlledBy(sessionId: string) {
+    const currentTurnPlayer = this.state.players.get(this.state.currentTurn);
+    if (!currentTurnPlayer) {
+      return false;
+    }
+
+    return currentTurnPlayer.sessionId === sessionId
+      || currentTurnPlayer.controllerSessionId === sessionId;
   }
 
   private syncTurnState() {

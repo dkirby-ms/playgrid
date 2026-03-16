@@ -33,6 +33,14 @@
 
 ## Learnings
 
+### 2026-03-16: Checkers shared-device head-to-head mode
+
+- `client/src/ui/LobbyScreen.ts` and `server/src/rooms/LobbyRoom.ts` now support a Checkers-only `headToHeadMode` toggle, keep shared-device rooms single-seat in the waiting lobby, and start them with one real player.
+- `shared/src/BaseGameState.ts` adds `PlayerInfo.controllerSessionId`; `server/src/game/BaseGameRoom.ts` uses that field to synthesize a `shared-device-opponent` seat so one Colyseus client can legally take both turns without replacing the normal turn-order flow.
+- `client/src/renderers/CheckersRenderer.ts` detects when the local session controls both seats, rotates the board by the active color, allows input for whichever shared-device seat is up, and updates sidebar copy to describe Black/Red turns clearly.
+- `client/src/scenes/GameScene.ts` now shows a transient pass-the-device prompt when the active shared-device seat changes.
+- Regression coverage for the mode lives in `server/src/__tests__/BaseGameRoom.test.ts` and `server/src/__tests__/lobby-pregame.test.ts`, and the branch validates with `npm run build`, `npm run lint`, and `npm run test`.
+
 ### 2026-03-15: Client reconnect session resilience
 
 - Added `client/src/ui/ReconnectOverlay.ts` plus `#reconnect-overlay` styles in `client/index.html` so game disconnects show reconnecting, reconnected, and return-to-lobby states without touching the Pixi render loop.

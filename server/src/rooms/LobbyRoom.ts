@@ -49,6 +49,7 @@ interface LobbySession {
 interface LobbyGameEntry extends GameSessionInfo {
   roomId?: string;
   cpuOpponent?: boolean;
+  headToHeadMode?: boolean;
 }
 
 export class LobbyRoom extends Room {
@@ -220,6 +221,12 @@ export class LobbyRoom extends Room {
       return;
     }
 
+    const headToHeadMode = this.shouldEnableHeadToHeadMode(gameType, payload.headToHeadMode);
+    if (payload.headToHeadMode === true && !headToHeadMode) {
+      this.sendError(client, "Shared-device mode is currently available for Checkers only.");
+      return;
+    }
+
     let maxPlayers = this.normalizeMaxPlayers(payload.maxPlayers);
     if (hasRegisteredGames) {
       const [minPlayers, maxAllowedPlayers] = gameRegistry.get(gameType).metadata.playerCount;
@@ -238,6 +245,7 @@ export class LobbyRoom extends Room {
       maxPlayers,
       createdAt: Date.now(),
       cpuOpponent,
+      headToHeadMode,
     };
 
     const waitingPlayers = new Map<string, PreGamePlayerInfo>([
@@ -322,6 +330,11 @@ export class LobbyRoom extends Room {
       const joinedPayload: GameJoinedPayload = { gameId: game.id };
       client.send(GAME_JOINED, joinedPayload);
       this.broadcastGamePlayers(game.id);
+      return;
+    }
+
+    if (game.headToHeadMode) {
+      this.sendError(client, "This game is using one shared device and cannot accept another player.");
       return;
     }
 
@@ -425,7 +438,9 @@ export class LobbyRoom extends Room {
     const registeredPlugin = gameRegistry.getAll().length > 0
       ? gameRegistry.get(game.gameType)
       : undefined;
-    const minPlayers = registeredPlugin?.metadata.playerCount[0] ?? 1;
+    const minPlayers = game.headToHeadMode
+      ? 1
+      : registeredPlugin?.metadata.playerCount[0] ?? 1;
     if (players.size < minPlayers) {
       this.sendError(client, `At least ${minPlayers} players are required to start this game.`);
       return;
@@ -440,6 +455,7 @@ export class LobbyRoom extends Room {
       const room = await matchMaker.createRoom("game", {
         gameId: game.id,
         gameType: game.gameType,
+        ...(game.headToHeadMode ? { headToHeadMode: true } : {}),
         maxPlayers: game.maxPlayers,
         expectedPlayers: players.size,
         cpuOpponent: game.cpuOpponent === true,
@@ -455,6 +471,7 @@ export class LobbyRoom extends Room {
         gameId: game.id,
         roomId: room.roomId,
         gameType: game.gameType,
+        ...(game.headToHeadMode ? { headToHeadMode: true } : {}),
       };
 
       for (const sessionId of players.keys()) {
@@ -667,6 +684,7 @@ export class LobbyRoom extends Room {
       createdAt: game.createdAt,
       canSpectate: game.status === "in_progress" && !!game.roomId,
       cpuOpponent: game.cpuOpponent,
+      headToHeadMode: game.headToHeadMode,
     };
   }
 
@@ -720,6 +738,10 @@ export class LobbyRoom extends Room {
 
   private shouldEnableCpuOpponent(gameType: string, cpuOpponent: unknown) {
     return cpuOpponent === true && gameType === "checkers";
+  }
+
+  private shouldEnableHeadToHeadMode(gameType: string, headToHeadMode: unknown) {
+    return headToHeadMode === true && gameType === "checkers";
   }
 
   private normalizeMaxPlayers(value: number | undefined) {

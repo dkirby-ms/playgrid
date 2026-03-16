@@ -255,6 +255,54 @@ describeRoom("BaseGameRoom", () => {
     expect(room.state.turnNumber).toBe(2);
   });
 
+  it("creates a shared-device opponent and routes turns through that synthetic player", async () => {
+    const room = createRoom();
+    const moveHandler = vi.fn().mockReturnValue({ success: true, endsTurn: true });
+    const validateAction = vi.fn().mockReturnValue(true);
+    const checkGameEnd = vi.fn().mockReturnValue(null);
+    const plugin = createPlugin({
+      actions: { move: moveHandler },
+      conditions: { validateAction, checkGameEnd },
+      lifecycle: {
+        onCreate: vi.fn(),
+        onGameStart: vi.fn(),
+      },
+    });
+
+    mockGameRegistry.get.mockReturnValue(plugin);
+    room.onCreate({ gameType: "checkers", expectedPlayers: 1, headToHeadMode: true });
+
+    const player = createClient("player-1");
+    room.onJoin(player);
+
+    expect(room.state.phase).toBe("playing");
+    expect(room.state.players.get("shared-device-opponent")).toMatchObject({
+      playerIndex: 1,
+      controllerSessionId: "player-1",
+      displayName: "Player 2",
+    });
+
+    await room.messageHandlers.get("move")?.(player, { from: 1, to: 2 });
+    expect(room.state.currentTurn).toBe("shared-device-opponent");
+
+    await room.messageHandlers.get("move")?.(player, { from: 3, to: 4 });
+
+    expect(validateAction).toHaveBeenNthCalledWith(
+      2,
+      room.state,
+      expect.objectContaining({ sessionId: "shared-device-opponent" }),
+      "move",
+      { from: 3, to: 4 },
+    );
+    expect(moveHandler).toHaveBeenNthCalledWith(
+      2,
+      room.state,
+      expect.objectContaining({ sessionId: "shared-device-opponent" }),
+      { from: 3, to: 4 },
+    );
+    expect(room.state.currentTurn).toBe("player-1");
+  });
+
   it("ends the game when an action reports endsGame", async () => {
     const room = createRoom();
     const gameResult = {

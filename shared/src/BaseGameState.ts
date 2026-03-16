@@ -6,6 +6,7 @@ export class PlayerInfo extends Schema {
   declare playerIndex: number;
   declare isSpectator: boolean;
   declare isConnected: boolean;
+  declare controllerSessionId: string;
 
   constructor() {
     super();
@@ -14,6 +15,7 @@ export class PlayerInfo extends Schema {
     this.playerIndex = 0;
     this.isSpectator = false;
     this.isConnected = true;
+    this.controllerSessionId = "";
   }
 }
 defineTypes(PlayerInfo, {
@@ -22,6 +24,7 @@ defineTypes(PlayerInfo, {
   playerIndex: "number",
   isSpectator: "boolean",
   isConnected: "boolean",
+  controllerSessionId: "string",
 });
 
 export class BaseGameState extends Schema {
