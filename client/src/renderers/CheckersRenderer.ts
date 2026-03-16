@@ -49,6 +49,10 @@ import {
   WHITE,
   YELLOW_400,
 } from "./DesignTokens";
+import {
+  getCheckersTurnBannerViewModel,
+  type CheckersTurnBannerViewModel,
+} from "./checkersTurnBanner";
 import type {
   GameRenderer,
   GameRendererContext,
@@ -118,6 +122,33 @@ export class CheckersRenderer implements GameRenderer {
   private readonly boardLayer = new Container();
   private readonly boardFrame = new Graphics();
   private readonly piecesLayer = new Container();
+  private readonly turnBannerLayer = new Container();
+  private readonly turnBannerBackground = new Graphics();
+  private readonly turnBannerAccent = new Graphics();
+  private readonly turnBannerText = new Text({
+    text: "",
+    style: {
+      fontFamily: "sans-serif",
+      fontSize: 28,
+      fontWeight: "800",
+      fill: HUD_TEXT_COLOR,
+      align: "center",
+      wordWrap: true,
+      wordWrapWidth: DEFAULT_WIDTH * 0.75,
+    },
+  });
+  private readonly turnBannerSubtitle = new Text({
+    text: "",
+    style: {
+      fontFamily: "sans-serif",
+      fontSize: 14,
+      fontWeight: "600",
+      fill: SUBTLE_TEXT_COLOR,
+      align: "center",
+      wordWrap: true,
+      wordWrapWidth: DEFAULT_WIDTH * 0.75,
+    },
+  });
   private readonly overlayLayer = new Container();
   private readonly overlayBackground = new Graphics();
   private readonly blackCountText = new Text({
@@ -181,6 +212,21 @@ export class CheckersRenderer implements GameRenderer {
   private validTargetIndexes = new Set<number>();
   private moveHistory: string[] = [];
   private isFlipped = false;
+  private turnBanner: CheckersTurnBannerViewModel = getCheckersTurnBannerViewModel({
+    phase: "ended",
+    currentTurn: "",
+    localSessionId: null,
+    localPlayer: null,
+    mustCaptureFrom: NO_FORCED_CAPTURE,
+    formatSquare: boardIndexToNotation,
+  });
+  private turnBannerWidth = DEFAULT_WIDTH * 0.52;
+  private turnBannerHeight = 64;
+  private turnBannerCenterX = DEFAULT_WIDTH / 2;
+  private turnBannerCenterY = 52;
+  private turnBannerVisibility = 0;
+  private turnBannerTargetVisible = false;
+  private turnBannerPulseMs = 0;
   private width = DEFAULT_WIDTH;
   private height = DEFAULT_HEIGHT;
   private squareSize = Math.min(DEFAULT_WIDTH, DEFAULT_HEIGHT - TOP_HUD_SPACE - BOTTOM_HUD_SPACE)
@@ -193,13 +239,23 @@ export class CheckersRenderer implements GameRenderer {
   constructor() {
     this.piecesLayer.eventMode = "none";
     this.capturedPiecesGraphics.eventMode = "none";
+    this.turnBannerLayer.eventMode = "none";
+    this.turnBannerLayer.visible = false;
     this.overlayLayer.eventMode = "none";
     this.overlayLayer.visible = false;
     this.blackCountText.anchor.set(0, 0);
     this.redCountText.anchor.set(1, 0);
+    this.turnBannerText.anchor.set(0.5);
+    this.turnBannerSubtitle.anchor.set(0.5);
     this.overlayTitleText.anchor.set(0.5);
     this.overlaySubtitleText.anchor.set(0.5);
 
+    this.turnBannerLayer.addChild(
+      this.turnBannerBackground,
+      this.turnBannerAccent,
+      this.turnBannerText,
+      this.turnBannerSubtitle,
+    );
     this.overlayLayer.addChild(this.overlayBackground, this.overlayTitleText, this.overlaySubtitleText);
 
     for (let index = 0; index < BOARD_CELL_COUNT; index += 1) {
@@ -225,6 +281,7 @@ export class CheckersRenderer implements GameRenderer {
       this.capturedPiecesGraphics,
       this.blackCountText,
       this.redCountText,
+      this.turnBannerLayer,
       this.overlayLayer,
     );
   }
@@ -252,6 +309,7 @@ export class CheckersRenderer implements GameRenderer {
     this.redrawBoard();
     this.redrawPieces();
     this.updateHud();
+    this.updateTurnBanner();
     this.updateGameOverOverlay();
     this.updateSidebar();
   }
@@ -262,11 +320,14 @@ export class CheckersRenderer implements GameRenderer {
     this.redrawBoard();
     this.redrawPieces();
     this.updateHud();
+    this.updateTurnBanner();
     this.updateGameOverOverlay();
     this.updateSidebar();
   }
 
-  update(_deltaTime: number): void {}
+  update(deltaTime: number): void {
+    this.animateTurnBanner(deltaTime);
+  }
 
   resize(width: number, height: number): void {
     this.width = width;
@@ -275,6 +336,7 @@ export class CheckersRenderer implements GameRenderer {
     this.redrawBoard();
     this.redrawPieces();
     this.updateHud();
+    this.updateTurnBanner();
     this.updateGameOverOverlay();
   }
 
@@ -540,6 +602,109 @@ export class CheckersRenderer implements GameRenderer {
       .circle(centerX, centerY, radius)
       .fill(gradient)
       .stroke({ color: borderColor, width: Math.max(1, radius * 0.16) });
+  }
+
+  private updateTurnBanner(): void {
+    this.turnBanner = getCheckersTurnBannerViewModel({
+      phase: this.phase,
+      currentTurn: this.currentTurn,
+      localSessionId: this.room?.sessionId ?? null,
+      localPlayer: this.getLocalPlayer(),
+      mustCaptureFrom: this.mustCaptureFrom,
+      formatSquare: boardIndexToNotation,
+    });
+    this.turnBannerTargetVisible = this.turnBanner.visible;
+
+    this.turnBannerText.text = this.turnBanner.text;
+    this.turnBannerText.style.fill = this.turnBanner.textColor;
+    this.turnBannerSubtitle.text = this.turnBanner.subtitle;
+    this.turnBannerSubtitle.style.fill = this.turnBanner.subtitleColor;
+    this.turnBannerSubtitle.visible = this.turnBanner.subtitle.length > 0;
+
+    const maxBannerWidth = Math.max(220, this.width - (VIEW_PADDING * 2));
+    this.turnBannerWidth = Math.min(Math.max(280, this.boardSize * 0.72), maxBannerWidth);
+    this.turnBannerHeight = this.turnBannerSubtitle.visible
+      ? Math.max(76, this.squareSize * 1.44)
+      : Math.max(58, this.squareSize * 1.08);
+    this.turnBannerCenterX = this.boardOffsetX + (this.boardSize / 2);
+    const bannerTop = 16;
+    const bannerBottom = Math.max(bannerTop + this.turnBannerHeight, this.boardOffsetY - 16);
+    this.turnBannerCenterY = bannerTop + ((bannerBottom - bannerTop) / 2);
+
+    const bannerX = this.turnBannerCenterX - (this.turnBannerWidth / 2);
+    const bannerY = this.turnBannerCenterY - (this.turnBannerHeight / 2);
+    const bannerRadius = Math.max(16, this.squareSize * 0.28);
+    const bannerPaddingX = Math.max(20, this.squareSize * 0.34);
+    const titleY = this.turnBannerCenterY - (this.turnBannerSubtitle.visible ? this.turnBannerHeight * 0.14 : 0);
+    const subtitleY = this.turnBannerCenterY + Math.max(12, this.squareSize * 0.24);
+    const accentHeight = Math.max(6, this.turnBannerHeight * 0.09);
+    const accentWidth = Math.min(this.turnBannerWidth - (bannerPaddingX * 2), Math.max(96, this.turnBannerWidth * 0.42));
+    const accentColor = this.turnBanner.tone === "ready" ? STATUS_ONLINE : this.turnBanner.accentColor;
+
+    this.turnBannerBackground.clear();
+    this.turnBannerBackground
+      .roundRect(bannerX, bannerY, this.turnBannerWidth, this.turnBannerHeight, bannerRadius)
+      .fill({
+        color: this.turnBanner.backgroundColor,
+        alpha: this.turnBanner.backgroundAlpha,
+      })
+      .stroke({
+        color: this.turnBanner.borderColor,
+        width: 1.5,
+        alpha: 0.88,
+      });
+
+    this.turnBannerAccent.clear();
+    this.turnBannerAccent
+      .roundRect(
+        this.turnBannerCenterX - (accentWidth / 2),
+        bannerY + Math.max(10, this.turnBannerHeight * 0.16),
+        accentWidth,
+        accentHeight,
+        accentHeight / 2,
+      )
+      .fill({
+        color: accentColor,
+        alpha: this.turnBanner.tone === "ready" ? 0.96 : 0.62,
+      });
+
+    this.turnBannerText.style.fontSize = Math.max(24, this.squareSize * 0.48);
+    this.turnBannerText.style.wordWrapWidth = this.turnBannerWidth - (bannerPaddingX * 2);
+    this.turnBannerText.position.set(this.turnBannerCenterX, titleY);
+
+    this.turnBannerSubtitle.style.fontSize = Math.max(13, this.squareSize * 0.2);
+    this.turnBannerSubtitle.style.wordWrapWidth = this.turnBannerWidth - (bannerPaddingX * 2);
+    this.turnBannerSubtitle.position.set(this.turnBannerCenterX, subtitleY);
+  }
+
+  private animateTurnBanner(deltaTime: number): void {
+    const targetVisibility = this.turnBannerTargetVisible ? 1 : 0;
+    const animationFactor = 1 - Math.exp(-deltaTime / 120);
+    this.turnBannerVisibility += (targetVisibility - this.turnBannerVisibility) * animationFactor;
+
+    if (Math.abs(targetVisibility - this.turnBannerVisibility) < 0.01) {
+      this.turnBannerVisibility = targetVisibility;
+    }
+
+    const bannerIsVisible = this.turnBannerTargetVisible || this.turnBannerVisibility > 0.01;
+    this.turnBannerLayer.visible = bannerIsVisible;
+    this.turnBannerLayer.alpha = this.turnBannerVisibility;
+
+    if (!bannerIsVisible) {
+      this.turnBannerPulseMs = 0;
+      this.turnBannerAccent.alpha = 1;
+      return;
+    }
+
+    if (this.turnBanner.tone === "ready" && this.turnBannerTargetVisible) {
+      this.turnBannerPulseMs = (this.turnBannerPulseMs + deltaTime) % 1600;
+      const pulseProgress = (Math.sin((this.turnBannerPulseMs / 1600) * Math.PI * 2) + 1) / 2;
+      this.turnBannerAccent.alpha = 0.82 + (pulseProgress * 0.18);
+      return;
+    }
+
+    this.turnBannerPulseMs = 0;
+    this.turnBannerAccent.alpha = 1;
   }
 
   private updateGameOverOverlay(): void {
