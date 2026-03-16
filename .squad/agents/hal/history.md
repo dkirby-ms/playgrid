@@ -643,3 +643,27 @@ User provided redesign package at `docs/designs/redesign/` with React/Tailwind r
 4. **Real-time Physics:** Hungry Hippos may need hybrid client prediction + server authority
 5. **Word Validation:** Scrabble needs dictionary (SOWPODS or TWL), decide client vs server validation
 
+
+---
+
+## 2026-03-16: PR Review (Round 3) + Issue Scoping
+
+**Event:** Round 3 orchestration — PR merges & scoping decisions
+
+**Work Completed:**
+- PR #118 (footer): approved, merged
+- PR #119 (Backgammon dice): approved, merged
+- Issue #115 (head-to-head): scoped, decision posted, approved
+- Issue #100, #97: closed (stale)
+
+**Decisions Made:**
+1. PR #118 & #119 both merge-ready (low-risk, tests pass)
+2. Issue #115: proceed with client-side view switching (Checkers MVP, Backgammon Phase 2, ~1.5–2 days, low risk)
+
+**Context Propagated:**
+- Action validation pattern (validateAction hook) confirmed consistent across Checkers & Backgammon
+- Head-to-head scoping affects client team (Gately) — no server changes needed
+
+**Next Steps:**
+- Assign #115 to Gately (client-side renderer logic)
+- Assign #86 to Pemulis (server-side CPU opponent)

@@ -2518,3 +2518,260 @@ Could have used CSS animation on HTML dice elements, but:
 - `client/src/renderers/BackgammonRenderer.ts` (animation, button)
 - `server/src/games/backgammon/BackgammonRoom.ts` (roll action)
 - `shared/src/games/backgammon/BackgammonState.ts` (state schema)
+
+---
+
+## Session: PR Reviews & Issue Scoping (2026-03-16)
+
+### Hal: PR #118 & #119 Review & Merge
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+**Reviewer:** Hal  
+
+Both pull requests reviewed, approved, and merged with squash.
+
+#### PR #118: Footer UI
+- **What:** Center version footer, add feedback link.
+- **Review:** Clean UI change, proper security attributes, builds pass.
+- **Verdict:** Low-risk cosmetic change. ✅ Merged.
+
+#### PR #119: Backgammon Manual Dice Roll
+- **What:** Manual dice roll button with animation for Backgammon.
+- **Architecture:**
+  - Client animation runs frame-based in `update()` loop (not setTimeout/setInterval per team pattern).
+  - Server action validates through `validateAction()` hook (centralized, not duplicated).
+  - Animation stops on state sync from server.
+- **Review Checklist:**
+  - ✅ Type safety — clean, no unsafe casts
+  - ✅ State mutation — server-side only
+  - ✅ No setTimeout/setInterval — uses game loop
+  - ✅ Colyseus optional chaining — proper null checks
+  - ✅ Event listeners — existing pattern, cleanup in place
+  - ✅ Tests — updated and passing
+- **Pattern Note:** Action handlers rely on `validateAction` for turn enforcement (consistent with existing `move` action). This is defense-in-depth: validation is centralized, not duplicated in handlers.
+- **Verdict:** Solid implementation. ✅ Merged.
+
+#### Housekeeping
+- Closed issue #97 (duplicate).
+- Closed issue #100 (obsolete).
+
+---
+
+### Hal: Scope Head-to-Head Mode for 2-Player Games (Issue #115)
+
+**Status:** Proposal  
+**Decision Owner:** Hal (Lead)  
+**Issue:** #115  
+**Date:** 2026-03-16  
+
+#### Summary
+
+Enable 2-player games (Checkers, Backgammon) to be played on a single shared device by allowing the board to rotate/flip between turns. This is a **Medium-scope feature** with **high value** for in-person play.
+
+#### Recommendation
+
+Implement now with a phased approach (Checkers MVP first, then Backgammon).
+
+#### Architecture: Client-Side View Switching
+
+Both players connect to the same game room via a single device client. The renderer dynamically determines board perspective based on whose turn it is (via `currentTurn` in state). Existing `isFlipped` logic in CheckersRenderer and similar patterns in BackgammonRenderer already support this—**no schema changes needed.**
+
+**Key insight:** The renderer must switch from "show the board for the local player" to "show the board for the active turn player." This is a logic change, not an architectural change.
+
+#### Server Impact
+
+**Minimal.** No breaking changes:
+- Existing `playerIndex` and `currentTurn` fields already support this use case.
+- Server validation (checking that `sessionId` matches the current turn) works unchanged.
+- Optional: Add `headToHeadMode` flag for telemetry (cosmetic).
+
+#### Client Impact
+
+**Moderate. 3–4 files:**
+1. **LobbyScreen** — Add "Play on Shared Device?" toggle.
+2. **CheckersRenderer** — Update `getLocalPlayerColor()` to use active turn player, not session-based player.
+3. **BackgammonRenderer** — Same update (reuse pattern).
+4. **GameScene / GameSidebar** — Add turn indicator UI and listener for turn changes.
+
+No breaking changes to the GameRenderer interface or state schemas.
+
+#### Complexity & Effort
+
+- **Estimate:** 1.5–2 days (developer).
+- **Breakdown:**
+  - Renderer logic: 2–4 hours
+  - Lobby UI: 1–2 hours
+  - Testing & integration: 2–3 hours
+  - Polish (deferred): animations, input locks, orientation hints
+
+#### Risks
+
+1. **Session Sharing:** Both players on one session; disconnect affects both. ✅ Acceptable for local play.
+2. **Perspective Confusion:** Without a clear turn indicator, players may be unsure whose board they're looking at. ✅ Mitigated by UI "Player X's Turn" prompt.
+3. **Input Timing:** A player could tap before their turn. ✅ Server validation prevents illegal moves; UX can improve with ready confirmation.
+
+#### Implementation Plan
+
+**Phase 1: Checkers (MVP)**
+- Implement dynamic perspective logic in CheckersRenderer.
+- Add lobby toggle and turn indicator.
+- E2E test with two tabs.
+
+**Phase 2: Backgammon**
+- Port logic to BackgammonRenderer.
+- Test with same E2E pattern.
+
+**Phase 3: Polish (future)**
+- Input lock UI.
+- Board rotation animation.
+- Device orientation lock detection.
+
+#### Decision
+
+✅ **Proceed with implementation.**
+- Start with Checkers.
+- Use existing state schema (no migrations).
+- Follow the proposed phased approach.
+- Aim for merge to `main` within 2 sprints.
+
+---
+
+### Pemulis: Scope CPU Opponents for Checkers (Issue #86)
+
+**Status:** Proposal  
+**Decision Owner:** Pemulis (Systems Dev)  
+**Issue:** #86  
+**Date:** 2026-03-16  
+
+#### Problem Statement
+
+Players currently need another human to play Checkers. This prevents single-player experience and limits engagement for users without friends available. We need a CPU opponent to play Checkers as the RED player while humans play as BLACK.
+
+#### Architecture: Server-Side Bot Player
+
+**Why server-side bot (not alternatives):**
+- **Separate AI service?** Overkill for Checkers; adds latency, complexity, separate deployment.
+- **Client-side AI?** Breaks server-authority; clients could cheat. Not viable.
+- **Deferring to future?** Blocks single-player mode now; no architectural blocker.
+
+#### How It Works
+
+1. **Bot Creation:** When a human creates a single-player game, `LobbyRoom` optionally creates a CPU opponent.
+2. **Bot Registration:** Create `PlayerInfo` with synthetic `sessionId` = `"cpu-opponent"`.
+3. **Move Selection:** When `TurnManager.getCurrentPlayer()` returns the CPU's `sessionId`, call `selectCpuMove(state, difficulty)` → apply automatically (no network round-trip).
+4. **Timing:** CPU should have a brief delay (200–500ms) for UI feedback.
+
+#### AI Strategy: Greedy Heuristic (Recommended)
+
+| Algorithm | Strength | Complexity | Code |
+|-----------|----------|-----------|------|
+| **Random** | Weak | Trivial | Pick any legal move at random |
+| **Greedy Heuristic** | Medium | Low | Prefer captures, promotions, advancement |
+| **Minimax + α-β** | Strong | Medium | Tree search with evaluation |
+
+**Greedy Heuristic Algorithm:**
+1. Get all legal moves
+2. Filter & rank by:
+   - Captures (highest priority — forced captures handled by rules)
+   - King promotion (advance pieces toward back row)
+   - Piece advancement (move toward opponent)
+3. For ties, pick randomly (unpredictability)
+4. Return highest-ranked move
+
+**Why greedy:**
+- **Fast:** O(m log m) where m ≈ 12 legal moves, instant execution.
+- **Playable:** Captures pieces, promotes kings, feels like a real player.
+- **Clean:** Evaluation function isolated, testable, easy to tune.
+- **Scalable:** Can add Minimax later without rewriting core.
+
+#### Difficulty Levels (Greedy + Tuning)
+
+| Difficulty | Behavior |
+|-----------|----------|
+| **Easy** | Random move from legal set; or greedy with 50% random noise |
+| **Medium** | Pure greedy: captures → promotions → advancement |
+| **Hard** | Greedy + future risk: avoid moves that set up opponent captures; prefer defensive placements |
+
+#### Room & Lobby Changes
+
+**Lobby (`LobbyRoom.ts`):**
+- Accept `cpuOpponent: boolean` and `cpuDifficulty: "easy" | "medium" | "hard"` options.
+- Validate: only allow if `maxPlayers === 1` or single human in 2-player game.
+- Pass options to game room creation.
+
+**Game Room (`BaseGameRoom.ts`):**
+- Store CPU options in `BaseGameRoomOptions`.
+- In `onCreate()`: if `cpuOpponent`, create bot via `onPlayerJoin()` with synthetic sessionId.
+- In turn execution: detect CPU turn, schedule delayed move (200ms), apply automatically.
+
+**Checkers Plugin (`CheckersPlugin.ts`):**
+- **No changes.** Plugin is already generic; doesn't care if player is human or bot.
+
+#### Complexity Estimate: **SMALL**
+
+**LOC Breakdown:**
+- **New file:** `CpuOpponent.ts` (~80 lines) — move selection, heuristic evaluation
+- **Lobby changes:** `LobbyRoom.ts` (~15 lines) — accept options, validate, pass to room
+- **Game room changes:** `BaseGameRoom.ts` (~20 lines) — store options, detect CPU turn, schedule move
+- **Tests:** `checkers.cpu.test.ts` (~100 lines) + `lobby-cpu.test.ts` (~50 lines)
+
+**Total:** ~250 LOC including tests. **No schema changes, no plugin changes.**
+
+#### Why Small
+
+1. **No plugin changes** — plugin is already generic.
+2. **Reuses existing state sync** — Colyseus already broadcasts CPU moves.
+3. **No new game rules** — just move selection on an existing game.
+4. **No persistence** — CPU games are ephemeral.
+5. **No auth/multiplayer** — single-player only, simpler lifecycle.
+
+#### Risk Areas & Mitigation
+
+- **Turn timing:** CPU moves must be async (delayed) to feel responsive. Use Colyseus `clock.setTimeout()` for determinism.
+- **Disconnection:** If human leaves, game ends cleanly via existing `onPlayerLeave()` logic.
+- **Spectators:** CPU moves go through the same state mutation; spectators see them automatically.
+
+#### MVP (Phase 1)
+
+1. **Implement greedy heuristic CPU** (not random).
+   - Reason: Random is not fun; greedy is minimal playable AI.
+2. **Medium difficulty only** (no easy/hard yet).
+   - Reason: Scope reduction; tuning is follow-up polish.
+3. **Checkers only** (no other games).
+   - Reason: Simplest; pattern proven here extends to Risk or Dominoes.
+4. **No persistent CPU profiles.**
+   - Reason: Out of scope; single-player sandbox.
+
+#### Nice to Have (Phase 2)
+
+- Easy/hard difficulty modes via heuristic tuning.
+- Minimax for harder AI.
+- Win/loss stats tracking.
+- Multiple CPU opponents for future multiplayer AI games (Risk, Poker).
+
+#### Out of Scope
+
+- Chat/personality for CPU.
+- Learning AI (reinforcement learning).
+- Replays or analysis of CPU games.
+
+#### Acceptance Criteria
+
+A human player can:
+1. ✅ Create a single-player Checkers game from the lobby.
+2. ✅ See the CPU opponent join the game as player 2 (RED).
+3. ✅ Play a complete game (move, capture, promote, win/lose) against the CPU.
+4. ✅ CPU makes legal moves.
+5. ✅ CPU doesn't hang the turn (~200ms move time).
+6. ✅ Winning/losing against CPU counts the same as PvP.
+
+#### Decision
+
+✅ **Proceed with implementation.**
+- Implement greedy heuristic (not random, not Minimax yet).
+- Start with Checkers, Medium difficulty only.
+- Follow MVP scope above.
+- Can extend to other games and difficulty modes later.
+
+---

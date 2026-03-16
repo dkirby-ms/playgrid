@@ -423,3 +423,42 @@ All three features validate cleanly end-to-end with `npm run build && npm run li
 - `.squad/orchestration-log/2026-03-15T21-26-56Z-pemulis-11.md` — Your agent's outcome
 - `.squad/log/2026-03-15T21-26-56Z-features-batch-2.md` — Session summary with all three features
 
+
+---
+
+## 2026-03-16: Issue Scoping (Round 3) + CPU Opponent Design
+
+**Event:** Round 3 orchestration — issue #86 scoped and approved
+
+**Work Completed:**
+- Issue #86 (CPU opponents): comprehensive scope document posted
+- Architecture finalized: server-side bot player with greedy heuristic
+- MVP scope defined: greedy heuristic only, Medium difficulty, Checkers only
+- Complexity estimate: Small (~250 LOC)
+
+**Decisions Made:**
+1. CPU opponents: server-side bot (not client-side, not separate service)
+2. AI strategy: greedy heuristic (not random, not Minimax for MVP)
+3. Difficulty: Medium only for MVP; easy/hard deferred to Phase 2
+4. Scope: Checkers only; extensible to Risk/Dominoes later
+
+**Technical Decisions:**
+- Bot is a PlayerInfo with synthetic sessionId ("cpu-opponent")
+- Move selection via selectCpuMove() — applies automatically (no network)
+- 200–500ms delay for UI feedback (use Colyseus clock.setTimeout)
+- No plugin changes; leverages existing plugin system
+- No schema changes; no persistence
+
+**Files to Create/Modify:**
+- New: server/src/games/checkers/CpuOpponent.ts (~80 lines)
+- Modify: LobbyRoom.ts (~15 lines), BaseGameRoom.ts (~20 lines)
+- Tests: checkersPlugin.cpu.test.ts, lobby-cpu.test.ts (~150 lines)
+
+**Context Propagated:**
+- Hal's action validation pattern (validateAction) aligns with CPU architecture
+- Head-to-head mode (#115) client-side only; no server conflicts
+
+**Next Steps:**
+- Begin implementation of CpuOpponent.ts
+- Update lobby to accept cpuOpponent option
+- Implement CPU turn detection in BaseGameRoom
