@@ -742,3 +742,95 @@ Pemulis successfully implemented CPU opponent for Backgammon following the Check
 ## Learnings
 
 - **Null returns from CPU action selectors are dangerous.** When a game has multi-step turns (roll → move), the CPU action selector must always return a valid action type. The `null` path in BaseGameRoom triggers forfeit. Games with no-move situations (backgammon, chess stalemate) need explicit pass/skip actions in the plugin.
+
+---
+
+## 2026-03-16: PR #132 Review — Dev Sandbox Feature
+
+**Status:** APPROVED  
+**Reviewer:** Hal  
+**Branch:** origin/squad/sandbox-dev-tool  
+**Author:** Gately
+
+### Review Summary
+
+Gately implemented the Game Dev Sandbox (Issue #130) — a development-only testing tool for rendering game boards with mock state, no server connection. Sandbox provides live state tweaking via an HTML panel overlay, enabling rapid renderer prototyping and debugging.
+
+### Scope Compliance
+
+Checked against `.squad/decisions/inbox/hal-sandbox-scope.md`:
+
+**✓ Architecture:**
+- SandboxScene mounts renderer with plain JS objects (not Colyseus Schema)
+- Route detection in Application.ts for `/sandbox/{game}` patterns
+- HTML overlay panel (separate from PixiJS) for state controls
+- Zero pollution of existing GameScene, LobbyScene, WaitingRoomScene
+- All sandbox code isolated in `client/src/sandbox/` + new `client/src/scenes/SandboxScene.ts`
+
+**✓ Type Safety:**
+- Renderers already use optional chaining (`state?.board`, `state?.territories?.get()`) — verified in CheckersRenderer, BackgammonRenderer, RiskRenderer
+- Mock state interfaces define all required fields
+- GameRendererContext.room passed as `undefined` — renderers handle gracefully
+- No unsafe casts
+
+**✓ State Mutation:**
+- Mock state is plain JavaScript objects (not Schema instances)
+- Mutations local to browser only; no network calls
+- StatePanel re-renders visuals after mutation via `renderer.onStateChange(state)`
+
+**✓ Memory Leaks:**
+- SandboxStatePanel.destroy() removes DOM element, nulls callback
+- SandboxScene.cleanup() properly nulls renderer, statePanel, currentState
+- Container.removeChild() called before null
+- cleanup() invoked on onExit()
+
+**✓ Build Passes:**
+- `npm run build`: ✓ PASS (778 modules, 2.05s)
+- `npm run lint`: ✓ PASS (0 new errors, pre-existing warnings only)
+- `npm run test`: ✓ PASS (289 passed, 12 todo)
+
+**✓ Renderer Compatibility:**
+- Checkers: Full visual board editor (click to cycle pieces)
+- Backgammon: JSON textarea editor
+- Risk: JSON textarea editor
+- All renderers handle `room: undefined` in context
+
+**✓ Per-Game Controls:**
+- Checkers: Full visual board editor + mustCaptureFrom input
+- Backgammon: JSON editor for points, dice, bar, borne-off
+- Risk: JSON editor for territories, phases
+
+**✓ MVP Scope:**
+- Route detection ✓
+- Mock generators for all 3 games ✓
+- State panel for Checkers ✓
+- State panel UI for Backgammon/Risk (MVP JSON) ✓
+- No persistence / validation (as scoped) ✓
+
+### Code Quality
+
+**Strengths:**
+1. Clean separation of concerns (PixiJS renderer + HTML dev tools)
+2. SandboxScene properly implements Scene interface
+3. Error handling for missing gameType / renderer
+4. No hardcoded dependencies on production game code
+5. Decision doc clear and well-reasoned
+
+**No Issues Found:**
+- No unsafe casts or undefined references
+- No event listener leaks
+- No console spam or debug code
+- No secrets or sensitive data
+- No production code changes beyond route detection
+
+### Verdict
+
+**✅ APPROVED**
+
+This PR implements the sandbox exactly as scoped. The architecture is clean, type-safe, and zero-risk to production. Renderers already support plain JS objects via optional chaining. All validation checks pass.
+
+### Learnings
+
+- **Optional Chaining Adoption:** Playgrid renderers were already designed to handle both Colyseus Schema and plain objects via optional chaining. The sandbox leverages this pattern cleanly without requiring any renderer changes. This is a sign of good forward-thinking design during the renderer architecture phase.
+- **HTML Overlay for Dev Tools:** The decision to use HTML/CSS forms for state controls (not PixiJS UI) is pragmatic. Dev tools don't need to be polished; speed of implementation matters more. Future iterations can add PixiJS-native controls if needed, but for MVP, HTML is the right call.
+- **Scene Isolation:** By treating sandbox as a full Scene (not a modal on top of the game), Gately avoided the complexity of UI layering and state management within GameScene. Clean separation enables easy on/off and no side effects.
