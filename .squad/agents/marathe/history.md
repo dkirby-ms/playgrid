@@ -602,3 +602,138 @@ az containerapp update \
 - Previous fix (2026-03-15): Health check URL double-prefix
 - Root cause: Environment variables included protocol, workflows prepended another `https://`
 - Resolution: Use `CONTAINER_APP_FQDN` variable directly without protocol manipulation
+
+---
+
+## 2026-03-15: Added GitHub Release Publishing to Prod Deploy Workflow
+
+**Context:** The production deployment workflow (`deploy-prod.yml`) triggers on `v*` tags and deploys to Azure Container Apps, but it did not create a GitHub Release. This meant releases had to be manually created after successful deployments.
+
+**Requirements:**
+1. Create GitHub Release after successful health check
+2. Use auto-generated release notes (GitHub's built-in feature)
+3. Only create release on tag pushes (not workflow_dispatch manual deploys)
+4. Use `gh` CLI (already available in GitHub Actions runners)
+5. Add `contents: write` permission
+6. Mark release as "latest"
+
+**Design Decision: In-Workflow vs. Separate Release Workflow**
+
+Considered two approaches:
+1. **Add step to deploy-prod.yml** (chosen)
+2. Create separate release workflow triggered by tags
+
+**Rationale for in-workflow approach:**
+- Release should only be created **after deployment verification** (health check passes)
+- A separate workflow would run immediately on tag push, before deployment completes
+- Deployment can fail — we don't want orphaned releases for failed deployments
+- Tag-only conditional (`if: github.ref_type == 'tag'`) cleanly handles workflow_dispatch manual deploys
+- Keeps release publishing logically coupled with the deployment it represents
+
+**Implementation:**
+
+Changed `.github/workflows/deploy-prod.yml`:
+
+1. **Updated permissions block (lines 9-11):**
+```yaml
+permissions:
+  id-token: write
+  contents: write  # Changed from contents: read
+```
+
+2. **Added release step after health check (lines 92-101):**
+```yaml
+- name: Create GitHub Release
+  if: github.ref_type == 'tag'
+  env:
+    GH_TOKEN: ${{ github.token }}
+  run: |
+    gh release create ${{ github.ref_name }} \
+      --repo ${{ github.repository }} \
+      --title "${{ github.ref_name }}" \
+      --generate-notes \
+      --latest
+```
+
+**Key Implementation Details:**
+- `if: github.ref_type == 'tag'` — Only runs when triggered by tag push, skips on workflow_dispatch
+- `gh release create` — Uses GitHub CLI (pre-installed on runners, no action pinning needed)
+- `--generate-notes` — Auto-generates release notes from merged PRs and commits
+- `--latest` — Marks this release as the latest (shown prominently on repo homepage)
+- `GH_TOKEN: ${{ github.token }}` — Uses automatic GITHUB_TOKEN (now has contents: write)
+
+**Workflow Execution Flow:**
+1. Tag push (`v*`) triggers workflow
+2. Azure login → ACR build → Container App deploy
+3. Health check validates deployment (10 attempts × 5s)
+4. ✅ **Release created** (only on tag, after health check success)
+5. Discord notification (always runs via `if: always()`)
+
+**Benefits:**
+- Releases are only created for successfully deployed versions
+- Auto-generated release notes reduce manual work
+- Manual deploys via workflow_dispatch don't create spurious releases
+- Atomic: One workflow handles deploy + release + notification
+
+**Files Changed:**
+- `.github/workflows/deploy-prod.yml` (lines 11, 92-101)
+
+**Verification:**
+- ✅ Workflow syntax validated with `gh workflow view deploy-prod.yml`
+
+### Learnings:
+
+**GitHub Release Publishing in CI/CD:**
+- Prefer creating releases **after deployment verification** rather than immediately on tag push
+- Use `gh release create --generate-notes` for automatic changelog generation from PRs/commits
+- `github.ref_type == 'tag'` is more robust than `startsWith(github.ref, 'refs/tags/')` for conditional logic
+- `contents: write` permission is required for creating releases (GITHUB_TOKEN has this scope)
+
+**gh CLI vs. Actions for Releases:**
+- `gh` CLI is pre-installed on GitHub Actions runners (no action pinning needed)
+- Simpler syntax than `actions/create-release` (deprecated) or `softprops/action-gh-release`
+- No SHA pinning maintenance burden
+- Direct GitHub API access via GITHUB_TOKEN
+
+**Conditional Step Patterns:**
+- `if: github.ref_type == 'tag'` — Only runs on tag pushes
+- `if: always()` — Runs regardless of previous step success (good for notifications)
+- `if: success()` — Only runs if all previous steps succeeded (default behavior)
+
+**Key File Paths:**
+- Deploy workflow: `.github/workflows/deploy-prod.yml`
+- Release step: Lines 92-101
+- Permissions block: Lines 9-11
+
+**Related Workflows:**
+- UAT deploy workflow does NOT need releases (only prod tags should create releases)
+- Discord notification always runs (`if: always()`) to report deployment outcome
+
+---
+
+## 2026-03-16: Phase 4 Release Workflow — CI/CD Integration Complete
+
+**From:** Squad Scribe  
+**Event:** GitHub Release publishing integrated into production deployment
+
+**Deliverables:**
+- Release publishing added to `deploy-prod.yml` post-health-check
+- Auto-generated release notes via gh CLI with `--generate-notes`
+- Conditional execution: only on `v*` tag pushes, skips on `workflow_dispatch`
+
+**Implementation Details:**
+- Permissions updated: `contents: read` → `contents: write`
+- Uses `gh release create` with `--latest` flag for repo homepage visibility
+- Atomic operation chain: deploy → verify → release → notify
+
+**Design Rationale:**
+- Releases only created for successfully deployed versions (verification first)
+- Prevents orphaned releases from failed deployments
+- One workflow to maintain (coupled to deployment by design, not a separate concern)
+
+**Cross-Agent Context:**
+- Coordinates with Gately (three game redesigns), Joelle (README), Mario (lobby/sidebar)
+- Phase 4 design system (DesignTokens, GameSidebar) now has release workflow support
+
+**Status:** Complete. Production deployments now automatically publish GitHub Releases.
+

@@ -61,3 +61,52 @@
 - High-quality examples and API reference established
 
 **Next:** Wave 2 assignments ready when you are. Monitor user feedback on docs.
+
+## README Refresh (Current)
+
+**Date:** 2026-03-16  
+**Task:** Update README.md to reflect current project state  
+**Status:** ✅ Complete
+
+### Changes Made
+- **Project Description:** Clearer intro emphasizing multiplayer board games, real-time play, and team-built
+- **Games Section:** Added dedicated section listing Checkers (2-player), Risk (multi-player), and teased Backgammon
+- **Tech Stack:** Expanded table with full details (Client: TS/PixiJS v8/Vite/React; Server: TS/Colyseus/Node/Express; Infrastructure: Docker/Azure/PostgreSQL; Testing: Vitest + Playwright)
+- **Features:** Refined bullet points to highlight Colyseus, PixiJS, lobby, plugin architecture, testing
+- **The Squad:** Added new section with team roster including all 10 members + Copilot, with status indicators and tone-appropriate framing
+- **Removed:** Duplicate "Squad Team" section; consolidated into one team section with context
+
+### Validation
+- ✅ Build passes (npm run build) — all workspaces compile
+- ✅ No broken links or stale references
+- ✅ Tone: warm, accessible, not hype-y
+- ✅ Accurate game inventory (Checkers + Risk live; Backgammon in design)
+- ✅ Matches tech stack with Colyseus, PixiJS v8, Node.js, PostgreSQL, Azure
+
+### Key Decisions
+- **Games section honesty:** Listed only live games (Checkers, Risk); teased Backgammon as "coming soon" rather than claiming all three are playable
+- **Squad framing:** Presented as collaborative team with Copilot as "Coding Agent" — friendly tone, not corporate
+- **Kept existing content:** Dev setup, DB reference, project structure, plugin pattern, deployment — no removal of useful info
+- **Infrastructure layer added:** Acknowledged Docker, Azure, PostgreSQL as part of tech stack (was missing before)
+
+---
+
+## 2026-03-16: Phase 4 README Update — Documentation Complete
+
+**From:** Squad Scribe  
+**Event:** Design system documentation and team roster finalized
+
+**Deliverables:**
+- Updated games list with Checkers, Backgammon, Risk descriptions
+- Comprehensive tech stack section (Node.js, TypeScript, PixiJS v8, Colyseus, Azure)
+- Team roster added with agent names and specializations
+
+**Cross-Agent Context:**
+- Works alongside Gately (three game visual redesigns), Marathe (CI/CD), Mario (lobby/sidebar)
+- Design system documentation supports DesignTokens.ts consistency across renderers
+- Phase 5 (new games) currently out of scope per user directive
+
+**Related Decision Entries:**
+- Merged to `.squad/decisions.md` for team visibility
+
+**Status:** Complete. README reflects current capability and design system foundation.
