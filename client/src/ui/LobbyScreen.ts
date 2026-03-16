@@ -31,6 +31,7 @@ export interface GameSessionInfo {
   mapSeed: number;
   createdAt: number;
   cpuPlayers?: number;
+  cpuOpponent?: boolean;
 }
 
 export interface CreateGamePayload {
@@ -40,6 +41,7 @@ export interface CreateGamePayload {
   mapSize?: number;
   mapSeed?: number;
   cpuPlayers?: number;
+  cpuOpponent?: boolean;
 }
 
 export interface JoinGamePayload {
@@ -169,6 +171,7 @@ export class LobbyScreen {
   private readonly gameNameInput: HTMLInputElement;
   private readonly gameTypeInput: HTMLSelectElement;
   private readonly maxPlayersInput: HTMLSelectElement;
+  private readonly cpuOpponentInput: HTMLInputElement;
   private readonly createButton: HTMLButtonElement;
   private readonly filterButtons = new Map<LobbyFilter, HTMLButtonElement>();
   private readonly filterCounts = new Map<LobbyFilter, HTMLSpanElement>();
@@ -367,10 +370,20 @@ export class LobbyScreen {
     this.maxPlayersInput = createElement("select", "lobby-select") as HTMLSelectElement;
     this.maxPlayersInput.name = "max-players";
 
+    const cpuOpponentField = createElement("label", "field-group");
+    const cpuOpponentLabel = createElement("span", "field-label", "Opponent");
+    const cpuOpponentToggle = createElement("label") as HTMLLabelElement;
+    this.cpuOpponentInput = createElement("input") as HTMLInputElement;
+    this.cpuOpponentInput.type = "checkbox";
+    this.cpuOpponentInput.name = "cpu-opponent";
+    const cpuOpponentText = createElement("span", undefined, "Play vs CPU");
+    cpuOpponentToggle.append(this.cpuOpponentInput, cpuOpponentText);
+
     gameTypeField.append(gameTypeLabel, this.gameTypeInput);
     maxPlayersField.append(maxPlayersLabel, this.maxPlayersInput);
+    cpuOpponentField.append(cpuOpponentLabel, cpuOpponentToggle);
 
-    createForm.append(nameField, gameTypeField, maxPlayersField);
+    createForm.append(nameField, gameTypeField, maxPlayersField, cpuOpponentField);
     createForm.addEventListener("submit", (event) => {
       event.preventDefault();
       this.handleCreateGame();
@@ -565,6 +578,7 @@ export class LobbyScreen {
       name: this.gameNameInput.value.trim() || this.gameNameInput.placeholder || "New game",
       gameType: this.getSelectedGameType(),
       maxPlayers: this.getSelectedMaxPlayers(),
+      cpuOpponent: this.shouldUseCpuOpponent(),
     };
 
     this.pendingTransition = "create";
@@ -621,11 +635,28 @@ export class LobbyScreen {
       this.maxPlayersInput.append(option);
     }
 
+    const supportsCpuOpponent = this.supportsCpuOpponent(gameTypeOption.value);
+    if (!supportsCpuOpponent) {
+      this.cpuOpponentInput.checked = false;
+    }
+
     this.maxPlayersInput.disabled = this.isCreatePending || this.isTwoPlayerGameType(gameTypeOption.value);
+    this.cpuOpponentInput.disabled = this.isCreatePending || !supportsCpuOpponent;
+    this.cpuOpponentInput.title = supportsCpuOpponent
+      ? ""
+      : "CPU opponents are currently available for Checkers only.";
   }
 
   private isTwoPlayerGameType(gameType: string): boolean {
     return getGameTypeOption(gameType).selectablePlayerCounts.length === 1;
+  }
+
+  private supportsCpuOpponent(gameType: string): boolean {
+    return gameType === "checkers";
+  }
+
+  private shouldUseCpuOpponent(): boolean {
+    return this.supportsCpuOpponent(this.getSelectedGameType()) && this.cpuOpponentInput.checked;
   }
 
   private setActiveFilter(filter: LobbyFilter): void {

@@ -53,6 +53,9 @@
 - No new server route is needed for invite links. `LobbyRoom.handleJoinGame()` already validates the important failure modes for shared links (`Game not found.`, `Game is full.`, and `Cannot join a game in progress as a player.`), so the client can safely drive invites with `?join={gameId}`.
 - Waiting-room URL state should stay aligned with the scene: set `?join={gameId}` while a lobby waiting room is open, clear it when transitioning into the real game room, and let lobby reconnects/refreshes reuse that URL to restore the pregame flow.
 - Client-side host detection for `GAME_JOINED` cannot rely only on the local `pendingTransition === "create"` flag. Refresh/auto-join paths must also treat `games.get(gameId)?.hostId === room.sessionId` as authoritative so the host keeps start controls after re-entering their waiting room.
+- CPU Checkers now uses a fixed synthetic participant (`cpu-opponent`) that is added in both the lobby waiting roster and `BaseGameRoom` right before game start, which keeps the existing plugin lifecycle and turn order intact without modifying `CheckersPlugin`.
+- `BaseGameRoom` can safely drive bot turns by scheduling a 200ms `clock.setTimeout()` whenever `state.currentTurn` belongs to the CPU, then replaying the normal action-validation/action-handler/game-end pipeline through a synthetic client object.
+- The greedy MVP heuristic in `server/src/games/checkers/CpuOpponent.ts` is deterministic: captures win first, then king promotions, then moves that land closer to promotion. Regression coverage lives in `cpuOpponent.test.ts`, `BaseGameRoom.test.ts`, and `lobby-pregame.test.ts`.
 
 ## Cross-Agent Update — Issue #1 Closed, PR #47 Open (2026-03-14)
 

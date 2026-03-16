@@ -27,12 +27,14 @@ export interface GameSessionInfo {
   maxPlayers: number;
   createdAt: number;
   canSpectate?: boolean;
+  cpuOpponent?: boolean;
 }
 
 export interface CreateGamePayload {
   name: string;
   gameType: string;
   maxPlayers?: number;
+  cpuOpponent?: boolean;
 }
 
 export interface JoinGamePayload {
@@ -53,6 +55,7 @@ export interface PreGamePlayerInfo {
   userId: string;
   displayName: string;
   isReady: boolean;
+  isCPU?: boolean;
 }
 
 export interface GamePlayersPayload {
