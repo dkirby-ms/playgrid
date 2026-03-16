@@ -237,7 +237,18 @@ async function getSnapshot(page: Page): Promise<GameSnapshot> {
       currentTurn: typeof state?.currentTurn === "string" ? state.currentTurn : null,
       turnNumber: typeof state?.turnNumber === "number" ? state.turnNumber : null,
       board: state?.board ? Array.from(state.board, Number) : [],
-      statusText: typeof renderer?.statusText?.text === "string" ? renderer.statusText.text : null,
+      statusText: (() => {
+        if (typeof renderer?.statusText?.text === "string") {
+          return renderer.statusText.text;
+        }
+        if (typeof renderer?.getHUDStatus === "function") {
+          const hudStatus = renderer.getHUDStatus(state);
+          if (hudStatus && typeof hudStatus.text === "string") {
+            return hudStatus.text;
+          }
+        }
+        return null;
+      })(),
       playerColorText: (() => {
         if (typeof renderer?.playerColorText?.text === "string") {
           return renderer.playerColorText.text;
