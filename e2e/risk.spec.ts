@@ -393,6 +393,21 @@ async function waitForOutcome(page: Page): Promise<OutcomeSnapshot> {
   }));
 }
 
+/**
+ * Polls getSnapshot until territory state differs from the baseline.
+ * Replaces flaky timeout-based detection for attack/fortify success.
+ */
+async function waitForTerritoryChange(
+  page: Page,
+  baselineTerritories: Record<string, { owner: string; armyCount: number }>,
+): Promise<void> {
+  const baseline = JSON.stringify(baselineTerritories);
+  await expect.poll(async () => {
+    const s = await getSnapshot(page);
+    return JSON.stringify(s.territories);
+  }, { timeout: 5000 }).not.toBe(baseline);
+}
+
 // ---------------------------------------------------------------------------
 // Game flow helpers
 // ---------------------------------------------------------------------------
@@ -700,6 +715,7 @@ test.describe("Risk E2E — Attack phase", () => {
         for (const enemyId of allEnemyIds) {
           const errorPromise = waitForRoomError(page);
           const attackerDice = Math.min(3, attackSnapshot.territories[ownedId].armyCount - 1);
+          const beforeAttack = await getSnapshot(page);
           await sendAction(page, "attack", {
             from: ownedId,
             to: enemyId,
@@ -708,10 +724,10 @@ test.describe("Risk E2E — Attack phase", () => {
 
           const result = await Promise.race([
             errorPromise.then(() => "error" as const),
-            page.waitForTimeout(500).then(() => "maybe-ok" as const),
+            waitForTerritoryChange(page, beforeAttack.territories).then(() => "ok" as const),
           ]);
 
-          if (result === "maybe-ok") {
+          if (result === "ok") {
             attackSucceeded = true;
             break;
           }
@@ -914,14 +930,15 @@ test.describe("Risk E2E — Fortification", () => {
           if (otherId === heavyId) continue;
           const errorPromise = waitForRoomError(page);
           const count = 1;
+          const beforeFortify = await getSnapshot(page);
           await sendAction(page, "fortify", { from: heavyId, to: otherId, count });
 
           const result = await Promise.race([
             errorPromise.then(() => "error" as const),
-            page.waitForTimeout(500).then(() => "maybe-ok" as const),
+            waitForTerritoryChange(page, beforeFortify.territories).then(() => "ok" as const),
           ]);
 
-          if (result === "maybe-ok") {
+          if (result === "ok") {
             fortifySucceeded = true;
             fromId = heavyId;
             toId = otherId;
