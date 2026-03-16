@@ -2775,3 +2775,142 @@ A human player can:
 - Can extend to other games and difficulty modes later.
 
 ---
+
+---
+
+## Session: PR #121 & #122 Review & Merge (2026-03-16)
+
+### Pemulis: CPU Opponent Wiring (Issue #86)
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+**Reviewer:** Hal (after Marathe rebase cleanup)
+
+Represent the Checkers CPU opponent as a fixed synthetic participant (`cpu-opponent`) across both lobby pregame state and the server game room, and let `BaseGameRoom` schedule its turns through the normal plugin action pipeline.
+
+**Rationale:**
+- Keeps `CheckersPlugin` unchanged and human/CPU-agnostic.
+- Reuses existing player ordering, win detection, reconnection, and renderer state sync.
+- Makes single-player waiting rooms understandable to players because the CPU appears as a ready roster slot before start.
+
+**Implementation Notes:**
+- `LobbyRoom` accepts `cpuOpponent: true` only for Checkers and seeds a ready `PreGamePlayerInfo` for `cpu-opponent`.
+- `BaseGameRoom` injects the synthetic player on first human join, then uses `clock.setTimeout(..., 200)` to trigger `selectCpuMove()` and replay `move` through the existing validate/handle/end-turn flow.
+- Current MVP heuristic is deterministic: captures > promotions > advancement toward promotion.
+
+---
+
+### Pemulis: Head-to-Head Synthetic Lifecycle Follow-up (Issue #115)
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+**Reviewer:** Hal (via Steeply's regression test)
+
+Treat controller-owned synthetic participants as dependent lifecycle state:
+
+1. Mirror the controller's connectivity onto any synthetic players it owns.
+2. Restore those synthetic players only when the controller actually reconnects.
+3. If the controller leaves permanently, do not award a forfeit to the owned synthetic seat; end the room with a no-winner cleanup path instead.
+
+**Rationale:**
+Head-to-head mode still has only one real device connection. Awarding wins to a synthetic seat owned by that same device breaks match semantics and prevents proper room disposal.
+
+**Implementation Note:**
+Current fix lives in `server/src/game/BaseGameRoom.ts` with regression coverage in `server/src/__tests__/BaseGameRoom.test.ts`. `handleReconnectionTimeout` now calls `finalizeParticipantDeparture`, which correctly triggers `releaseControllerOwnedParticipants`.
+
+---
+
+### Gately: Shared-Device Head-to-Head Control Model (Issue #115)
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+**Reviewer:** Hal (third review, after Steeply's timeout fix)
+
+For shared-device Checkers, keep both seats represented as normal room participants, but make the second seat a synthetic server-side participant whose `controllerSessionId` points at the real client holding the device.
+
+**Rationale:**
+- Reuses the existing `currentTurn`, turn manager, renderer, and endgame assumptions that already expect per-seat players.
+- Keeps move authorization server-authoritative: the active seat still owns the turn, while the controller mapping lets one device submit actions for that seat.
+- Contains the mode-specific branching to room join/action routing instead of duplicating Checkers logic for a separate offline mode.
+
+**Implementation Notes:**
+- Added `controllerSessionId` to `shared/src/BaseGameState.ts` so client and server can agree on who controls a seat.
+- `server/src/game/BaseGameRoom.ts` synthesizes `shared-device-opponent` for head-to-head rooms and remaps incoming actions when the controlled seat is active.
+- `server/src/rooms/LobbyRoom.ts` only enables the mode for Checkers and blocks extra non-spectator joins to waiting shared-device rooms.
+- `client/src/renderers/CheckersRenderer.ts` and `client/src/scenes/GameScene.ts` read the controller mapping to rotate perspective and show pass-the-device prompts.
+
+---
+
+### Gately: Checkers Turn Indicator Design (Issue #115)
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+**Reviewer:** Hal (third review)
+
+Keep urgent turn feedback for Checkers inside the shared sidebar instead of rendering a separate board overlay banner.
+
+**Rationale:**
+- The board should stay visually clear while players are choosing moves.
+- The existing `Game Info` panel already owns turn context, so emphasis belongs there.
+- A highlighted sidebar row with subtle animation is noticeable without blocking pieces or targets.
+
+**Implementation Notes:**
+- Removed the Pixi banner layer and its view-model helper files.
+- Added opt-in highlighted sidebar row/value styles in `client/src/ui/GameSidebar.ts`.
+- `client/src/renderers/CheckersRenderer.ts` now renders `Your Turn` with token-driven accent colors and a soft pulse only when the local player is active.
+
+---
+
+### Marathe: Promote Workflow & Version Bumping
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+
+Add a dedicated manual GitHub Actions workflow at `.github/workflows/promote.yml` to handle dev→prod promotions with a controlled version bump.
+
+**Rationale:**
+- Production promotion should be explicit and operator-driven instead of tied to every branch merge.
+- The repo is an npm workspace monorepo, so release version bumps must keep the root package, workspace packages, and lockfile aligned.
+- Opening the `dev` → `prod` PR from the workflow keeps the release handoff transparent while still producing a release tag for downstream prod deployment automation.
+
+**Implementation Notes:**
+- Triggered by `workflow_dispatch` with `bump_type` choice input (`minor` or `major`).
+- Checks out `dev`, configures `github-actions[bot]`, bumps versions in `package.json`, `client/package.json`, `server/package.json`, and `shared/package.json`, and refreshes `package-lock.json` with `npm install --package-lock-only --ignore-scripts --legacy-peer-deps`.
+- Commits the bump to `dev`, creates `v*` tag, opens the `dev` → `prod` PR with `gh pr create`, then pushes the tag.
+- Uses SHA-pinned `actions/checkout` and `actions/setup-node`, plus `contents: write` and `pull-requests: write` permissions.
+
+---
+
+### Marathe: Automatic Dev Patch Bump (Version Management)
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+
+Keep the automatic patch-version increment inside `.github/workflows/ci.yml` as a dedicated `version-bump` job that runs only after successful pushes to `dev`.
+
+**Rationale:**
+- The existing CI workflow already gates `dev` pushes with build, lint, and test, so adding the patch bump as a dependent job keeps the release signal coupled to the validated commit.
+- PlayGrid is an npm workspace monorepo, so the bump must update the root package, all workspace package manifests, and `package-lock.json` together.
+- Using a `[skip ci]` commit message on the bot-generated version commit prevents an infinite CI loop without needing a second workflow.
+
+**Implementation Notes:**
+- `build-test` continues to run for both `push` and `pull_request` events targeting `dev`.
+- `version-bump` uses `if: github.event_name == 'push'`, job-level `contents: write`, SHA-pinned `actions/checkout` and `actions/setup-node`, and the same `github-actions[bot]` git identity pattern as `promote.yml`.
+- The bump command sequence is `npm version patch --no-git-tag-version`, `npm pkg set version=...` for `client`, `server`, and `shared`, then `npm install --package-lock-only --ignore-scripts --legacy-peer-deps` before committing and pushing back to `dev`.
+
+---
+
+### Hal: PR #122 — Head-to-Head Mode Final Approval
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+**Reviewer:** Hal
+
+Approved the fix for the reconnection timeout issue in Head-to-Head mode.
+
+**Verification:**
+- **Code:** `handleReconnectionTimeout` now calls `finalizeParticipantDeparture`, which correctly triggers `releaseControllerOwnedParticipants`.
+- **Tests:** New regression test in `BaseGameRoom.test.ts` confirms synthetic player is removed and game ends in a draw (not forfeit) when controller times out.
+- **Build:** Passed.
+
+---

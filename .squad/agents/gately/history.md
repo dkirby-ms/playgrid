@@ -33,7 +33,15 @@
 
 ## Learnings
 
-### 2026-03-16: Checkers shared-device head-to-head mode
+### 2026-03-16: PR #122 Final Approval — Head-to-Head Mode Merged
+
+- **Decisions merged:** `gately-head-to-head.md` and `gately-turn-indicator.md` now in `.squad/decisions.md`
+- **Shared-device control model:** Synthetic `shared-device-opponent` seat controlled via `controllerSessionId` mapping
+- **Turn indicator design:** Sidebar highlight instead of overlay banner (board stays visually clear)
+- **Regression:** Steeply's timeout cleanup test confirmed synthetic player removal and proper game end
+- **Merged to dev:** 2026-03-16 (after Pemulis→Steeply→Hal lockout cycle)
+
+### 2026-03-16: Checkers shared-device head-to-head mode (Original Session)
 
 - `client/src/ui/LobbyScreen.ts` and `server/src/rooms/LobbyRoom.ts` now support a Checkers-only `headToHeadMode` toggle, keep shared-device rooms single-seat in the waiting lobby, and start them with one real player.
 - `shared/src/BaseGameState.ts` adds `PlayerInfo.controllerSessionId`; `server/src/game/BaseGameRoom.ts` uses that field to synthesize a `shared-device-opponent` seat so one Colyseus client can legally take both turns without replacing the normal turn-order flow.

@@ -47,6 +47,21 @@
 - `LobbyRoom` now keeps a `sessionIdByPlayerId` index so a refreshed join can reclaim the prior session immediately, migrate any waiting-room membership/host ownership to the new `sessionId`, and rebroadcast `ONLINE_PLAYERS` without waiting for `onLeave()` timeout cleanup.
 - Coverage lives in `server/src/__tests__/lobby-pregame.test.ts` for both plain lobby presence and waiting-room host transfer, and the repo-level verification path remains `npm run build && npm run test`.
 
+### 2026-03-16: PR #121 & #122 Approvals and Lockout Escalation
+
+- **PR #121 (CPU opponents)** — APPROVED after Marathe's rebase cleanup removed promote.yml scope leak
+  - Implementation: `cpu-opponent` synthetic participant in lobby and game room
+  - Turn scheduling via `clock.setTimeout(..., 200)` and the normal plugin action pipeline
+  - Decision committed: `pemulis-cpu-opponents.md`
+
+- **PR #122 (Head-to-head mode)** — Initial synthetic lifecycle fix committed
+  - Root cause: controller-owned synthetics remained connected after controller left
+  - Fix: Mirror controller connectivity to owned synthetics; release them on controller departure
+  - Decision committed: `pemulis-h2h-lifecycle-fix.md`
+  - Escalated to Steeply for timeout cleanup regression (lockout protocol: Gately → Pemulis → Steeply)
+
+- **Decisions merged:** Both decisions now in `.squad/decisions.md`
+
 ### Shareable waiting-room links (2026-03-15)
 
 - The waiting-room join identifier is the lobby `gameId`, not the eventual Colyseus `roomId`; while a game is still pre-start, clients must re-use `JOIN_GAME { gameId }` through the lobby room.

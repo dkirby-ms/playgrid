@@ -44,6 +44,17 @@
 
 ---
 
+## Cross-Agent Update — PR #121 & #122 Reviews Complete (2026-03-16)
+
+**Event:** Both PRs approved and merged to `dev` after lockout protocol
+
+- **PR #121 (CPU opponents, Issue #86):** First rejection → re-review approved (Marathe cleaned promote.yml scope leak via rebase) → Merged
+- **PR #122 (Head-to-head mode, Issue #115):** First rejection → second rejection (Pemulis fixed synthetic lifecycle) → third review approved (Steeply added timeout regression test) → Merged
+- **Decisions merged:** 7 inbox decisions now in `.squad/decisions.md`
+- **Cross-agent:** Lockout protocol executed (Gately → Pemulis → Steeply chain on PR #122)
+
+---
+
 ## Session Logs
 
 ### 2026-03-14: Cross-Agent Architecture Alignment
@@ -667,3 +678,7 @@ User provided redesign package at `docs/designs/redesign/` with React/Tailwind r
 **Next Steps:**
 - Assign #115 to Gately (client-side renderer logic)
 - Assign #86 to Pemulis (server-side CPU opponent)
+
+## Learnings
+- **Head-to-Head Mode Lifecycle:** Synthetic players (shared device) require explicit cleanup in *all* departure paths, including reconnection timeouts. The initial implementation missed the timeout branch, leading to orphaned state.
+- **Testing Timers:** Regression tests for reconnection windows must explicitly verify side effects (like synthetic player removal) after the timeout promise rejects.
