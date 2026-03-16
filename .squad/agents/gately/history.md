@@ -839,3 +839,21 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - **What changed:** Removed the temporary Pixi turn banner from `client/src/renderers/CheckersRenderer.ts`, deleted the banner view-model test files, and moved the emphasis back into the existing Game Info panel by rendering a highlighted `Current turn` row that reads `Your Turn` for the active local player.
 - **Pattern discovered:** `client/src/ui/GameSidebar.ts` is the right place for reusable turn-state treatment. Adding opt-in sidebar row/value classes plus CSS custom properties let the renderer dial in game-specific accent colors while keeping the layout inside the shared glass-panel system.
 - **User preference:** Turn prompts should be unmistakable but non-obstructive. Prefer a brighter, slightly animated sidebar treatment over any overlay/banner that sits on top of the board.
+
+### 2026-03-16: Dev Sandbox MVP — Gameboard Renderer Testing Tool
+
+- **PR #132** implements the dev sandbox for live gameboard rendering without server connection
+- **Files created:** 
+  - `client/src/scenes/SandboxScene.ts` — Scene that mounts renderers with mock state
+  - `client/src/sandbox/mockStates.ts` — Mock state generators for Checkers, Backgammon, Risk
+  - `client/src/sandbox/SandboxStatePanel.ts` — HTML overlay panel for live state editing
+- **Route detection:** Application.ts now checks for `/sandbox/{game}` URL patterns (hash or path)
+- **State editing by game:**
+  - **Checkers:** Full visual board editor (click cells to cycle pieces), mustCaptureFrom input
+  - **Backgammon/Risk:** JSON textarea editors (MVP — sufficient for testing)
+- **Architecture patterns:**
+  - Renderers already use optional chaining for state access → plain JS objects work
+  - Pass `room: undefined` in GameRendererContext — renderers handle gracefully
+  - SandboxStatePanel uses HTML/CSS overlay (not PixiJS) for controls
+- **Zero production impact:** All new files + minimal routing changes in Application.ts
+- **Success:** Build, lint, and tests all pass. Ready for renderer testing workflow.
