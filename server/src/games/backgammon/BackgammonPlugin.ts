@@ -151,6 +151,7 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
       player.playerIndex = playerIndex;
       player.isSpectator = existingPlayer?.isSpectator ?? false;
       player.isConnected = existingPlayer?.isConnected ?? true;
+      player.controllerSessionId = existingPlayer?.controllerSessionId ?? "";
       state.players.set(client.sessionId, player);
     },
     onPlayerLeave(state, sessionId) {
@@ -293,6 +294,24 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
         endsGame: winnerColor !== null,
       };
     },
+    pass(state, client): ActionResult {
+      const player = state.players.get(client.sessionId);
+      if (!player) {
+        return { success: false, error: "Player not found." };
+      }
+
+      // Reset dice — next player must roll
+      state.dice[0] = 0;
+      state.dice[1] = 0;
+      state.usedDice[0] = false;
+      state.usedDice[1] = false;
+
+      return {
+        success: true,
+        endsTurn: true,
+        endsGame: false,
+      };
+    },
   },
   conditions: {
     checkGameEnd(state) {
@@ -316,6 +335,34 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
 
       if (actionType === "move") {
         return validateMoveAction(state, client.sessionId, payload);
+      }
+
+      if (actionType === "pass") {
+        const [die1, die2] = state.dice;
+        if (die1 === 0 && die2 === 0) {
+          return false;
+        }
+
+        const player = state.players.get(client.sessionId);
+        if (!player || player.isSpectator) {
+          return false;
+        }
+
+        const playerColor = getPlayerColor(player.playerIndex);
+        if (playerColor === null) {
+          return false;
+        }
+
+        const availableDice = getAvailableDice(Array.from(state.dice), Array.from(state.usedDice));
+        return !hasValidMoves(
+          Array.from(state.points),
+          state.blackBar,
+          state.redBar,
+          state.blackBorneOff,
+          state.redBorneOff,
+          availableDice,
+          playerColor,
+        );
       }
 
       return false;

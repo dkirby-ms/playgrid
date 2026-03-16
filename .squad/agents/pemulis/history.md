@@ -486,3 +486,38 @@ All three features validate cleanly end-to-end with `npm run build && npm run li
 - Begin implementation of CpuOpponent.ts
 - Update lobby to accept cpuOpponent option
 - Implement CPU turn detection in BaseGameRoom
+
+---
+
+## Assigned Work: Issue #87 — CPU Opponents in Backgammon (2026-03-16)
+
+**Status:** Triaged and routed to Pemulis  
+**Triaged by:** Hal  
+**Label:** `squad:pemulis`
+
+**Context:**
+Issue #87 requests CPU-controlled opponents in Backgammon to enable single-player gameplay. Hal's triage determined this is reusable work from PR #121 (Checkers CPU opponent pattern).
+
+**Why routed to you:**
+- Game systems work (AI, simulation) aligns with Pemulis role
+- Pattern exists and proven: `server/src/games/checkers/CpuOpponent.ts`
+- No framework changes needed
+- Game-specific logic only: Backgammon move scoring (bearing-off priority, blot avoidance)
+
+**Implementation Baseline:**
+- Reuse Checkers `CpuOpponent.ts` structure
+- Framework: `BaseGameRoom.executeCpuTurn()` (lines 590–620) handles CPU turns generically — no changes needed
+- Scope: Single new module `server/src/games/backgammon/CpuOpponent.ts`
+- Validation/move application utilities already available (tested in Checkers PR #121)
+
+**Next Step:** Implement `server/src/games/backgammon/CpuOpponent.ts` with Backgammon-specific move scoring logic.
+
+### Backgammon CPU opponent (2025-07-25)
+
+- Implemented `server/src/games/backgammon/CpuOpponent.ts` with `selectCpuAction()` — returns either a roll action or a scored move action.
+- Backgammon CPU turns are multi-action (roll → move × N), unlike Checkers which is single-action. The `queueCpuTurnIfNeeded()` loop in BaseGameRoom handles this naturally — each action completes, then the next CPU action is queued.
+- `BaseGameRoom.executeCpuTurn()` was refactored into game-specific methods (`executeCheckersCpuTurn`, `executeBackgammonCpuTurn`) to handle different action types and payloads.
+- CPU support gate in `BaseGameRoom.onCreate()` was widened from `gameType === "checkers"` to `gameType === "checkers" || gameType === "backgammon"`. The `isCpuTurn()` check was simplified to remove the hardcoded `plugin.id === "checkers"` guard.
+- Scoring heuristic: bear off (1000) > hit blot (500) > bar entry (400) > make point (300) > prime bonus (150) > advancement. Penalties for leaving blots (-200) and breaking points (-100).
+- Key file paths: `server/src/games/backgammon/CpuOpponent.ts`, `server/src/games/backgammon/__tests__/cpuOpponent.test.ts`
+- PR #125, closes #87.
