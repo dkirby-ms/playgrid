@@ -255,6 +255,54 @@ describeRoom("BaseGameRoom", () => {
     expect(room.state.turnNumber).toBe(2);
   });
 
+  it("creates a shared-device opponent and routes turns through that synthetic player", async () => {
+    const room = createRoom();
+    const moveHandler = vi.fn().mockReturnValue({ success: true, endsTurn: true });
+    const validateAction = vi.fn().mockReturnValue(true);
+    const checkGameEnd = vi.fn().mockReturnValue(null);
+    const plugin = createPlugin({
+      actions: { move: moveHandler },
+      conditions: { validateAction, checkGameEnd },
+      lifecycle: {
+        onCreate: vi.fn(),
+        onGameStart: vi.fn(),
+      },
+    });
+
+    mockGameRegistry.get.mockReturnValue(plugin);
+    room.onCreate({ gameType: "checkers", expectedPlayers: 1, headToHeadMode: true });
+
+    const player = createClient("player-1");
+    room.onJoin(player);
+
+    expect(room.state.phase).toBe("playing");
+    expect(room.state.players.get("shared-device-opponent")).toMatchObject({
+      playerIndex: 1,
+      controllerSessionId: "player-1",
+      displayName: "Player 2",
+    });
+
+    await room.messageHandlers.get("move")?.(player, { from: 1, to: 2 });
+    expect(room.state.currentTurn).toBe("shared-device-opponent");
+
+    await room.messageHandlers.get("move")?.(player, { from: 3, to: 4 });
+
+    expect(validateAction).toHaveBeenNthCalledWith(
+      2,
+      room.state,
+      expect.objectContaining({ sessionId: "shared-device-opponent" }),
+      "move",
+      { from: 3, to: 4 },
+    );
+    expect(moveHandler).toHaveBeenNthCalledWith(
+      2,
+      room.state,
+      expect.objectContaining({ sessionId: "shared-device-opponent" }),
+      { from: 3, to: 4 },
+    );
+    expect(room.state.currentTurn).toBe("player-1");
+  });
+
   it("ends the game when an action reports endsGame", async () => {
     const room = createRoom();
     const gameResult = {
@@ -347,6 +395,39 @@ describeRoom("BaseGameRoom", () => {
     expect(room.state.phase).toBe("playing");
   });
 
+  it("disconnects the shared-device opponent while the controlling client is away and restores it on reconnect", async () => {
+    const room = createRoom();
+    let resolveReconnection!: () => void;
+    const plugin = createPlugin({
+      lifecycle: {
+        onCreate: vi.fn(),
+        onGameStart: vi.fn(),
+        onPlayerReconnect: vi.fn(),
+      },
+    });
+
+    room.allowReconnection.mockImplementation(
+      () => new Promise<void>((resolve) => {
+        resolveReconnection = resolve;
+      }),
+    );
+    mockGameRegistry.get.mockReturnValue(plugin);
+    room.onCreate({ gameType: "checkers", expectedPlayers: 1, headToHeadMode: true });
+
+    const player = createClient("player-1");
+    room.onJoin(player);
+
+    const leavePromise = room.onLeave(player, mockedCloseCode.NORMAL_CLOSURE);
+    expect(room.state.players.get("shared-device-opponent")).toMatchObject({ isConnected: false });
+
+    room.onJoin(player);
+    resolveReconnection();
+    await leavePromise;
+
+    expect(room.state.players.get("shared-device-opponent")).toMatchObject({ isConnected: true });
+    expect(plugin.lifecycle.onPlayerReconnect).toHaveBeenCalledWith(room.state, player);
+  });
+
   it("does not hold a seat for a consented disconnect and forfeits immediately when one player remains", async () => {
     const room = createRoom();
     const plugin = createPlugin({
@@ -385,6 +466,43 @@ describeRoom("BaseGameRoom", () => {
     expect(room.disconnect).toHaveBeenCalledTimes(1);
   });
 
+  it("does not award a forfeit win to the shared-device opponent when the controller leaves", async () => {
+    const room = createRoom();
+    const plugin = createPlugin({
+      lifecycle: {
+        onCreate: vi.fn(),
+        onGameStart: vi.fn(),
+        onPlayerLeave: vi.fn(),
+        onGameEnd: vi.fn(),
+      },
+    });
+
+    mockGameRegistry.get.mockReturnValue(plugin);
+    room.onCreate({ gameType: "checkers", expectedPlayers: 1, headToHeadMode: true });
+
+    const player = createClient("player-1");
+    room.onJoin(player);
+
+    await room.onLeave(player, mockedCloseCode.CONSENTED);
+
+    expect(room.allowReconnection).not.toHaveBeenCalled();
+    expect(plugin.lifecycle.onPlayerLeave).toHaveBeenCalledWith(room.state, player.sessionId);
+    expect(plugin.lifecycle.onPlayerLeave).toHaveBeenCalledWith(room.state, "shared-device-opponent");
+    expect(room.state.players.get("shared-device-opponent")).toMatchObject({ isConnected: false });
+    expect(plugin.lifecycle.onGameEnd).toHaveBeenCalledWith(
+      room.state,
+      expect.objectContaining({
+        type: "draw",
+        metadata: expect.objectContaining({
+          consented: true,
+          disconnectedPlayerId: player.sessionId,
+          reason: "all-players-disconnected",
+        }),
+      }),
+    );
+    expect(room.disconnect).toHaveBeenCalledTimes(1);
+  });
+
   it("releases the reserved seat after the reconnection window expires", async () => {
     const room = createRoom();
     const plugin = createPlugin({
@@ -408,6 +526,7 @@ describeRoom("BaseGameRoom", () => {
     await room.onLeave(secondPlayer, mockedCloseCode.NORMAL_CLOSURE);
 
     expect(room.allowReconnection).toHaveBeenCalledWith(secondPlayer, 30);
+    expect(plugin.lifecycle.onPlayerLeave).toHaveBeenCalledWith(room.state, secondPlayer.sessionId);
     expect(plugin.lifecycle.onGameEnd).toHaveBeenCalledWith(
       room.state,
       expect.objectContaining({
@@ -416,6 +535,47 @@ describeRoom("BaseGameRoom", () => {
         metadata: expect.objectContaining({
           reconnectionTimeout: true,
           disconnectedPlayerId: secondPlayer.sessionId,
+        }),
+      }),
+    );
+    expect(room.disconnect).toHaveBeenCalledTimes(1);
+    expect(room.state.phase).toBe("ended");
+  });
+
+  it("cleans up the shared-device opponent when the controller times out", async () => {
+    const room = createRoom();
+    const plugin = createPlugin({
+      lifecycle: {
+        onCreate: vi.fn(),
+        onGameStart: vi.fn(),
+        onPlayerLeave: vi.fn(),
+        onGameEnd: vi.fn(),
+      },
+    });
+
+    room.allowReconnection.mockRejectedValue(new Error("timed out"));
+    mockGameRegistry.get.mockReturnValue(plugin);
+    room.onCreate({ gameType: "checkers", expectedPlayers: 1, headToHeadMode: true });
+
+    const player = createClient("player-1");
+    room.onJoin(player);
+    const removePlayerSpy = vi.spyOn(room.turnManager, "removePlayer");
+
+    await room.onLeave(player, mockedCloseCode.NORMAL_CLOSURE);
+
+    expect(room.allowReconnection).toHaveBeenCalledWith(player, 30);
+    expect(plugin.lifecycle.onPlayerLeave).toHaveBeenCalledWith(room.state, player.sessionId);
+    expect(plugin.lifecycle.onPlayerLeave).toHaveBeenCalledWith(room.state, "shared-device-opponent");
+    expect(removePlayerSpy).toHaveBeenCalledWith(player.sessionId);
+    expect(removePlayerSpy).toHaveBeenCalledWith("shared-device-opponent");
+    expect(room.state.players.get("shared-device-opponent")).toMatchObject({ isConnected: false });
+    expect(plugin.lifecycle.onGameEnd).toHaveBeenCalledWith(
+      room.state,
+      expect.objectContaining({
+        type: "draw",
+        metadata: expect.objectContaining({
+          reconnectionTimeout: true,
+          reason: "all-players-disconnected",
         }),
       }),
     );

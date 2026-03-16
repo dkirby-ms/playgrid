@@ -28,6 +28,7 @@ export interface GameSessionInfo {
   createdAt: number;
   canSpectate?: boolean;
   cpuOpponent?: boolean;
+  headToHeadMode?: boolean;
 }
 
 export interface CreateGamePayload {
@@ -35,6 +36,7 @@ export interface CreateGamePayload {
   gameType: string;
   maxPlayers?: number;
   cpuOpponent?: boolean;
+  headToHeadMode?: boolean;
 }
 
 export interface JoinGamePayload {
@@ -67,6 +69,7 @@ export interface GameStartedPayload {
   gameId: string;
   roomId: string;
   gameType: string;
+  headToHeadMode?: boolean;
 }
 
 export interface LobbyErrorPayload {
