@@ -2418,3 +2418,103 @@ Prioritize clarity fixes over further visual polish in Checkers. The next UX pas
 **By:** Gately
 **What:** Remove the redundant shared HUD status card and keep `HUD.ts` focused on overlay chrome (Leave + chat) plus turn-clock timing. Renderer sidebars now own the visible game status, player info, and turn clock via a shared `GameSidebar` clock helper and `GameRenderer.setTurnClock()` hook.
 **Why:** User request — the sidebar already surfaces game status and players, so duplicating that data in the HUD wasted screen space and split the same state across two UI surfaces. Centralizing visible status inside sidebar panels keeps the board column cleaner while preserving one shared countdown source.
+
+---
+
+### Gately: Version Footer: Center + Feedback Link
+
+**Status:** Implemented  
+**Date:** 2026-03-15  
+**Author:** Gately (Game Dev - Frontend)  
+**Issue:** #97  
+**PR:** #118  
+
+## Context
+
+The version footer was positioned bottom-right and included only the version number. Needed to center it and add a feedback link to encourage user issue reporting.
+
+## Decision
+
+Moved version footer from bottom-right to bottom-center using Flexbox and CSS transforms. Added "Submit Feedback" link next to version.
+
+## Implementation Details
+
+- **Layout:** Flexbox with centered positioning using `left: 50%; transform: translateX(-50%)`
+- **Structure:** Version text + separator bullet + feedback link
+- **Link behavior:** Opens in new tab (`target="_blank"`) with security (`rel="noopener noreferrer"`)
+- **Styling:** Subtle hover effect (opacity transition from 0.4 to 0.7) for feedback link
+- **Pointer events:** Version text and separator are non-interactive; only link is clickable
+
+## Why This Approach
+
+1. **Center positioning** — Uses transform instead of margin for precise centering across all viewport widths
+2. **Flexbox** — Easier to maintain gap spacing and alignment vs. manual positioning
+3. **Inline hover handlers** — Kept simple since this is a one-off UI element
+4. **Security attributes** — `rel="noopener noreferrer"` prevents tab-nabbing attacks on external links
+
+## Future Considerations
+
+If we add more footer links, consider extracting styles into a shared footer component.
+
+**Files Affected:**
+- `client/src/ui/HUD.ts` (footer JSX)
+- `client/src/ui/gameLayout.ts` (footer styling)
+
+---
+
+### Gately: Dice Roll Animation Implementation
+
+**Status:** Implemented  
+**Date:** 2026-03-16  
+**Author:** Gately (Game Dev - Frontend/Rendering)  
+**Issue:** #100  
+**PR:** #119  
+
+## Context
+
+Backgammon needed a manual dice roll button instead of automatic rolling. Players should see visual feedback as dice are "rolling" before the server returns the actual values.
+
+## Decision
+
+Implemented client-side dice roll animation using frame-based approach:
+
+### Animation Approach
+- **Duration:** 20 frames (~333ms at 60fps)
+- **Method:** Random dice faces shown each frame during animation
+- **Trigger:** Button click sends "roll" action to server, starts animation immediately
+- **Stop:** Animation stops when server returns real dice values (dice > 0)
+
+### Why This Approach
+1. **Frame-based vs Time-based:** Used frame counter instead of deltaTime for predictable, consistent duration
+2. **requestAnimationFrame:** Leveraged existing game loop update() method - no setTimeout/setInterval (per team pattern)
+3. **State-driven:** Animation state (`isRollingDice`) integrates cleanly with existing state management
+4. **Server authoritative:** Client animation is purely visual - server determines actual dice values
+
+### Technical Details
+- Added 3 new class properties: `isRollingDice`, `rollAnimationFrame`, `rollAnimationDuration`
+- Modified `redrawDice()` to show random values when `isRollingDice === true`
+- Updated `update()` to advance animation frame counter
+- Modified `applyState()` to stop animation when server sends real dice values
+- Button enabled/disabled based on turn state and dice values (0,0 = unrolled)
+
+### Button UX
+- Enabled: Player's turn AND dice are 0,0 (unrolled) AND not currently animating
+- Disabled: Otherwise
+- Located: Sidebar controls panel, consistent with existing button styling
+
+## Alternative Considered
+
+Could have used CSS animation on HTML dice elements, but:
+- Would require duplicating dice rendering logic
+- PixiJS canvas-based rendering is already in place
+- Random value animation simpler with direct Graphics API access
+
+## Future Enhancement Opportunities
+- Add sound effect on roll
+- Add easing to animation (slow down at end)
+- Vary animation duration based on dice values (longer = higher suspense)
+
+**Files Affected:**
+- `client/src/renderers/BackgammonRenderer.ts` (animation, button)
+- `server/src/games/backgammon/BackgammonRoom.ts` (roll action)
+- `shared/src/games/backgammon/BackgammonState.ts` (state schema)
