@@ -113,9 +113,32 @@ export class PlaygridApp {
 
   private createVersionFooter(): void {
     const footer = document.createElement("div");
-    footer.textContent = `v${__APP_VERSION__}`;
     footer.style.cssText =
-      "position:fixed;bottom:4px;right:8px;font-size:11px;color:rgba(255,255,255,0.3);pointer-events:none;z-index:999;font-family:monospace";
+      "position:fixed;bottom:8px;left:50%;transform:translateX(-50%);font-size:11px;color:rgba(255,255,255,0.3);z-index:999;font-family:monospace;text-align:center;display:flex;gap:12px;align-items:center";
+
+    const versionText = document.createElement("span");
+    versionText.textContent = `v${__APP_VERSION__}`;
+    versionText.style.cssText = "pointer-events:none";
+
+    const separator = document.createElement("span");
+    separator.textContent = "•";
+    separator.style.cssText = "pointer-events:none";
+
+    const feedbackLink = document.createElement("a");
+    feedbackLink.textContent = "Submit Feedback";
+    feedbackLink.href = "https://github.com/dkirby-ms/playgrid/issues";
+    feedbackLink.target = "_blank";
+    feedbackLink.rel = "noopener noreferrer";
+    feedbackLink.style.cssText =
+      "color:rgba(255,255,255,0.4);text-decoration:none;transition:color 0.2s ease;pointer-events:auto";
+    feedbackLink.onmouseover = () => {
+      feedbackLink.style.color = "rgba(255,255,255,0.7)";
+    };
+    feedbackLink.onmouseout = () => {
+      feedbackLink.style.color = "rgba(255,255,255,0.4)";
+    };
+
+    footer.append(versionText, separator, feedbackLink);
     document.body.appendChild(footer);
   }
 
