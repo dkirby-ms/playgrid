@@ -146,7 +146,7 @@ export class PlaygridApp {
     copyright.textContent = "© 2026 Kirbytoso. All rights reserved.";
     copyright.style.cssText = "pointer-events:none";
 
-    footer.append(versionText, separator, feedbackLink, separator2, copyright);
+    footer.append(versionText, separator, copyright, separator2, feedbackLink);
     document.body.appendChild(footer);
   }
 
