@@ -708,3 +708,18 @@ User provided redesign package at `docs/designs/redesign/` with React/Tailwind r
 Per routing.md: "Game systems" → Pemulis. CPU opponent is pure simulation/AI — not rendering (Gately) or testing framework (Steeply).
 
 **Label assigned:** `squad:pemulis`
+
+## 2026-03-16: Issue #87 Completion — PR #125 (Backgammon CPU)
+
+**Status:** Completed by Pemulis  
+**PR:** #125 (draft)
+
+Pemulis successfully implemented CPU opponent for Backgammon following the Checkers pattern from PR #121. Also generalized the BaseGameRoom CPU framework to support multiple games without game-specific gates.
+
+**Key Changes:**
+- `server/src/games/backgammon/CpuOpponent.ts` — Scoring heuristic (bear off > blots > points > advance)
+- `server/src/game/BaseGameRoom.ts` — Widened CPU support gate, split executeCpuTurn into dispatchers
+- 8 new tests, all 286 tests passing
+
+**Ready for:** Code review (Hal), merge decision pending
+
