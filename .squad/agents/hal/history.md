@@ -723,3 +723,22 @@ Pemulis successfully implemented CPU opponent for Backgammon following the Check
 
 **Ready for:** Code review (Hal), merge decision pending
 
+
+### PR #125 Re-Review — Backgammon CPU No-Valid-Moves Fix (2026-03-16)
+
+**Session:** Re-reviewed PR #125 after Gately's fix for the no-valid-moves forfeit bug
+**Verdict:** APPROVED and merged to dev
+
+**Bug:** `selectCpuAction` returned `null` when CPU had no valid moves after rolling dice, triggering `handleTurnTimeout` which forfeited the game.
+
+**Fix (Gately):**
+- Added `pass` action to BackgammonPlugin — resets dice, ends turn (`endsTurn: true`)
+- CPU returns `{ actionType: "pass" }` instead of `null`
+- Validation rejects pass when valid moves exist or dice not rolled (anti-abuse)
+- 3 new plugin tests + 2 updated CPU tests
+
+**Verification:** All 289 tests pass, build clean, lint clean (0 errors).
+
+## Learnings
+
+- **Null returns from CPU action selectors are dangerous.** When a game has multi-step turns (roll → move), the CPU action selector must always return a valid action type. The `null` path in BaseGameRoom triggers forfeit. Games with no-move situations (backgammon, chess stalemate) need explicit pass/skip actions in the plugin.
