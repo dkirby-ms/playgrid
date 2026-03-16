@@ -151,6 +151,7 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
       player.playerIndex = playerIndex;
       player.isSpectator = existingPlayer?.isSpectator ?? false;
       player.isConnected = existingPlayer?.isConnected ?? true;
+      player.controllerSessionId = existingPlayer?.controllerSessionId ?? "";
       state.players.set(client.sessionId, player);
     },
     onPlayerLeave(state, sessionId) {
