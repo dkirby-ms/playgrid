@@ -682,3 +682,29 @@ User provided redesign package at `docs/designs/redesign/` with React/Tailwind r
 ## Learnings
 - **Head-to-Head Mode Lifecycle:** Synthetic players (shared device) require explicit cleanup in *all* departure paths, including reconnection timeouts. The initial implementation missed the timeout branch, leading to orphaned state.
 - **Testing Timers:** Regression tests for reconnection windows must explicitly verify side effects (like synthetic player removal) after the timeout promise rejects.
+
+## Issue #87 Triage: CPU Opponents in Backgammon
+
+### Learning: CPU Opponent Pattern
+
+**File structure:**
+- Game-specific CPU module: `server/src/games/{game}/CpuOpponent.ts`
+- Exports a single `selectCpuMove(state: GameState): Move | null` function
+- Uses game logic utilities (validation, move application) to score candidate moves
+
+**Integration:**
+- No changes to `BaseGameRoom.ts` needed (already generic for CPU turns)
+- `BaseGameRoom.isCpuTurn()` checks if player is `CPU_OPPONENT_SESSION_ID` and game is "checkers"
+- When CPU turn arrives, `executeCpuTurn()` calls `selectCpuMove()` and processes the move via the action handler
+- CPU move strategy in Checkers: Score moves by capture priority (1000 points), king promotion (100), and advancement toward opponent's side
+
+**Backgammon adaptations:**
+- Scoring will differ: prioritize bearing off pieces, avoid/minimize blots (exposed pieces vulnerable to capture)
+- Use existing `backgammonLogic.ts` move validation and application functions
+- Pattern is proven; low risk implementation for Pemulis
+
+### Decision: Route to Pemulis
+
+Per routing.md: "Game systems" → Pemulis. CPU opponent is pure simulation/AI — not rendering (Gately) or testing framework (Steeply).
+
+**Label assigned:** `squad:pemulis`

@@ -486,3 +486,28 @@ All three features validate cleanly end-to-end with `npm run build && npm run li
 - Begin implementation of CpuOpponent.ts
 - Update lobby to accept cpuOpponent option
 - Implement CPU turn detection in BaseGameRoom
+
+---
+
+## Assigned Work: Issue #87 — CPU Opponents in Backgammon (2026-03-16)
+
+**Status:** Triaged and routed to Pemulis  
+**Triaged by:** Hal  
+**Label:** `squad:pemulis`
+
+**Context:**
+Issue #87 requests CPU-controlled opponents in Backgammon to enable single-player gameplay. Hal's triage determined this is reusable work from PR #121 (Checkers CPU opponent pattern).
+
+**Why routed to you:**
+- Game systems work (AI, simulation) aligns with Pemulis role
+- Pattern exists and proven: `server/src/games/checkers/CpuOpponent.ts`
+- No framework changes needed
+- Game-specific logic only: Backgammon move scoring (bearing-off priority, blot avoidance)
+
+**Implementation Baseline:**
+- Reuse Checkers `CpuOpponent.ts` structure
+- Framework: `BaseGameRoom.executeCpuTurn()` (lines 590–620) handles CPU turns generically — no changes needed
+- Scope: Single new module `server/src/games/backgammon/CpuOpponent.ts`
+- Validation/move application utilities already available (tested in Checkers PR #121)
+
+**Next Step:** Implement `server/src/games/backgammon/CpuOpponent.ts` with Backgammon-specific move scoring logic.

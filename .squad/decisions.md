@@ -2914,3 +2914,59 @@ Approved the fix for the reconnection timeout issue in Head-to-Head mode.
 - **Build:** Passed.
 
 ---
+
+---
+
+### Hal: Route Issue #87 (CPU Opponents in Backgammon) to Pemulis
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+
+Route to **Pemulis** (Systems Dev) with label `squad:pemulis`.
+
+**Rationale:**
+- **Pattern exists:** PR #121 established CPU opponent pattern in Checkers. Backgammon implementation follows the same architecture — no new patterns needed.
+- **Routing fit:** Per `routing.md`, game systems (AI, simulation) → Pemulis. CPU opponent is pure simulation logic, not rendering or test framework work.
+- **Scope is tight:** Implementation is a single module (`server/src/games/backgammon/CpuOpponent.ts`) with clear interfaces and proven patterns from Checkers.
+
+**Implementation Notes for Pemulis:**
+- **Reference:** `server/src/games/checkers/CpuOpponent.ts` for move selection structure
+- **Framework:** CPU turns are already managed generically in `BaseGameRoom.executeCpuTurn()` — no framework changes needed
+- **Game-specific logic:** Backgammon move scoring will differ from Checkers (prioritize bearing off, avoid blots) but reuses game validation/move application utilities
+
+---
+
+### Copilot: CI Failures Should Create Automatic Issues
+
+**Status:** Captured  
+**Date:** 2026-03-16  
+**Source:** User directive via Copilot
+
+CI failures should automatically create a GitHub issue tagged to the squad.
+
+**Rationale:** User request — captured for team memory. Formal implementation approved separately (see Marathe decision below).
+
+---
+
+### Marathe: CI Failure Auto-Issue on Dev
+
+**Status:** Approved  
+**Date:** 2026-03-16  
+**Requested by:** dkirby-ms
+
+Add a `create-failure-issue` job to `.github/workflows/ci.yml` that runs only when `build-test` fails on `push` events to `dev`, and creates a deduplicated GitHub issue labeled `squad` and `bug` via `gh issue create`.
+
+**Implementation details:**
+- Job-level guard uses `if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/dev'`
+- Job depends on `build-test` and has `issues: write` permission
+- The issue title includes the short commit SHA and `CI build failure`
+- The issue body includes the workflow run link, commit message, commit author, and branch
+- Duplicate issues are prevented by checking existing titles first with `gh issue list`
+
+**Rationale:**
+- CI failures on `dev` should become immediately actionable backlog items for Ralph and squad triage
+- Using `gh` keeps the workflow simple and avoids introducing another third-party action surface
+- Deduplication prevents repeated failing pushes for the same commit from spamming the issue tracker
+
+**Related operational fix:**
+- `server/package.json` now declares `@colyseus/schema` explicitly so CI installs do not rely on root hoisting for `server/src/game/GameRegistry.ts`
