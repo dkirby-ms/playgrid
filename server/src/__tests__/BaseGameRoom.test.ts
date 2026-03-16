@@ -526,6 +526,7 @@ describeRoom("BaseGameRoom", () => {
     await room.onLeave(secondPlayer, mockedCloseCode.NORMAL_CLOSURE);
 
     expect(room.allowReconnection).toHaveBeenCalledWith(secondPlayer, 30);
+    expect(plugin.lifecycle.onPlayerLeave).toHaveBeenCalledWith(room.state, secondPlayer.sessionId);
     expect(plugin.lifecycle.onGameEnd).toHaveBeenCalledWith(
       room.state,
       expect.objectContaining({
@@ -534,6 +535,47 @@ describeRoom("BaseGameRoom", () => {
         metadata: expect.objectContaining({
           reconnectionTimeout: true,
           disconnectedPlayerId: secondPlayer.sessionId,
+        }),
+      }),
+    );
+    expect(room.disconnect).toHaveBeenCalledTimes(1);
+    expect(room.state.phase).toBe("ended");
+  });
+
+  it("cleans up the shared-device opponent when the controller times out", async () => {
+    const room = createRoom();
+    const plugin = createPlugin({
+      lifecycle: {
+        onCreate: vi.fn(),
+        onGameStart: vi.fn(),
+        onPlayerLeave: vi.fn(),
+        onGameEnd: vi.fn(),
+      },
+    });
+
+    room.allowReconnection.mockRejectedValue(new Error("timed out"));
+    mockGameRegistry.get.mockReturnValue(plugin);
+    room.onCreate({ gameType: "checkers", expectedPlayers: 1, headToHeadMode: true });
+
+    const player = createClient("player-1");
+    room.onJoin(player);
+    const removePlayerSpy = vi.spyOn(room.turnManager, "removePlayer");
+
+    await room.onLeave(player, mockedCloseCode.NORMAL_CLOSURE);
+
+    expect(room.allowReconnection).toHaveBeenCalledWith(player, 30);
+    expect(plugin.lifecycle.onPlayerLeave).toHaveBeenCalledWith(room.state, player.sessionId);
+    expect(plugin.lifecycle.onPlayerLeave).toHaveBeenCalledWith(room.state, "shared-device-opponent");
+    expect(removePlayerSpy).toHaveBeenCalledWith(player.sessionId);
+    expect(removePlayerSpy).toHaveBeenCalledWith("shared-device-opponent");
+    expect(room.state.players.get("shared-device-opponent")).toMatchObject({ isConnected: false });
+    expect(plugin.lifecycle.onGameEnd).toHaveBeenCalledWith(
+      room.state,
+      expect.objectContaining({
+        type: "draw",
+        metadata: expect.objectContaining({
+          reconnectionTimeout: true,
+          reason: "all-players-disconnected",
         }),
       }),
     );

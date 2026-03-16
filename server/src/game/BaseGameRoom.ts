@@ -214,10 +214,7 @@ export class BaseGameRoom extends Room {
       }
     }
 
-    this.plugin.lifecycle.onPlayerLeave?.(this.state, client.sessionId);
-    this.turnManager?.removePlayer(client.sessionId);
-    this.releaseControllerOwnedParticipants(client.sessionId);
-    this.syncTurnState();
+    this.finalizeParticipantDeparture(client.sessionId);
 
     if (this.state.phase !== "playing") {
       if (this.headToHeadMode && !this.hasConnectedController()) {
@@ -427,8 +424,7 @@ export class BaseGameRoom extends Room {
       return;
     }
 
-    this.turnManager?.removePlayer(sessionId);
-    this.syncTurnState();
+    this.finalizeParticipantDeparture(sessionId);
 
     const remainingPlayers = this.getConnectedParticipants();
     if (remainingPlayers.length === 1) {
@@ -654,6 +650,13 @@ export class BaseGameRoom extends Room {
 
   private getConnectedParticipants() {
     return this.getParticipatingPlayers().filter((player) => player.isConnected);
+  }
+
+  private finalizeParticipantDeparture(sessionId: string) {
+    this.plugin.lifecycle.onPlayerLeave?.(this.state, sessionId);
+    this.turnManager?.removePlayer(sessionId);
+    this.releaseControllerOwnedParticipants(sessionId);
+    this.syncTurnState();
   }
 
   private getControllerOwnedParticipants(controllerSessionId: string) {
