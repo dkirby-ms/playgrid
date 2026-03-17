@@ -419,3 +419,11 @@ Implemented generic hidden-hand pattern following boneyard precedent:
 - client/src/renderers/DominosRenderer.ts
 - server/src/games/dominos/__tests__/dominosPlugin.test.ts
 
+
+## Learnings
+
+### Risk setup→playing transition bug (2026-03-16, PR #144)
+- **Bug:** `placeArmy` during setup returned `endsTurn: true` when a player finished, but never checked if ALL players were done. The only "all done" check was in `endPhase`, which required explicit invocation — impossible when the current player has 0 armies.
+- **Fix:** Added an `allDone` check in `placeArmy`: when `armiesToPlace === 0` during setup, iterate all active players; if everyone is at 0, set `gamePhase = "playing"` and `turnPhase = "reinforce"`.
+- **Lesson:** Any round-robin setup phase that ends per-player must also check the global completion condition. Never rely on a separate action for phase transitions that no player can trigger.
+- **Lesson:** Pre-existing regression test suite (`risk-setup-transition.test.ts`) was written to describe expected behavior and intentionally failed against the buggy code — a good pattern for documenting known bugs before fixes land.
