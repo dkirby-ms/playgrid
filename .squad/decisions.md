@@ -3057,3 +3057,58 @@ The Risk renderer now uses SVG path-based territory shapes instead of card recta
 - shared/src/games/risk/RiskMapDefinition.ts
 
 **PR:** #139 (squad/136-risk-svg-map → dev) — merged
+
+---
+
+## Backgammon Dice Are Always-Visible Clickable Board Elements
+
+**Author:** Gately (Game Dev)  
+**Date:** 2026-03-17  
+**Status:** Implemented  
+
+### Context
+The backgammon "Roll Dice" sidebar button had a double-click bug caused by `innerHTML` rebuilds during timer ticks swallowing clicks. Separately, the UX of dice appearing/disappearing was disorienting.
+
+### Decision
+Replace the sidebar "Roll Dice" button with always-visible clickable dice on the PixiJS canvas:
+- Dice are always rendered on the board (greyed out at 28% alpha when unrolled, full opacity when rolled)
+- Clicking greyed-out dice triggers the roll (via `pointertap` on `diceLayer`)
+- Pointer cursor indicates clickability
+
+### Rationale
+1. **Fixes the double-click bug** — PixiJS event handlers are stable across frames, unlike DOM buttons rebuilt via `innerHTML`
+2. **Better UX** — dice are a natural interactive element in backgammon; having them always visible gives spatial consistency
+3. **Pattern** — for interactive game elements, prefer PixiJS canvas events over HTML sidebar buttons
+
+### Impact
+- `BackgammonRenderer.ts` — `diceLayer` is now interactive with `eventMode = "static"`
+- Sidebar controls panel no longer has a Roll Dice button
+- No server-side changes required
+
+**Files Modified:**
+- client/src/renderers/BackgammonRenderer.ts
+
+---
+
+## Risk Territory SVG Paths Use Catmull-Rom → Cubic Bézier Generation
+
+**Date:** 2026-03-17  
+**Author:** Gately (Game Dev)  
+**Status:** Implemented  
+
+### Context
+Risk territory paths were simple straight-line polygons that looked like blobs. Needed geographically recognizable shapes.
+
+### Decision
+- Territory outlines are defined as ordered point lists, then smoothed into cubic Bézier SVG paths using Catmull-Rom spline interpolation (tension 0.33)
+- This approach makes future map edits much easier: adjust outline points, re-run the generator, get smooth paths
+- All coastlines use `C` (cubic Bézier) commands; no straight `L` segments in the final output
+- Island territories use multiple `M...Z` subpaths within a single path string
+
+### Impact
+- Only `classicRiskMap.ts` modified — no renderer or parser changes needed
+- Map version bumped to 2 for cache differentiation
+- Future alternative maps (e.g., fantasy, historical) should follow the same point-list → bezier generation pattern
+
+**Files Modified:**
+- client/src/renderers/risk/classicRiskMap.ts
