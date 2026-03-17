@@ -864,7 +864,16 @@ export class RiskRenderer implements GameRenderer {
       return;
     }
 
-    if (this.state.turnPhase === "setup-pick" || this.state.turnPhase === "setup-place" || this.state.turnPhase === "reinforce") {
+    if (this.state.turnPhase === "setup-pick") {
+      const territory = this.state.territories?.get(territoryId);
+      if (territory && territory.owner === "") {
+        this.room.send("pickTerritory", { territoryId });
+        this.clearSelection();
+      }
+      return;
+    }
+
+    if (this.state.turnPhase === "setup-place" || this.state.turnPhase === "reinforce") {
       if (canPlaceArmy(this.state, territoryId, sessionId)) {
         this.room.send("placeArmy", { territoryId });
         this.clearSelection();

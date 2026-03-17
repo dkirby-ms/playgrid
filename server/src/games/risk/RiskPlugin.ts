@@ -18,10 +18,6 @@
  *   automatically move into the captured territory. Manual selection of army count to move
  *   is not supported.
  * 
- * - **Auto-distributed territories**: On game start, all territories are automatically
- *   distributed among players. There is no draft/selection phase where players take turns
- *   claiming territories.
- * 
  * These simplifications were made to ship a playable version quickly while maintaining
  * core Risk gameplay mechanics (combat, reinforcements, continent bonuses, win conditions).
  */
@@ -121,15 +117,6 @@ function isTradeCardsPayload(payload: unknown): payload is TradeCardsPayload {
   return typeof candidate.cardCount === "number";
 }
 
-function shuffleArray<T>(array: T[]): T[] {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
-
 export const riskPlugin: GamePlugin<RiskState> = {
   id: "risk",
   name: "Risk",
@@ -201,41 +188,61 @@ export const riskPlugin: GamePlugin<RiskState> = {
 
       initializeSetup(state);
 
-      const activePlayers = Array.from(state.players.values())
-        .filter((p) => !p.isSpectator)
-        .sort((a, b) => a.playerIndex - b.playerIndex);
-
-      const initialArmies = calculateInitialArmies(activePlayers.length);
-
-      const shuffledTerritories = shuffleArray([...TERRITORIES]);
-      let playerIdx = 0;
-
-      for (const territory of shuffledTerritories) {
-        const player = activePlayers[playerIdx];
-        const territoryState = state.territories.get(territory.id);
-        if (territoryState && player) {
-          territoryState.owner = player.sessionId;
-          territoryState.armyCount = 1;
-        }
-        playerIdx = (playerIdx + 1) % activePlayers.length;
-      }
-
-      for (const player of activePlayers) {
-        updatePlayerTerritoryCount(state, player.sessionId);
-        const riskPlayer = state.riskPlayers.get(player.sessionId);
-        if (riskPlayer) {
-          riskPlayer.armiesToPlace = initialArmies - riskPlayer.territoriesOwned;
-        }
-      }
-
       state.gamePhase = "setup";
-      state.turnPhase = "setup-place";
+      state.turnPhase = "setup-pick";
       state.setupTerritoryIndex = 0;
       state.cardTradeInCount = 0;
       state.earnedCardThisTurn = false;
     },
   },
   actions: {
+    pickTerritory(state, client, payload): ActionResult {
+      if (!isPickTerritoryPayload(payload)) {
+        return { success: false, error: "Invalid payload." };
+      }
+
+      if (state.turnPhase !== "setup-pick") {
+        return { success: false, error: "Not in territory pick phase." };
+      }
+
+      const territory = state.territories.get(payload.territoryId);
+      if (!territory) {
+        return { success: false, error: "Territory not found." };
+      }
+
+      if (territory.owner !== "") {
+        return { success: false, error: "Territory already claimed." };
+      }
+
+      territory.owner = client.sessionId;
+      territory.armyCount = 1;
+      updatePlayerTerritoryCount(state, client.sessionId);
+
+      // Check if all territories are now claimed
+      let allClaimed = true;
+      state.territories.forEach((t) => {
+        if (t.owner === "") {
+          allClaimed = false;
+        }
+      });
+
+      if (allClaimed) {
+        const activePlayers = Array.from(state.players.values())
+          .filter((p) => !p.isSpectator);
+        const initialArmies = calculateInitialArmies(activePlayers.length);
+
+        for (const player of activePlayers) {
+          const riskPlayer = state.riskPlayers.get(player.sessionId);
+          if (riskPlayer) {
+            riskPlayer.armiesToPlace = initialArmies - riskPlayer.territoriesOwned;
+          }
+        }
+
+        state.turnPhase = "setup-place";
+      }
+
+      return { success: true, endsTurn: true };
+    },
     placeArmy(state, client, payload): ActionResult {
       if (!isPlaceArmyPayload(payload)) {
         return { success: false, error: "Invalid payload." };
@@ -445,6 +452,10 @@ export const riskPlugin: GamePlugin<RiskState> = {
     validateAction(state, client, actionType, payload) {
       if (state.currentTurn !== client.sessionId) {
         return false;
+      }
+
+      if (actionType === "pickTerritory") {
+        return state.gamePhase === "setup" && state.turnPhase === "setup-pick" && isPickTerritoryPayload(payload);
       }
 
       if (actionType === "placeArmy") {
