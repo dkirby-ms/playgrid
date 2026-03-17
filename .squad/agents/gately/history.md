@@ -892,3 +892,23 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - PR #132 merged (Dev sandbox MVP)
 - Issues #87 closed via #125
 - All 289 tests passing
+
+## Session 2026-03-17: E2E Test Failure Triage and Fix Marathon
+
+**Event:** Extended multi-hour session supporting E2E test failure fixes across 4-agent coordination.  
+**Role:** Indirect support (no direct E2E work assigned in this session)  
+
+**Context:** Hal coordinated investigation of 15 failing E2E tests. Pemulis fixed Risk reinforcement bug, Steeply fixed spectator/reconnection/backgammon issues, Coordinator fixed snapshot extraction and CPU detection.
+
+**Outcome:** E2E suite 15/40 → 40/40 passing, 292/292 unit tests passing, lint clean.
+
+**Cross-Agent Notes for Future E2E Work:**
+- **`playMoveForCurrentTurn()` pattern:** Reusable for multiplayer E2E where move selection depends on game state (not hardcoded player color)
+- **Fallback extraction chains:** When rendering moves elements between PixiJS/DOM, E2E snapshots need IIFE pattern (try PixiJS → try DOM → default)
+- **CPU opponent via session ID:** Don't add schema-level CPU indicators; use `controllerSessionId === "cpu-opponent"` instead
+- **Backgammon timing:** Stochastic game paths need 180s timeout for E2E tests (not default 30s)
+
+**Relevant to Renderer Work:**
+- Dev sandbox (PR #132 merged) will need renderer updates if state schemas change
+- **Spec updates to monitor:** If future rendering changes move elements between PixiJS/DOM, E2E snapshot extraction may need fallback adjustments
+

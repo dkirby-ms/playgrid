@@ -349,3 +349,62 @@ Finishing agent should convert .todo() stubs to executable tests using Pemulis/G
 - `getHUDStatus(state)` is the universal fallback for status text across all renderers that have moved away from PixiJS Text. It returns `{ label, text, detail, accentColor }`.
 - BackgammonRenderer does NOT implement `getHUDStatus()` — it's the only renderer that still relies entirely on PixiJS Text for status display.
 - The IIFE-with-fallback pattern (try PixiJS → try HUD → return null) is now the standard for E2E snapshot extraction when renderer properties may or may not exist.
+
+## Session 2026-03-17: E2E Test Failure Triage and Fix Marathon
+
+**Event:** Extended multi-hour session fixing 3 categories of E2E test failures.  
+**Role:** Tester — Spectator logic, reconnection patterns, backgammon timing  
+**Output:** 6 E2E tests fixed, suite 15/40 → 40/40, zero regressions  
+
+**Fixes Implemented:**
+
+### 1. Spectator Cleanup Bug
+- **Issue:** Spectators not removed from `state.players` on leave, causing stale state in subsequent tests
+- **Root:** `BaseGameRoom.onPlayerLeave()` didn't distinguish spectators for cleanup
+- **Fix:** Delete spectators from `state.players` before standard onLeave logic
+- **Impact:** Spectator test scenarios now clean up correctly
+- **Tests:** All 6 spectator-related specs passing
+
+### 2. Reconnection Test Logic Overhaul
+- **Issue:** Tests assumed host always plays Black; broke in multiplayer scenarios with randomized player order
+- **Root:** Hardcoded `selectBlackPiecesMove()` doesn't work when host isn't Black
+- **Solution:** Implemented `playMoveForCurrentTurn()` helper function:
+  - Queries game state for current turn (player ID)
+  - Maps player ID to playerIndex
+  - Selects valid move for that player's pieces (not Black)
+  - Eliminates order dependency
+- **Reusable:** Pattern applies to any multiplayer E2E where move selection depends on game state
+- **Impact:** Reconnection tests now work across all player configurations
+- **Tests:** All reconnection specs passing
+
+### 3. Backgammon Win Timeout
+- **Issue:** Win simulation exceeded 30s Playwright default timeout
+- **Root:** Backgammon game logic is stochastic (dice); win paths take variable time
+- **Fix:** Set explicit 180s timeout for backgammon win scenarios
+- **Impact:** Win path coverage now complete
+- **Tests:** Backgammon win spec passing
+
+**Architecture Learnings:**
+- `playMoveForCurrentTurn()` is a reusable pattern for multiplayer E2E tests that need state-aware move selection
+- E2E strategies for non-deterministic games: action pipeline verification (verify legal moves), not deterministic replay
+- Timeout tuning: 30s fine for synchronous games, but dice-based games need 180s for stochastic paths
+
+**Output:**
+- All spectator tests passing
+- All reconnection tests passing
+- All backgammon tests passing
+- E2E suite 40/40 passing
+- 292 unit tests passing
+- Lint clean
+- Zero regressions
+
+
+### Session: Fix E2E lobby notice flakiness (2025-07-17)
+
+**Problem:** All 7 E2E test files had `savePlayerName()` functions that waited for the "Player name saved." notice to appear but never waited for it to disappear. The notice overlay (`z-index: 100`, `position: fixed`) intermittently blocked "Create Game" button clicks, causing flaky timeouts.
+
+**Fix:** Added `await expect(page.locator(".lobby-notice.visible")).not.toBeVisible()` after the `toHaveText("Player name saved.")` assertion in all 7 E2E files: `risk.spec.ts`, `checkers.spec.ts`, `backgammon.spec.ts`, `cpu-opponent.spec.ts`, `reconnection.spec.ts`, `spectator.spec.ts`, `lobby.spec.ts`.
+
+**Learning:** Any overlay with high z-index and auto-hide timers is a flakiness vector. E2E tests must always wait for transient UI elements to fully dismiss before proceeding to interact with elements they could occlude.
+
+**Validation:** Build ✅, lint ✅ (0 errors), 294 unit tests ✅. E2E Risk attack test (line 689) has a pre-existing combat resolution failure unrelated to this fix.

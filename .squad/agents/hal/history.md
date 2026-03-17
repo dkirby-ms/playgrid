@@ -947,3 +947,39 @@ Steeply delivered CPU opponent E2E tests — the final E2E gap issue. Six tests 
 - This follows the Wave 4 pattern: new game plugin work is post-infrastructure-stable work
 - E2E test strategy proven in PR #58 (Checkers tests by Steeply); Dominos tests will reuse that grey-box pattern
 
+
+## Session 2026-03-17: E2E Test Failure Triage and Fix Marathon
+
+**Event:** Extended multi-hour coordinated session to triage 15 failing E2E tests and drive fixes to 40/40 passing.  
+**Role:** Lead Triager & Coordinator — Root cause analysis, assignment delegation, cross-agent sync  
+**Output:** E2E suite 15/40 → 40/40, 292 unit tests passing, lint clean, zero regressions  
+
+**Triaged Issues:**
+1. **E2E Snapshot Extraction (6 specs)** — Phase 4 sidebar redesign broke `playerColorText`/`statusText` selectors → Fallback chain solution → Coordinator
+2. **Risk Reinforcement Bug** — Turn advance before reinforcement calc → `onTurnStarted` lifecycle hook → Pemulis
+3. **CPU Opponent Detection** — Schema-level boolean sync unreliable → Session ID detection pattern → Coordinator
+4. **Spectator Cleanup** — Spectators not deleted from `state.players` on leave → Plugin-level fix → Steeply
+5. **Reconnection Test Logic** — Host=Black assumption broke in multiplayer → `playMoveForCurrentTurn` helper → Steeply
+6. **Risk Error Assertions** — Mismatched server responses → Coordinator alignment
+7. **Backgammon Timeout** — 30s Playwright timeout insufficient for win sim → 180s timeout → Steeply
+
+**Decisions Generated:** `.squad/decisions.md` (merged from inbox)
+- `onTurnStarted` hook as canonical per-turn initialization for all plugins
+- Game request triage gate policy (require scope, player count, complexity indicators)
+- Dominos (#124) triaged as Large (L), ready for Pemulis + Gately after Wave 4
+
+**Architecture Learnings Documented:**
+- Colyseus MapSchema silently drops new boolean fields → Don't add schema-level feature flags; use session ID constants
+- CPU detection pattern: `controllerSessionId === "cpu-opponent"` (not schema)
+- Reconnection test pattern: `playMoveForCurrentTurn()` helper queries state for current turn, not assuming host=Black
+- Fallback extraction chains for E2E snapshots when rendering moves elements between PixiJS/DOM
+
+**Output:** 
+- Session logs: `.squad/log/2026-03-17T12-31-26Z-e2e-fix-marathon.md`
+- Orchestration logs: 4 agent logs in `.squad/orchestration-log/`
+- All 40 E2E tests passing
+- All 292 unit tests passing
+- Lint clean
+- Zero regressions
+- Cross-agent coordination via orchestration logs and decisions.md
+

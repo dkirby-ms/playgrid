@@ -559,3 +559,48 @@ Issue #87 requests CPU-controlled opponents in Backgammon to enable single-playe
 - The `onTurnStarted` hook is optional on `GameLifecycle` — existing plugins (Checkers, Backgammon) are unaffected.
 - Added 4 regression tests: `onTurnStarted` calculates reinforcements, `endPhase` doesn't leak reinforcements to the wrong player, setup→playing transition correctness.
 - All 292 tests passing, build and lint clean.
+
+## Session 2026-03-17: E2E Test Failure Triage and Fix Marathon
+
+**Event:** Extended multi-hour session coordinating 4-agent E2E failure triage.  
+**Role:** Systems Developer — Risk reinforcement bug fix, game plugin architecture  
+**Output:** PR fixes merged, E2E suite 15/40 → 40/40, 292 unit tests passing, lint clean  
+
+**Work:**
+- **Risk reinforcement bug:** Root cause identified as calculation-before-turn-advance. Implemented `onTurnStarted` lifecycle hook to `IGamePlugin` interface.
+  - Added `onTurnStarted?(state: TState, newPlayerId: string): void` to `GameLifecycle` in `shared/src/gamePlugin.ts`
+  - Implemented hook in `BaseGameRoom.advanceTurn()` — called after turn advances
+  - `RiskPlugin` now implements hook: calculates reinforcements, resets `turnPhase`, clears `earnedCardThisTurn`
+  - Removed incorrect calc from `endPhase` (was leaking to wrong player)
+  - Added 4 regression tests to `server/src/__tests__/risk.test.ts`
+  - All optional — other plugins (Checkers, Backgammon) unaffected
+
+**Decision Generated:** `.squad/decisions.md` (merged from inbox)
+- `onTurnStarted` hook is canonical per-turn initialization pattern
+- Extensible for future games: card deals, timer resets, etc.
+- Replaces ad-hoc reinit logic scattered across action handlers
+
+**Architecture Learnings:**
+- Colyseus MapSchema silently drops new boolean schema fields → Don't add schema-level CPU indicators; use session ID instead
+- Game plugin lifecycle ownership is critical: `advanceTurn()` must handle per-turn state setup, not action handlers
+
+**Output:** 292 unit tests passing, E2E suite 40/40, lint clean. Risk reinforcement tests passing.
+
+
+### 2026-03-17: Backgammon doubles — 4-move fix
+
+- **Bug:** `getAvailableDice()` used a 2-boolean `usedDice` array to track doubles moves. After 2 moves both booleans were `true`, yielding `remainingCount = 0` — turn ended prematurely with 2 unused moves.
+- **Fix:** Added `doublesMovesUsed: number` to `BackgammonState` schema. For doubles, the move action increments this counter instead of toggling `usedDice` booleans. `getAvailableDice()` now takes an optional third parameter `doublesMovesUsed` (default 0) and computes `4 - doublesMovesUsed` for doubles.
+- **Scope:** Schema (`shared/src/games/backgammon/BackgammonState.ts`), logic (`backgammonLogic.ts`), plugin (`BackgammonPlugin.ts`), CPU opponent (`CpuOpponent.ts`), client renderer (`BackgammonRenderer.ts` — has its own local `getAvailableDice` copy), unit tests (`backgammon.test.ts`), E2E test (`backgammon.spec.ts`).
+- **Pattern:** `usedDice` ArraySchema (2 booleans) is still used for non-doubles to track which specific die value was consumed. `doublesMovesUsed` is the counter only for doubles. Both are reset to default on turn end, roll, pass, and game start.
+- **Key learning:** The client renderer has a LOCAL copy of `getAvailableDice` — not imported from server. Must be updated separately when the signature or logic changes.
+- **Output:** 294 unit tests passing, lint clean, build clean.
+
+
+### 2025-07-17: Backgammon E2E — bar entry handling in move loop
+
+- **Bug:** The win-condition E2E test (`e2e/backgammon.spec.ts` line 672) move loop only tried board-to-board moves. When a capture sent an opponent piece to the bar, the server's `isValidMove()` enforced bar entry first (`from !== "bar"` → false). The test never sent `{ from: "bar", ... }` moves, so the player got stuck passing every turn.
+- **Fix:** Added bar entry logic at the top of the move loop, before board move attempts. Checks `rolled.blackBar`/`rolled.redBar` for the current player. If bar count > 0, calculates entry point (Black: `die - 1`, Red: `24 - die`), checks destination isn't blocked (2+ opponent pieces), and sends `{ from: "bar", to: entryPoint, die }`. Falls through to board moves only when `barCount === 0`.
+- **Also fixed:** The refresh block after successful moves wasn't syncing `rolled.blackBar` and `rolled.redBar`, which would cause stale bar counts on subsequent loop iterations after captures.
+- **CPU opponent test:** Verified `e2e/cpu-opponent.spec.ts` doesn't need the fix — it plays a single human turn from the starting position where no pieces can be on the bar.
+- **Output:** Build clean, lint clean (0 errors), 294 unit tests passing.

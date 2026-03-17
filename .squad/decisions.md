@@ -2789,3 +2789,238 @@ Built the sandbox with these architectural choices:
 - `client/src/sandbox/mockStates.ts`
 - `client/src/sandbox/SandboxStatePanel.ts`
 - `client/src/Application.ts` (route detection only)
+
+---
+
+# Decision: `onTurnStarted` lifecycle hook
+
+**Author:** Pemulis  
+**Date:** 2026-03-16  
+**Status:** Implemented  
+
+## Context
+
+The Risk plugin had a reinforcement calculation bug: reinforcements were computed for the wrong player during turn transitions. The root cause was that `endPhase` calculated reinforcements before returning `endsTurn: true`, which then advanced the turn to a different player.
+
+## Decision
+
+Added `onTurnStarted?(state: TState, newPlayerId: string): void` to the `GameLifecycle` interface. `BaseGameRoom.advanceTurn()` calls it after the turn advances. This gives plugins a reliable hook for per-turn initialization that fires for the correct player.
+
+## Impact
+
+- **RiskPlugin** uses it to calculate reinforcements, reset `turnPhase` to "reinforce", and clear `earnedCardThisTurn`.
+- **Other plugins** (Checkers, Backgammon) are unaffected — the hook is optional.
+- **Future games** can use this for any per-turn setup (deal cards, reset timers, etc.) without coupling to action handlers.
+
+## Files Changed
+
+- `shared/src/gamePlugin.ts` — added `onTurnStarted` to `GameLifecycle`
+- `server/src/game/BaseGameRoom.ts` — call hook in `advanceTurn()`
+- `server/src/games/risk/RiskPlugin.ts` — implement hook, remove wrong calc from `endPhase`
+- `server/src/__tests__/risk.test.ts` — 4 regression tests
+
+---
+
+# Triage: New Game Requests #107 & #124 (2026-03-16)
+
+**Triaged by:** Hal (Lead)  
+**Date:** 2026-03-16T22:40:00Z
+
+## Issue #107 — Game Request: Scrabble
+
+**Status:** Requires Clarification  
+**Assigned to:** —  
+**Labels:** `enhancement`, `squad`  
+**Action Taken:** Added triage comment requesting clarification
+
+### Assessment
+
+The issue is severely under-scoped. Submission contains only the word "Scrabble" in all three template fields.
+
+**Why this blocks work:**
+- No variant specified (tournament, simplified, speed play?)
+- No clarity on player count (2-4? 2-only?)
+- No dictionary strategy (hardcoded list, external API, server-side validation?)
+- No rendering constraints specified (board layout, tile animations, etc.)
+- Word validation is a critical blocker: Dictionary lookups impact client/server architecture
+
+**Recommendation:** Request clarification on:
+1. Game rules/variant scope
+2. Player count bounds
+3. Dictionary/word validation approach
+4. MVP vs. stretch goals
+5. Any rendering/UX preferences
+
+**Next assignee:** Once clarified, route to Pemulis (game logic) + Gately (rendering).
+
+---
+
+## Issue #124 — New Game: Dominos
+
+**Status:** Ready for Work  
+**Assigned to:** Pemulis (systems), Gately (rendering)  
+**Labels:** `enhancement`, `squad`, `squad:pemulis`, `squad:gately`  
+**Complexity:** Large (L)  
+**Blocked on:** Core infrastructure stability (Checkers and Backgammon must be stable — both merged to dev)
+
+### Assessment
+
+Issue is well-defined and immediately actionable. Follows proven plugin architecture pattern (Checkers, Backgammon, Risk).
+
+**Why this is ready:**
+- Clear game rules (double-six domino set, 2–4 players, boneyard draw, scoring)
+- Explicit plugin architecture requirements (server: `IGamePlugin`, shared: Colyseus `Schema`, client: `GameRenderer`)
+- Multiplayer requirements aligned with existing patterns (reconnection, spectators, room state)
+- No external dependencies (no word validation, no external services)
+
+**Estimated Scope:**
+- **Server plugin:** ~300–400 lines (game state, player actions, turn logic, scoring)
+- **Shared schema:** ~100–150 lines (tiles, boneyard, player hands, board state)
+- **Client renderer:** ~400–600 lines (board layout, tile animations, hand display, interactive placement)
+- **E2E tests:** ~200–300 lines (pattern reused from Checkers tests)
+
+**Total: ~1000–1500 lines** → Same class as Checkers; Large (L) estimate appropriate.
+
+### Dependency Chain
+
+1. **Infrastructure must be stable:**
+   - Checkers and Backgammon plugins merged and tested ✅
+   - Reconnection system live (Pemulis, merged PR #61) ✅
+   - E2E test pattern established (Steeply, grey-box approach) ✅
+
+2. **Can start immediately after Wave 4 is complete** (no other blockers)
+
+### Execution Plan
+
+**Phase 1 (Pemulis):**
+- Draft Dominos server plugin (`server/src/games/dominos/index.ts`)
+- Define shared state schema (`shared/src/games/dominos/DominosSchema.ts`)
+- Implement game logic (tile draw, play validation, scoring)
+- Expose move handler for client interaction
+
+**Phase 2 (Gately):**
+- Create client renderer (`client/src/renderers/DominosRenderer.ts`)
+- Implement board layout (domino placement, boneyard visualization)
+- Tile animations and hand management UI
+- Integrate with GameRenderer interface
+
+**Phase 3 (Steeply):**
+- Add E2E tests (pattern: `e2e/dominos.test.ts`)
+- Grey-box approach: Assert on server game state, not pixel output
+- Cover: tile draw, play validation, round transitions, multiplayer moves, reconnection
+
+---
+
+## Triage Summary & Game Request Policy
+
+| Issue | Complexity | Status | Assigned | Labels |
+|-------|-----------|--------|----------|--------|
+| #107 (Scrabble) | TBD | Needs Clarification | — | `enhancement`, `squad` |
+| #124 (Dominos) | Large (L) | Ready for Work | Pemulis + Gately | `enhancement`, `squad`, `squad:pemulis`, `squad:gately` |
+
+**Next Steps:**
+1. **#107:** Wait for author to clarify scope and approach
+2. **#124:** Schedule for Pemulis + Gately after Wave 4 PM review/merge complete (likely 2026-03-17 or later)
+
+### Decision: Game Request Triage Gate
+
+**Policy:** All new game requests must include:
+- Game rules summary (or reference to published rules)
+- Player count bounds
+- Complexity indicators (turn timer, randomness, hidden information, etc.)
+- Any rendering/external service dependencies
+
+**Rationale:** Templates should guide clarity. Scrabble's vague submission cost triage time; next requests should self-screen through template completion.
+
+**Action:** Joelle (DevRel) may want to review issue templates (`docs/ISSUE_TEMPLATES/feature-request.yml`) and add game-request-specific guidance.
+
+---
+
+## Session: E2E Backgammon Test Fixes (2026-03-17)
+
+### Pemulis: Bar Entry Handling in E2E Move Loop
+
+**Status:** Implemented  
+**Date:** 2026-03-17  
+**Scope:** `e2e/backgammon.spec.ts` — win-condition test move loop  
+
+Bar entry is handled as a priority check at the top of each move iteration:
+
+1. Check `barCount` for the current player before attempting board moves
+2. If `barCount > 0`: calculate entry point, verify destination isn't blocked, send `{ from: "bar", to: entryPoint, die }`
+3. If blocked: skip that die (same as existing "no valid move" behavior)
+4. Board moves only attempted when `barCount === 0`
+
+Additionally, the state refresh after any successful move now syncs `blackBar` and `redBar` alongside `points`, `dice`, and `usedDice`.
+
+**Rationale:**
+- Mirrors the server's `isValidMove()` logic exactly (bar entry is mandatory before board moves)
+- Handles multiple pieces on bar (loop iterates per die, re-checks bar count each iteration)
+- Minimal change surface — bar entry is a new branch before the existing board-move branch, not a rewrite
+- CPU opponent test doesn't need this fix (plays from starting position, no captures possible on first turn)
+
+**Impact:**
+- E2E test only — no server/client/shared code changed
+- Unblocks the win-condition simulation test from getting stuck after captures
+
+**Files Modified:**
+- e2e/backgammon.spec.ts
+
+---
+
+### Pemulis: Backgammon Doubles Tracking via `doublesMovesUsed` Counter
+
+**Status:** Implemented  
+**Date:** 2026-03-17  
+
+Added a `doublesMovesUsed: number` field to `BackgammonState`. For doubles, the move action increments this counter (0→1→2→3→4). `getAvailableDice()` computes remaining moves as `4 - doublesMovesUsed`. The existing `usedDice` booleans remain for non-doubles to track which specific die was consumed. Both are reset on turn end, roll, pass, and game start.
+
+**Alternatives Considered:**
+- **Expand `usedDice` to 4 booleans:** Would break the non-doubles die-matching logic and require wider schema changes for a single game's edge case.
+- **Encode used count into the 2 booleans with a different formula:** Too clever; a simple counter is clearer.
+
+**Impact:**
+- Schema change: `BackgammonState.doublesMovesUsed` (new `"number"` field)
+- Signature change: `getAvailableDice(dice, usedDice, doublesMovesUsed?)` — third param defaults to 0, backward-compatible
+- Client renderer has its own local copy of `getAvailableDice` that was updated separately
+
+**Files Modified:**
+- shared/src/games/backgammon/BackgammonSchema.ts
+- server/src/games/backgammon/index.ts
+- client/src/renderers/BackgammonRenderer.ts
+
+---
+
+### Steeply: E2E Test Notice Dismissal Hardening
+
+**Status:** Completed  
+**Date:** 2026-03-17  
+
+Fixed intermittent E2E test failures where the lobby notice overlay was blocking interaction with the "Create Game" button. Added dismissal waits to all 7 E2E test files before button interactions.
+
+**Pattern:**
+```typescript
+await page.waitForSelector('.notice-dismissed:not(.visible)', { timeout: 5000 });
+```
+
+Or equivalent check depending on notice implementation (CSS class toggle, aria-hidden, etc.).
+
+**Rationale:**
+- Notice overlay appears on lobby entry but has async dismissal
+- Tests were racing against the overlay; explicit wait ensures dismissal before interaction
+- Hardened all 7 test files for consistent, reliable E2E execution
+
+**Impact:**
+- E2E tests now resilient to notice overlay timing
+- No code changes to server/client/shared
+- All tests validated (build, lint, E2E pass)
+
+**Files Modified:**
+- e2e/backgammon.spec.ts
+- e2e/checkers.spec.ts
+- e2e/risk.spec.ts
+- e2e/lobby.spec.ts
+- e2e/game-reconnect.spec.ts
+- e2e/game-disconnect.spec.ts
+- e2e/game-end.spec.ts
+
