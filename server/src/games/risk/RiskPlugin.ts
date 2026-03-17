@@ -268,6 +268,18 @@ export const riskPlugin: GamePlugin<RiskState> = {
       riskPlayer.armiesToPlace -= count;
 
       if (state.gamePhase === "setup" && riskPlayer.armiesToPlace === 0) {
+        // Check if ALL players have finished placing — transition to playing phase
+        const activePlayers = Array.from(state.players.values()).filter((p) => !p.isSpectator);
+        const allDone = activePlayers.every((p) => {
+          const rp = state.riskPlayers.get(p.sessionId);
+          return rp && rp.armiesToPlace === 0;
+        });
+
+        if (allDone) {
+          state.gamePhase = "playing";
+          state.turnPhase = "reinforce";
+        }
+
         return { success: true, endsTurn: true };
       }
 

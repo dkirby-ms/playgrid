@@ -1107,6 +1107,58 @@ describe("Risk Game — Edge Cases", () => {
   });
 
   describe("Turn progression", () => {
+    it("automatically transitions to playing when all players finish placing armies", () => {
+      const state = createDraftedGame(2);
+      expect(state.gamePhase).toBe("setup");
+      expect(state.turnPhase).toBe("setup-place");
+
+      const activePlayers = Array.from(state.players.values())
+        .filter((p) => !p.isSpectator)
+        .sort((a, b) => a.playerIndex - b.playerIndex);
+
+      // Each player places all their armies in turn order
+      for (const player of activePlayers) {
+        state.currentTurn = player.sessionId;
+        const riskPlayer = state.riskPlayers.get(player.sessionId);
+        if (riskPlayer && riskPlayer.armiesToPlace > 0) {
+          const ownedTerritories = getOwnedTerritories(state, player.sessionId);
+          const result = riskPlugin.actions.placeArmy(
+            state,
+            mockClient(player.sessionId),
+            { territoryId: ownedTerritories[0], count: riskPlayer.armiesToPlace },
+          );
+          expect(result.success).toBe(true);
+          expect(result.endsTurn).toBe(true);
+        }
+      }
+
+      // Should transition to playing without needing an explicit endPhase call
+      expect(state.gamePhase).toBe("playing");
+    });
+
+    it("does not transition to playing when only some players finish placing", () => {
+      const state = createDraftedGame(2);
+      expect(state.gamePhase).toBe("setup");
+
+      // Only player-1 places all armies
+      state.currentTurn = "player-1";
+      const p1Risk = state.riskPlayers.get("player-1");
+      expect(p1Risk).toBeDefined();
+      if (p1Risk) {
+        const ownedTerritories = getOwnedTerritories(state, "player-1");
+        const result = riskPlugin.actions.placeArmy(
+          state,
+          mockClient("player-1"),
+          { territoryId: ownedTerritories[0], count: p1Risk.armiesToPlace },
+        );
+        expect(result.success).toBe(true);
+        expect(result.endsTurn).toBe(true);
+      }
+
+      // Player 2 still has armies — should stay in setup
+      expect(state.gamePhase).toBe("setup");
+    });
+
     it("setup phase places all armies before playing", () => {
       const state = createDraftedGame(2);
       
