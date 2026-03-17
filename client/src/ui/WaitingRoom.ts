@@ -66,6 +66,7 @@ export class WaitingRoom {
   private readonly joinLinkInput: HTMLInputElement;
   private readonly copyLinkButton: HTMLButtonElement;
   private readonly copyFeedbackEl: HTMLParagraphElement;
+  private readonly playerCountEl: HTMLSpanElement;
   private readonly playerListEl: HTMLUListElement;
   private readonly errorEl: HTMLDivElement;
   private readonly readyButton: HTMLButtonElement;
@@ -129,6 +130,8 @@ export class WaitingRoom {
     this.inviteSection.append(shareHeading, shareHint, shareRow, this.copyFeedbackEl);
 
     const rosterHeading = createElement("h3", "section-title", "Players");
+    this.playerCountEl = createElement("span", "waiting-room-player-count") as HTMLSpanElement;
+    rosterHeading.append(this.playerCountEl);
     this.playerListEl = createElement("ul", "waiting-room-player-list") as HTMLUListElement;
 
     this.errorEl = createElement("div", "waiting-room-error") as HTMLDivElement;
@@ -182,6 +185,8 @@ export class WaitingRoom {
         this.clearError();
         this.renderPlayerList();
         this.updateControls();
+        this.updateInviteSectionVisibility();
+        this.updatePlayerCount();
       });
 
       room.onMessage(GAME_STARTED, (payload: GameStartedPayload) => {
@@ -221,6 +226,7 @@ export class WaitingRoom {
 
     this.updateJoinLink();
     this.updateInviteSectionVisibility();
+    this.updatePlayerCount();
     this.clearCopyFeedback();
     this.renderPlayerList();
     this.updateControls();
@@ -355,7 +361,15 @@ export class WaitingRoom {
   }
 
   private updateInviteSectionVisibility(): void {
-    this.inviteSection.style.display = this.gameInfo?.cpuOpponent ? "none" : "";
+    const isCpu = this.gameInfo?.cpuOpponent ?? false;
+    const isFull =
+      this.gameInfo != null && this.players.length >= this.gameInfo.maxPlayers;
+    this.inviteSection.style.display = isCpu || isFull ? "none" : "";
+  }
+
+  private updatePlayerCount(): void {
+    const max = this.gameInfo?.maxPlayers ?? 0;
+    this.playerCountEl.textContent = max > 0 ? ` (${this.players.length}/${max})` : "";
   }
 
   private async copyText(text: string): Promise<void> {
