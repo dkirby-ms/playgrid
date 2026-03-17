@@ -235,4 +235,11 @@ export interface StateFilter<TState extends Schema> {
     sessionId: string | null,
     isSpectator: boolean,
   ): Partial<TState>;
+
+  /**
+   * Return per-client private data to send as a direct message.
+   * Called after actions, game start, and reconnection.
+   * Return null/undefined to skip sending.
+   */
+  getPlayerMessage?(state: TState, sessionId: string): unknown;
 }

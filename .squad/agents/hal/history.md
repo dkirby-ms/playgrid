@@ -1067,3 +1067,57 @@ Steeply delivered CPU opponent E2E tests — the final E2E gap issue. Six tests 
 - Orchestration log: `.squad/orchestration-log/2026-03-17T14-55-20Z-hal.md`
 - Session log: `.squad/log/2026-03-17T14-55-20Z-hal-pr139-review.md`
 - Decisions updated: `.squad/decisions.md` (Risk SVG Map Architecture entry)
+
+
+## 2026-03-17: PR #141 Review — Dominos (#124)
+
+**Session:** Code review gate
+**Outcome:** ❌ REJECTED — Request Changes
+
+**Blocking Issue:**
+- `stateFilter.filterForClient` is a no-op — returns full state to all clients
+- `BaseGameRoom` never invokes `filterForClient` (dead interface infrastructure)
+- No Colyseus `@filter`/`@filterChildren` decorators anywhere in codebase
+- Result: All `DominosPlayerState.hand` tiles synced to every client — trivially cheatable via devtools
+- Despite `hasHiddenInformation: true` in plugin metadata, no enforcement exists
+
+**Non-Blocking Notes:**
+- Double-scoring in action + checkGameEnd (works single-round, fragile if extended)
+- No plugin-level action tests (pure logic well-tested at 779 lines)
+- Module-level `boneyards` Map minor leak risk on abnormal disposal
+
+**What's Good:**
+- Clean logic/plugin separation pattern
+- Boneyard correctly server-only (Map keyed by state instance)
+- Thorough pure-logic tests
+- Renderer follows established patterns, proper cleanup in destroy()
+
+**Learnings:**
+- The `StateFilter` interface in `shared/src/gamePlugin.ts` is dead code — defined but never consumed by BaseGameRoom
+- First game with truly hidden information (checkers/backgammon are perfect-info, risk hidden-info not implemented)
+- Colyseus schema filtering requires either `@filter`/`@filterChildren` decorators or manual serialization intervention — cannot rely on plugin-level filter functions without framework wiring
+- SKILL.md documents can encode incorrect assumptions — verify claimed patterns against actual framework behavior
+
+**Assignment:**
+- Pemulis: Implement actual state filtering (framework-level or Colyseus decorators)
+- Steeply: Add plugin action tests after filtering fix
+
+**Output:**
+- PR review comment posted on #141
+- Decision: `.squad/decisions/inbox/hal-dominos-review.md`
+
+## 2026-03-17: Reviewed PR #143 (UX Redesign)
+
+**Status:** Approved (PR author self-review via CLI)
+
+**Analysis:**
+- **Code Quality:** Type-safe, correct schema access, proper cleanup.
+- **Design:** Implementation matches Figma spec (Emerald/Slate palette).
+- **Architecture:** "How to Play" panel pattern in `GameSidebar` is reusable and improves onboarding.
+
+**Learnings:**
+- **Design-First Workflow:** The Figma → React → Live implementation pipeline yields high fidelity results quickly.
+- **Onboarding Pattern:** The "How to Play" sidebar panel should be standard for all games (Checkers, Backgammon, etc.) moving forward.
+
+**Output:**
+- PR review comment posted on #143

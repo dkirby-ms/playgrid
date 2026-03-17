@@ -12,6 +12,7 @@ import { gameRegistry } from "./game/GameRegistry.js";
 import { checkersPlugin } from "./games/checkers/index.js";
 import { backgammonPlugin } from "./games/backgammon/index.js";
 import { riskPlugin } from "./games/risk/index.js";
+import { dominosPlugin } from "./games/dominos/index.js";
 import { LobbyRoom } from "./rooms/LobbyRoom.js";
 
 type ExpressResponse = {
@@ -54,6 +55,7 @@ const server = new Server({
 gameRegistry.register(checkersPlugin);
 gameRegistry.register(backgammonPlugin);
 gameRegistry.register(riskPlugin);
+gameRegistry.register(dominosPlugin);
 
 server.define("game", BaseGameRoom);
 server.define("lobby", LobbyRoom);
