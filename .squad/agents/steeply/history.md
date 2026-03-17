@@ -438,3 +438,14 @@ Finishing agent should convert .todo() stubs to executable tests using Pemulis/G
 - `determineStartingPlayer` falls back from highest-double to highest-pip-total — two code paths that both need coverage.
 - Boneyard is server-side only (not in Schema), stored in a WeakMap-like pattern in DominosPlugin. Logic tests don't need boneyard state since pure functions accept it as a parameter.
 - The checkers test pattern uses: direct imports from logic module, helper functions for state setup, describe/it blocks organized by function, no mocking of external dependencies.
+
+---
+
+### 2026-03-17T19:44:31Z: Dominos test suite finalized
+
+- Wrote 50+ test cases covering pure logic functions in `dominosLogic.ts`: tile generation, matching, scoring, edge cases.
+- **Fixed coordinator bug:** getValidEnds() was pushing "a" twice when both board ends matched — now returns deduped [a, b].
+- **Test coverage:** 12 describe blocks. All 382/382 tests pass (no regressions in existing suite).
+- **Test strategy:** Pure function testing (logic layer, not plugin layer) — follows Checkers pattern. Stable, fast, no Colyseus mocking.
+- **Plugin-layer tests:** Deferred for future DominosPlugin.test.ts (actions, lifecycle integration).
+- **Handoff:** Pemulis's function signatures stable for import, Gately's renderer ready, PR #141 for review.

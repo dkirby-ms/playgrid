@@ -1009,3 +1009,11 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - Player actions sent via `room.send("action", { type, ...payload })` — types: `"play"`, `"draw"`, `"pass"`.
 - Board state has `openEndA`/`openEndB` (-1 when empty) for end-placement validation.
 - Pre-existing failing test in server dominos logic (getValidEnds duplicate handling) — not a renderer issue.
+
+- **End choice markers**: When a tile matches both open ends and they differ, shows "Place at End A" / "Place at End B" buttons on the board for player selection.
+- **Boneyard UI**: Displays in top-right as a tileable region (shows count of remaining tiles). Clickable for draw action.
+- **Action buttons**: Draw and Pass available via both boneyard click and sidebar buttons.
+- **Architecture**: Pure PixiJS graphics (no DOM canvas issues). Fully compatible with Colyseus delta sync. Lifecycle: init() → update() → destroy(). No breaking changes to other renderers.
+- **Validation:** `npm run build && npm run lint` — all green.
+
+**PR #141:** squad/124-dominos → dev. Ready for review with Pemulis (schema/plugin) and Steeply (tests).

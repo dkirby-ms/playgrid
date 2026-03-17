@@ -617,3 +617,13 @@ Issue #87 requests CPU-controlled opponents in Backgammon to enable single-playe
   - `stateFilter` returns full state as-is since Colyseus schema-level filtering handles transport; the real hidden-info enforcement is that the boneyard lives outside the schema entirely.
 - Registered plugin in `server/src/index.ts`, exported schema from `shared/src/index.ts`.
 - Build clean, lint clean (0 errors), 299 unit tests passing.
+
+---
+
+### 2026-03-17T19:44:31Z: Dominos game implementation finalized
+
+- Dominos shared schema, server plugin, and client integration complete.
+- **Handoff to Steeply:** Tested all pure logic functions in dominosLogic.ts (tile generation, matching, scoring). 50+ test cases, 382/382 passing.
+- **Handoff to Gately:** Renderer implementation (DominosRenderer.ts, ~580 lines) with select-then-route interaction pattern and board visualization.
+- **Coordinator fix:** getValidEnds() duplicate bug fixed (was pushing "a" twice).
+- **PR #141:** squad/124-dominos → dev. Ready for review. Build clean, lint clean, all tests green.
