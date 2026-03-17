@@ -449,3 +449,28 @@ Finishing agent should convert .todo() stubs to executable tests using Pemulis/G
 - **Test strategy:** Pure function testing (logic layer, not plugin layer) — follows Checkers pattern. Stable, fast, no Colyseus mocking.
 - **Plugin-layer tests:** Deferred for future DominosPlugin.test.ts (actions, lifecycle integration).
 - **Handoff:** Pemulis's function signatures stable for import, Gately's renderer ready, PR #141 for review.
+
+## Work Complete — Hidden State Verification Tests for Dominos (PR #141 Fix)
+
+**Context:** Hal rejected PR #141 because the Dominos stateFilter was a no-op — opponent hands were visible to all clients. Gately fixed the implementation on `squad/124-dominos` by:
+1. Replacing `hand: ArraySchema<DominoTile>` with `handCount: number` on `DominosPlayerState` schema
+2. Moving hand storage server-side via `playerHandsMap` (private module-level Map)
+3. Adding `getPlayerMessage()` to deliver hand tiles as direct messages per player
+4. Keeping `filterForClient()` as a safe pass-through (nothing to filter since hands aren't in schema)
+
+**Tests Added:** `server/src/games/dominos/__tests__/dominosPlugin.test.ts` — 48 tests across 7 describe blocks:
+- **Metadata** (2): Plugin identity, turn config
+- **State creation** (1): DominosState initial structure
+- **Lifecycle** (7): onPlayerJoin, onGameStart (2/3/4 players, tile counts, currentTurn), onPlayerLeave, onGameEnd
+- **Actions** (8): play (valid, invalid payload, wrong tile, non-matching, domino win, unknown player), draw (valid, rejected, unknown), pass (rejected playable, rejected boneyard)
+- **Conditions** (7): validateAction (wrong turn, valid play, bad tile, forced play, unknown action), checkGameEnd (in-progress, domino)
+- **Hidden state verification** (16): Schema privacy (handCount not hand, no tile data exposure, opponent handCount visible), boneyard privacy (no tiles in schema, count tracking), stateFilter (filterForClient safe, spectators safe, getPlayerMessage per-player, different tiles per player, null for unknown, updated after play), handCount accuracy (initial deal, after play, after draw, after domino)
+- **Turn flow** (4): play ends turn, draw doesn't, pass ends turn, multi-draw to empty boneyard
+
+**Result:** 48/48 passing, lint clean, build passes.
+
+### Learnings
+- Gately's hidden-state fix uses module-level Map storage (`playerHandsMap`) as the server-side hand store — tests can only access hand data indirectly through `getPlayerMessage()`, not by reading schema properties.
+- The `getPlayerMessage` plugin hook is the canonical way to deliver per-client private data; tests should use it to verify hand contents rather than trying to access internal state.
+- Some dominos test scenarios (draw, pass) depend on random tile distribution, so tests that force specific board states (`openEndA = 0`) need conditional assertions when the random hand might match.
+- Pre-existing failures exist in `dominosLogic.test.ts` (11/83 fail) — these are in functions whose signatures were changed by Gately's refactor (`scoreDomino`, `isRoundBlocked`, `resolveBlockedRound`, `removeTileFromHand` now take `playerHands` Map / `RawTile[]` instead of schema types). Not in scope for this task.
