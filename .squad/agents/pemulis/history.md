@@ -604,3 +604,16 @@ Issue #87 requests CPU-controlled opponents in Backgammon to enable single-playe
 - **Also fixed:** The refresh block after successful moves wasn't syncing `rolled.blackBar` and `rolled.redBar`, which would cause stale bar counts on subsequent loop iterations after captures.
 - **CPU opponent test:** Verified `e2e/cpu-opponent.spec.ts` doesn't need the fix — it plays a single human turn from the starting position where no pieces can be on the bar.
 - **Output:** Build clean, lint clean (0 errors), 294 unit tests passing.
+
+### Dominos game implementation (2026-03-17, issue #124)
+
+- Created shared schema at `shared/src/games/dominos/DominosState.ts`: `DominoTile`, `BoardTile`, `DominosPlayerState`, and `DominosState` extending `BaseGameState`. Uses `defineTypes()` pattern. Board modeled as a linear chain with two open ends (`openEndA`/`openEndB`).
+- Created server logic at `server/src/games/dominos/dominosLogic.ts`: pure functions for tile set generation, shuffling, dealing, matching, placement, scoring (domino win + blocked-round resolution), and starting-player determination (highest double).
+- Created plugin at `server/src/games/dominos/DominosPlugin.ts`: implements `GamePlugin<DominosState>` with three actions (`play`, `draw`, `pass`), full lifecycle hooks, conditions, and `stateFilter` stub for hidden hand information.
+- **Architecture decisions:**
+  - Boneyard stored server-side only in a WeakMap-like `Map<DominosState, RawTile[]>` — never exposed in the Colyseus schema. Clients see only `boneyardCount`.
+  - Board is a linear `ArraySchema<BoardTile>` chain, not a graph. Open ends tracked as two number fields. Sufficient for standard double-six rules; would need refactoring for Mexican Train or Chicken Foot variants.
+  - Draw action does NOT end the turn — player keeps drawing until they can play or boneyard empties, then must pass if still blocked.
+  - `stateFilter` returns full state as-is since Colyseus schema-level filtering handles transport; the real hidden-info enforcement is that the boneyard lives outside the schema entirely.
+- Registered plugin in `server/src/index.ts`, exported schema from `shared/src/index.ts`.
+- Build clean, lint clean (0 errors), 299 unit tests passing.
