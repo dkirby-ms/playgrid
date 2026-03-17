@@ -1253,3 +1253,21 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - Dev sandbox (PR #132 merged) will need renderer updates if state schemas change
 - **Spec updates to monitor:** If future rendering changes move elements between PixiJS/DOM, E2E snapshot extraction may need fallback adjustments
 
+
+### 2025-07-18: Backgammon dice UX — always-visible clickable dice
+
+- **Double-click bug root cause:** The sidebar "Roll Dice" button was rebuilt via `innerHTML` on every `updateSidebar()` call, including from `setTurnClock()` timer ticks. If the DOM element was destroyed between mousedown and mouseup events, the click was swallowed. Moving the roll interaction to a PixiJS `pointertap` event on the `diceLayer` Graphics object eliminates this class of bugs entirely.
+- **Dice always visible:** `redrawDice()` no longer returns early when dice are [0,0]. Instead it shows placeholder dice (value 1) at 28% alpha. After rolling, dice show at full opacity. During animation, 85% alpha. Used dice retain their existing `BACKGAMMON_USED_DIE_ALPHA` (35%).
+- **Interactive dice layer:** `diceLayer.eventMode` changed from `"none"` to `"static"`, with `pointertap` handler calling `handleRollDice()`. Cursor set to `"pointer"` when dice are clickable (local player's turn, unrolled, not animating).
+- **Sidebar cleanup:** Removed "Roll Dice" button from controls panel. Resign button remains. Updated dice label text and sidebar note to reference board dice.
+- **Pattern:** For interactive game elements, prefer PixiJS canvas events (`pointertap`) over HTML sidebar buttons to avoid DOM rebuild race conditions.
+
+### 2026-03-17: Risk SVG map — geographic bezier territory paths
+
+- **Problem:** All 42 Risk territory paths were crude polygons (~100 chars each, 8-12 straight-line segments). Rendered as "blue and red blobs" instead of recognizable geography.
+- **Solution:** Replaced every path with detailed cubic Bézier curves (C commands). Each territory now uses 13-52 bezier segments (avg 700+ chars). Coastlines are smooth curves; island territories (Iceland, GB, Japan, Indonesia, Madagascar) use multi-subpath SVG paths.
+- **Layout:** Continents positioned geographically in 1000×600 viewBox — NA left, SA below, Europe upper-center, Africa below Europe, Asia right, Australia bottom-right.
+- **Approach:** Used Python-based Catmull-Rom spline → cubic Bézier conversion to generate smooth paths from geographic outline points. Each territory defined as clockwise outline points, then auto-smoothed.
+- **Also updated:** labelX/labelY centroids, connectionOverrides waypoints for Alaska–Kamchatka and Brazil–North Africa wrapping connections, map version bumped to 2.
+- **Validation:** `npm run build && npm run lint && npm run test` — all green (0 errors, 294 tests pass).
+- **Committed to:** `dev` branch.
