@@ -434,6 +434,7 @@ export const riskPlugin: GamePlugin<RiskState> = {
   },
   conditions: {
     checkGameEnd(state) {
+      if (state.gamePhase === "setup") return null;
       const winnerId = checkWinCondition(state);
       if (!winnerId) return null;
 

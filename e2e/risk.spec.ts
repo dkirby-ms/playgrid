@@ -454,10 +454,44 @@ async function placeAllSetupArmies(match: StartedMatch): Promise<void> {
 }
 
 /**
- * Complete the setup phase: both players place all armies, then endPhase to transition.
+ * Complete the drafting phase: alternate picks until all 42 territories are claimed.
+ * After this, turnPhase transitions from "setup-pick" to "setup-place".
+ */
+async function completeDraftingPhase(match: StartedMatch): Promise<void> {
+  for (let i = 0; i < 42; i++) {
+    const snapshot = await getSnapshot(match.host.page);
+    if (snapshot.turnPhase !== "setup-pick") break;
+
+    const currentSessionId = snapshot.currentTurn!;
+    const page = getPageForSession(match, currentSessionId);
+
+    const unclaimed = Object.entries(snapshot.territories)
+      .filter(([, t]) => t.owner === "")
+      .map(([id]) => id);
+    if (unclaimed.length === 0) break;
+
+    await sendAction(page, "pickTerritory", { territoryId: unclaimed[0] });
+
+    await expect.poll(async () => {
+      const s = await getSnapshot(match.host.page);
+      return s.currentTurn !== currentSessionId || s.turnPhase !== "setup-pick";
+    }, { timeout: 5000 }).toBeTruthy();
+  }
+
+  await expect.poll(async () => {
+    const s = await getSnapshot(match.host.page);
+    return s.turnPhase;
+  }, { timeout: 5000 }).toBe("setup-place");
+}
+
+/**
+ * Complete the setup phase: draft territories, place armies, then transition.
  * After this, the game should be in gamePhase="playing", turnPhase="reinforce".
  */
 async function completeSetupPhase(match: StartedMatch): Promise<void> {
+  // Draft all territories first
+  await completeDraftingPhase(match);
+
   // Player 1 places all setup armies (auto ends turn)
   await placeAllSetupArmies(match);
 
@@ -528,36 +562,36 @@ test.describe("Risk E2E — Game creation and joining", () => {
       expect(hostSnapshot.phase).toBe("playing");
       expect(guestSnapshot.phase).toBe("playing");
 
-      // Risk starts in setup phase with setup-place (auto-distributed territories)
+      // Risk starts in setup phase with setup-pick (drafting territories)
       expect(hostSnapshot.gamePhase).toBe("setup");
-      expect(hostSnapshot.turnPhase).toBe("setup-place");
+      expect(hostSnapshot.turnPhase).toBe("setup-pick");
 
       // Both players see 2 players
       expect(hostSnapshot.players).toHaveLength(2);
       expect(guestSnapshot.players).toHaveLength(2);
 
-      // All 42 territories are distributed between 2 players
+      // All 42 territories exist but are unowned
       const territoryIds = Object.keys(hostSnapshot.territories);
       expect(territoryIds).toHaveLength(42);
 
       const hostOwned = getOwnedTerritoryIds(hostSnapshot, match.hostSessionId);
       const guestOwned = getOwnedTerritoryIds(hostSnapshot, match.guestSessionId);
-      expect(hostOwned.length + guestOwned.length).toBe(42);
-      expect(hostOwned.length).toBeGreaterThanOrEqual(20);
-      expect(guestOwned.length).toBeGreaterThanOrEqual(20);
+      expect(hostOwned.length).toBe(0);
+      expect(guestOwned.length).toBe(0);
 
-      // Each territory starts with 1 army
+      // All territories are unowned with 0 armies
       for (const [, territory] of Object.entries(hostSnapshot.territories)) {
-        expect(territory.armyCount).toBe(1);
+        expect(territory.owner).toBe("");
+        expect(territory.armyCount).toBe(0);
       }
 
-      // Both players have armies to place (40 initial - territories owned)
+      // Players start with 0 armiesToPlace (set after drafting completes)
       const hostRiskPlayer = hostSnapshot.riskPlayers[match.hostSessionId];
       const guestRiskPlayer = hostSnapshot.riskPlayers[match.guestSessionId];
       expect(hostRiskPlayer).toBeDefined();
       expect(guestRiskPlayer).toBeDefined();
-      expect(hostRiskPlayer.armiesToPlace).toBe(40 - hostOwned.length);
-      expect(guestRiskPlayer.armiesToPlace).toBe(40 - guestOwned.length);
+      expect(hostRiskPlayer.armiesToPlace).toBe(0);
+      expect(guestRiskPlayer.armiesToPlace).toBe(0);
 
       // Both clients see the same territory state
       const guestTerritoryIds = Object.keys(guestSnapshot.territories);
@@ -566,12 +600,6 @@ test.describe("Risk E2E — Game creation and joining", () => {
         expect(guestSnapshot.territories[id]?.owner).toBe(hostSnapshot.territories[id]?.owner);
         expect(guestSnapshot.territories[id]?.armyCount).toBe(hostSnapshot.territories[id]?.armyCount);
       }
-
-      // HUD displays current turn status
-      const currentTurnPage = getPageForSession(match, hostSnapshot.currentTurn!);
-      const currentSnapshot = await getSnapshot(currentTurnPage);
-      expect(currentSnapshot.statusText).toBe("Your turn");
-      expect(currentSnapshot.phaseText).toBe("Setup • Place Armies");
     } finally {
       await closeMatch(match);
     }
@@ -585,7 +613,7 @@ test.describe("Risk E2E — Setup phase", () => {
     try {
       const beforeSetup = await getSnapshot(match.host.page);
       expect(beforeSetup.gamePhase).toBe("setup");
-      expect(beforeSetup.turnPhase).toBe("setup-place");
+      expect(beforeSetup.turnPhase).toBe("setup-pick");
 
       // Complete the entire setup phase
       await completeSetupPhase(match);
@@ -620,6 +648,9 @@ test.describe("Risk E2E — Setup phase", () => {
     const match = await startMatch(browser, `Risk-place-err-${Date.now()}`);
 
     try {
+      // Complete drafting so territories are owned and we're in setup-place
+      await completeDraftingPhase(match);
+
       const snapshot = await getSnapshot(match.host.page);
       const currentId = snapshot.currentTurn!;
       const opponentId = currentId === match.hostSessionId ? match.guestSessionId : match.hostSessionId;

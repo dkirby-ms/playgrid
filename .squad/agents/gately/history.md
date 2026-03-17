@@ -965,3 +965,11 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - **Tests updated**: Replaced 3 auto-deal tests with 7 drafting tests (pick, claim conflict, phase guard, transition, army count, territory count). Updated 4 integration tests to use new `createDraftedGame()` helper. All 299 tests pass.
 - **Removed dead code**: `shuffleArray` function removed from plugin (no longer needed without auto-deal).
 - **Validation:** `npm run build && npm run lint && npm run test` — all green (0 errors, 299 tests pass).
+
+### 2026-03-17: Fix Risk Premature Game End During Setup
+
+- **Bug**: `checkWinCondition()` fired during `setup-pick` after the first territory pick because only 1 unique owner existed across all territories — game declared an instant winner.
+- **Server fix**: Added `if (state.gamePhase === "setup") return null;` guard at top of `checkGameEnd` in `RiskPlugin.ts`. Win condition checks now skip entirely during setup phase.
+- **Unit test fix**: Two win-condition unit tests (`game ends when one player controls all territories`, `eliminated player has zero territories`) now set `state.gamePhase = "playing"` before asserting, since `createStartedGame()` starts in setup phase.
+- **E2E test updates**: Added `completeDraftingPhase()` helper that loops through all 42 territory picks. Updated `completeSetupPhase()` to call drafting first. Updated "creates a Risk game" test to assert `setup-pick` initial state (unowned territories, 0 armiesToPlace). Updated "rejects placing armies on opponent territory" to complete drafting before testing. Updated "players place initial armies" to expect `setup-pick`.
+- **Validation:** `npm run build && npm run lint && npm run test` — all green (0 errors, 299 tests pass).
