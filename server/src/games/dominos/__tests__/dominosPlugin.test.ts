@@ -11,7 +11,7 @@ const {
   DominosPlayerState,
   DominosState,
 } = shared;
-const { dominosPlugin } = await import("../DominosPlugin");
+const { dominosPlugin, setPlayerHand } = await import("../DominosPlugin");
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -944,7 +944,7 @@ describe("dominosPlugin", () => {
       }
     });
 
-    it("multi-draw: player can draw repeatedly until boneyard empty", () => {
+    it("multi-draw: player can draw repeatedly until boneyard empty or playable tile drawn", () => {
       const { state } = startGame(2);
       const currentPlayer = state.currentTurn;
 
@@ -954,8 +954,14 @@ describe("dominosPlugin", () => {
         tileId: firstTile.id,
         end: "a" as const,
       });
+      // Set open ends that won't match the forced hand
       state.openEndA = 0;
       state.openEndB = 0;
+      // Force hand to contain only a tile that can't match 0
+      setPlayerHand(state, currentPlayer, [
+        { id: 999, highPips: 6, lowPips: 5 },
+      ]);
+      state.playerStates.get(currentPlayer)!.handCount = 1;
 
       let draws = 0;
       while (state.boneyardCount > 0) {
@@ -968,10 +974,8 @@ describe("dominosPlugin", () => {
         draws += 1;
       }
 
-      // At least some draws should have succeeded
-      if (draws > 0) {
-        expect(state.boneyardCount).toBe(0);
-      }
+      // Draws should succeed; loop ends when boneyard empty or a playable tile is drawn
+      expect(draws).toBeGreaterThan(0);
     });
   });
 });
