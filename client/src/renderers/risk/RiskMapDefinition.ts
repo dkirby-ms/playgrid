@@ -42,6 +42,10 @@ export interface RiskMapDefinition {
   /** SVG viewBox dimensions (territories are authored in this space) */
   viewBoxWidth: number;
   viewBoxHeight: number;
+  /** Accumulated translate offset from SVG group transforms on territory paths.
+   *  Raw path `d` coordinates must be shifted by this amount to align with the viewBox. */
+  contentOffsetX: number;
+  contentOffsetY: number;
   /** All territories */
   territories: TerritoryDef[];
   /** Continent label positions */

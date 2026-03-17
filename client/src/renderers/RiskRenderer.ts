@@ -28,7 +28,6 @@ import {
   TEXT_MUTED,
   TEXT_PRIMARY,
   TEXT_SECONDARY,
-  type PlayerColorName,
   type PlayerColorSet,
   createPageBackgroundGradient,
   createPhaseBannerGradient,
@@ -44,22 +43,13 @@ import { drawSvgPath } from "./risk/svgPathParser";
 
 const DEFAULT_WIDTH = 800;
 const DEFAULT_HEIGHT = 600;
-const VIEW_PADDING = 24;
-const TOP_HUD_SPACE = 116;
-const BOTTOM_HUD_SPACE = 96;
+const VIEW_PADDING = 16;
+const TOP_HUD_SPACE = 96;
+const BOTTOM_HUD_SPACE = 72;
 const HUD_BUTTON_WIDTH = 136;
 const HUD_BUTTON_HEIGHT = 40;
 const HUD_BUTTON_RADIUS = 12;
 const PHASE_BANNER_HEIGHT = 72;
-
-const CONTINENT_ACCENTS: Record<string, PlayerColorName> = {
-  "north-america": "green",
-  "south-america": "yellow",
-  europe: "purple",
-  africa: "orange",
-  asia: "red",
-  australia: "blue",
-};
 
 function toCssHexColor(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
@@ -81,7 +71,6 @@ export class RiskRenderer implements GameRenderer {
   private readonly boardSurface = new Graphics();
   private readonly oceanOverlay = new Graphics();
   private readonly connectionLayer = new Graphics();
-  private readonly continentLabelLayer = new Container();
   private readonly territoryLayer = new Container();
   private readonly labelLayer = new Container();
   private readonly hudLayer = new Container();
@@ -173,6 +162,9 @@ export class RiskRenderer implements GameRenderer {
   private mapScale = 1;
   private mapOffsetX = 0;
   private mapOffsetY = 0;
+  /** Offset for raw SVG path drawing (accounts for group translate in the SVG) */
+  private pathOffsetX = 0;
+  private pathOffsetY = 0;
   private readonly territoryGraphics = new Map<string, Graphics>();
   private readonly territoryDefMap = new Map<string, TerritoryDef>();
   private isEndPhaseButtonHovered = false;
@@ -221,7 +213,6 @@ export class RiskRenderer implements GameRenderer {
       this.boardSurface,
       this.oceanOverlay,
       this.connectionLayer,
-      this.continentLabelLayer,
     );
 
     this.hudLayer.addChild(
@@ -339,13 +330,17 @@ export class RiskRenderer implements GameRenderer {
     const availableHeight = this.height - TOP_HUD_SPACE - BOTTOM_HUD_SPACE;
     const scaleX = availableWidth / this.mapDef.viewBoxWidth;
     const scaleY = availableHeight / this.mapDef.viewBoxHeight;
-    this.mapScale = Math.min(scaleX, scaleY, 1);
+    this.mapScale = Math.min(scaleX, scaleY);
 
     const scaledMapWidth = this.mapDef.viewBoxWidth * this.mapScale;
     const scaledMapHeight = this.mapDef.viewBoxHeight * this.mapScale;
 
     this.mapOffsetX = (this.width - scaledMapWidth) / 2;
     this.mapOffsetY = TOP_HUD_SPACE + ((availableHeight - scaledMapHeight) / 2);
+
+    // Raw SVG path coordinates need the group translate applied
+    this.pathOffsetX = this.mapOffsetX + (this.mapDef.contentOffsetX * this.mapScale);
+    this.pathOffsetY = this.mapOffsetY + (this.mapDef.contentOffsetY * this.mapScale);
 
     const phaseBannerWidth = Math.min(Math.max(340, scaledMapWidth * 0.62), this.width - (VIEW_PADDING * 2));
     const phaseBannerX = (this.width - phaseBannerWidth) / 2;
@@ -372,7 +367,6 @@ export class RiskRenderer implements GameRenderer {
     );
 
     this.drawBoardChrome(scaledMapWidth, scaledMapHeight);
-    this.drawContinentLabels();
   }
 
   private drawBoardChrome(scaledMapWidth: number, scaledMapHeight: number): void {
@@ -408,47 +402,6 @@ export class RiskRenderer implements GameRenderer {
       .fill(createRiskOceanGradient());
   }
 
-  private drawContinentLabels(): void {
-    this.continentLabelLayer.removeChildren().forEach((child) => child.destroy());
-
-    for (const cont of this.mapDef.continents) {
-      const accent = PLAYER_COLORS[CONTINENT_ACCENTS[cont.id]];
-      if (!accent) continue;
-
-      const pill = new Graphics();
-      const pillWidth = Math.max(86, cont.name.length * 7.4) * this.mapScale;
-      const pillHeight = Math.max(22, 24 * this.mapScale);
-      const x = this.mapOffsetX + (cont.labelX * this.mapScale);
-      const y = this.mapOffsetY + (cont.labelY * this.mapScale);
-
-      pill
-        .roundRect(-pillWidth / 2, -pillHeight / 2, pillWidth, pillHeight, pillHeight / 2)
-        .fill({ color: BG_CARD_SURFACE, alpha: BG_CARD_SURFACE_ALPHA + 0.16 })
-        .stroke({ color: accent.border, width: Math.max(1, this.mapScale * 1.1), alpha: 0.62 });
-      pill.position.set(x, y);
-
-      const text = new Text({
-        text: cont.name,
-        style: {
-          fontFamily: "sans-serif",
-          fontSize: Math.max(10, 12 * this.mapScale),
-          fontWeight: "700",
-          fill: TEXT_PRIMARY,
-          align: "center",
-          dropShadow: {
-            color: BG_PRIMARY,
-            alpha: 0.65,
-            blur: 3,
-            distance: 1,
-          },
-        },
-      });
-      text.anchor.set(0.5);
-      text.position.set(x, y);
-
-      this.continentLabelLayer.addChild(pill, text);
-    }
-  }
 
   private redrawMap(): void {
     this.drawConnections();
@@ -474,35 +427,35 @@ export class RiskRenderer implements GameRenderer {
       graphic.zIndex = isSelected ? 30 : isHovered ? 20 : isValidTarget ? 15 : 10;
 
       // Territory fill — draw SVG path shape
-      drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+      drawSvgPath(graphic, def.path, this.pathOffsetX, this.pathOffsetY, this.mapScale);
       graphic.fill({ color: territoryFill, alpha: ownerColors ? 0.88 : 0.72 });
 
       // Border stroke
-      drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+      drawSvgPath(graphic, def.path, this.pathOffsetX, this.pathOffsetY, this.mapScale);
       graphic.stroke({ color: territoryBorder, width: borderWidth, alpha: 0.9 });
 
       if (!ownerColors) {
-        drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+        drawSvgPath(graphic, def.path, this.pathOffsetX, this.pathOffsetY, this.mapScale);
         graphic.fill({ color: BG_CARD_SURFACE, alpha: 0.2 });
       }
 
       if (isHovered) {
-        drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+        drawSvgPath(graphic, def.path, this.pathOffsetX, this.pathOffsetY, this.mapScale);
         graphic.fill({ color: TEXT_PRIMARY, alpha: 0.12 });
       }
 
       if (isValidTarget) {
-        drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+        drawSvgPath(graphic, def.path, this.pathOffsetX, this.pathOffsetY, this.mapScale);
         graphic.fill({ color: isAttackTarget ? RED_600 : ACCENT_VIOLET, alpha: isAttackTarget ? 0.28 : 0.22 });
       }
 
       if (isSelected) {
-        drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+        drawSvgPath(graphic, def.path, this.pathOffsetX, this.pathOffsetY, this.mapScale);
         graphic.stroke({ color: ACCENT_VIOLET, width: Math.max(2.5, this.mapScale * 3), alpha: 0.95 });
       }
 
       if (isAttackSource) {
-        drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+        drawSvgPath(graphic, def.path, this.pathOffsetX, this.pathOffsetY, this.mapScale);
         graphic.stroke({ color: territoryText, width: Math.max(3, this.mapScale * 3.5), alpha: 0.5 });
       }
 
