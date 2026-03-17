@@ -80,6 +80,7 @@ const KNOWN_ADJACENCIES = [
 
 /**
  * Create a started game with N players.
+ * After onGameStart, state is in setup-pick phase with all territories unclaimed.
  */
 function createStartedGame(playerCount: number): RiskStateInstance {
   const state = riskPlugin.createState();
@@ -87,6 +88,28 @@ function createStartedGame(playerCount: number): RiskStateInstance {
     riskPlugin.lifecycle.onPlayerJoin?.(state, mockClient(`player-${i + 1}`), i);
   }
   riskPlugin.lifecycle.onGameStart?.(state);
+  return state;
+}
+
+/**
+ * Create a game that has completed the draft phase (all territories claimed round-robin).
+ * State is in setup-place phase with armies remaining to place.
+ */
+function createDraftedGame(playerCount: number): RiskStateInstance {
+  const state = createStartedGame(playerCount);
+
+  const activePlayers = Array.from(state.players.values())
+    .filter((p) => !p.isSpectator)
+    .sort((a, b) => a.playerIndex - b.playerIndex);
+
+  let playerIdx = 0;
+  for (const territory of TERRITORIES) {
+    const player = activePlayers[playerIdx];
+    state.currentTurn = player.sessionId;
+    riskPlugin.actions.pickTerritory(state, mockClient(player.sessionId), { territoryId: territory.id });
+    playerIdx = (playerIdx + 1) % activePlayers.length;
+  }
+
   return state;
 }
 
@@ -171,39 +194,115 @@ describe("Risk Game — Territory & Map", () => {
 // ============================================================================
 
 describe("Risk Game — Setup Phase", () => {
-  describe("Territory selection", () => {
-    it("auto-distributes territories on game start", () => {
+  describe("Territory drafting (setup-pick)", () => {
+    it("game starts in setup-pick phase with all territories unclaimed", () => {
       const state = createStartedGame(3);
-      
-      // All 42 territories should be assigned to players
+
+      expect(state.gamePhase).toBe("setup");
+      expect(state.turnPhase).toBe("setup-pick");
+
+      let unclaimedCount = 0;
+      state.territories.forEach((territory) => {
+        if (territory.owner === "") {
+          unclaimedCount++;
+        }
+      });
+
+      expect(unclaimedCount).toBe(42);
+    });
+
+    it("player can pick an unclaimed territory", () => {
+      const state = createStartedGame(2);
+      state.currentTurn = "player-1";
+
+      const result = riskPlugin.actions.pickTerritory(
+        state,
+        mockClient("player-1"),
+        { territoryId: "alaska" },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.endsTurn).toBe(true);
+
+      const territory = state.territories.get("alaska");
+      expect(territory?.owner).toBe("player-1");
+      expect(territory?.armyCount).toBe(1);
+    });
+
+    it("cannot pick an already-claimed territory", () => {
+      const state = createStartedGame(2);
+      state.currentTurn = "player-1";
+
+      riskPlugin.actions.pickTerritory(state, mockClient("player-1"), { territoryId: "alaska" });
+      state.currentTurn = "player-2";
+
+      const result = riskPlugin.actions.pickTerritory(
+        state,
+        mockClient("player-2"),
+        { territoryId: "alaska" },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("already claimed");
+    });
+
+    it("cannot pick territory outside of setup-pick phase", () => {
+      const state = createStartedGame(2);
+      state.currentTurn = "player-1";
+      state.turnPhase = "setup-place";
+
+      const result = riskPlugin.actions.pickTerritory(
+        state,
+        mockClient("player-1"),
+        { territoryId: "alaska" },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Not in territory pick phase");
+    });
+
+    it("transitions to setup-place when all 42 territories are claimed", () => {
+      const state = createDraftedGame(3);
+
+      expect(state.turnPhase).toBe("setup-place");
+
       let assignedCount = 0;
       state.territories.forEach((territory) => {
         if (territory.owner !== "") {
           assignedCount++;
         }
       });
-      
       expect(assignedCount).toBe(42);
     });
 
-    it("each territory starts with at least 1 army", () => {
-      const state = createStartedGame(2);
-      
+    it("each territory has exactly 1 army after drafting", () => {
+      const state = createDraftedGame(2);
+
       state.territories.forEach((territory) => {
-        expect(territory.armyCount).toBeGreaterThanOrEqual(1);
+        expect(territory.armyCount).toBe(1);
       });
     });
 
-    it("game starts in setup phase with armies to place", () => {
-      const state = createStartedGame(2);
-      
+    it("players have remaining armies to place after draft", () => {
+      const state = createDraftedGame(2);
+
       expect(state.gamePhase).toBe("setup");
       expect(state.turnPhase).toBe("setup-place");
-      
-      // Each player should have armies to place
+
       state.riskPlayers.forEach((riskPlayer) => {
         expect(riskPlayer.armiesToPlace).toBeGreaterThan(0);
       });
+    });
+
+    it("updates player territory counts during draft", () => {
+      const state = createStartedGame(2);
+      state.currentTurn = "player-1";
+
+      riskPlugin.actions.pickTerritory(state, mockClient("player-1"), { territoryId: "alaska" });
+      riskPlugin.actions.pickTerritory(state, mockClient("player-1"), { territoryId: "brazil" });
+
+      const riskPlayer = state.riskPlayers.get("player-1");
+      expect(riskPlayer?.territoriesOwned).toBe(2);
     });
   });
 
@@ -931,12 +1030,8 @@ describe("Risk Game — Edge Cases", () => {
       const activePlayers = Array.from(state.players.values()).filter(p => !p.isSpectator);
       expect(activePlayers).toHaveLength(2);
       
-      // Each player should have initial armies to place
-      activePlayers.forEach(player => {
-        const riskPlayer = state.riskPlayers.get(player.sessionId);
-        expect(riskPlayer).toBeDefined();
-        expect(riskPlayer?.armiesToPlace).toBeGreaterThan(0);
-      });
+      // Game starts in setup-pick phase; no armies to place yet
+      expect(state.turnPhase).toBe("setup-pick");
     });
 
     it("6-player game initializes correctly", () => {
@@ -1011,7 +1106,7 @@ describe("Risk Game — Edge Cases", () => {
 
   describe("Turn progression", () => {
     it("setup phase places all armies before playing", () => {
-      const state = createStartedGame(2);
+      const state = createDraftedGame(2);
       
       expect(state.gamePhase).toBe("setup");
       expect(state.turnPhase).toBe("setup-place");
@@ -1167,15 +1262,16 @@ describe("Risk Game — Integration", () => {
     });
 
     it("transitions through game phases correctly", () => {
-      const state = createStartedGame(2);
+      const state = createDraftedGame(2);
       
-      // Starts in setup phase
+      // Starts in setup-place phase after drafting
       expect(state.gamePhase).toBe("setup");
       expect(state.turnPhase).toBe("setup-place");
       
       // Complete setup by placing all armies
       const activePlayers = Array.from(state.players.values()).filter(p => !p.isSpectator);
       for (const player of activePlayers) {
+        state.currentTurn = player.sessionId;
         const riskPlayer = state.riskPlayers.get(player.sessionId);
         if (riskPlayer && riskPlayer.armiesToPlace > 0) {
           const ownedTerritories = getOwnedTerritories(state, player.sessionId);
@@ -1193,6 +1289,7 @@ describe("Risk Game — Integration", () => {
       // The game will transition to playing phase via endPhase
       if (state.gamePhase === "setup") {
         for (const player of activePlayers) {
+          state.currentTurn = player.sessionId;
           const allReady = activePlayers.every((p) => {
             const rp = state.riskPlayers.get(p.sessionId);
             return rp && rp.armiesToPlace === 0;
@@ -1210,10 +1307,11 @@ describe("Risk Game — Integration", () => {
     });
 
     it("simulates a basic game flow", () => {
-      const state = createStartedGame(2);
+      const state = createDraftedGame(2);
       
-      // Verify initial state
+      // Verify initial state after draft
       expect(state.gamePhase).toBe("setup");
+      expect(state.turnPhase).toBe("setup-place");
       
       // Verify all territories are assigned
       let assignedCount = 0;

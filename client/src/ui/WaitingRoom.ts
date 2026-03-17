@@ -62,6 +62,7 @@ export class WaitingRoom {
   private readonly overlay: HTMLElement;
   private readonly titleEl: HTMLHeadingElement;
   private readonly subtitleEl: HTMLParagraphElement;
+  private readonly inviteSection: HTMLDivElement;
   private readonly joinLinkInput: HTMLInputElement;
   private readonly copyLinkButton: HTMLButtonElement;
   private readonly copyFeedbackEl: HTMLParagraphElement;
@@ -96,6 +97,7 @@ export class WaitingRoom {
     this.subtitleEl = createElement("p", "overlay-subtitle", "Waiting for players to join.") as HTMLParagraphElement;
     header.append(this.titleEl, this.subtitleEl);
 
+    this.inviteSection = createElement("div", "waiting-room-invite-section") as HTMLDivElement;
     const shareHeading = createElement("h3", "section-title", "Invite Players");
     const shareHint = createElement(
       "p",
@@ -124,6 +126,7 @@ export class WaitingRoom {
 
     shareRow.append(this.joinLinkInput, this.copyLinkButton);
     this.copyFeedbackEl = createElement("p", "waiting-room-share-feedback") as HTMLParagraphElement;
+    this.inviteSection.append(shareHeading, shareHint, shareRow, this.copyFeedbackEl);
 
     const rosterHeading = createElement("h3", "section-title", "Players");
     this.playerListEl = createElement("ul", "waiting-room-player-list") as HTMLUListElement;
@@ -147,10 +150,7 @@ export class WaitingRoom {
     controls.append(this.readyButton, this.startButton, this.leaveButton);
     panel.append(
       header,
-      shareHeading,
-      shareHint,
-      shareRow,
-      this.copyFeedbackEl,
+      this.inviteSection,
       rosterHeading,
       this.playerListEl,
       this.errorEl,
@@ -220,6 +220,7 @@ export class WaitingRoom {
       : "Toggle Ready when you are set to play.";
 
     this.updateJoinLink();
+    this.updateInviteSectionVisibility();
     this.clearCopyFeedback();
     this.renderPlayerList();
     this.updateControls();
@@ -351,6 +352,10 @@ export class WaitingRoom {
     const joinLink = this.gameId ? buildJoinGameHref(window.location.href, this.gameId) : "";
     this.joinLinkInput.value = joinLink;
     this.copyLinkButton.disabled = !joinLink;
+  }
+
+  private updateInviteSectionVisibility(): void {
+    this.inviteSection.style.display = this.gameInfo?.cpuOpponent ? "none" : "";
   }
 
   private async copyText(text: string): Promise<void> {

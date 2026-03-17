@@ -955,3 +955,13 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - **Continent display names:** Added `formatContinentName()` helper to convert hyphenated IDs to title case when `<g>` elements aren't present.
 - **Key pattern:** Design assets live in `docs/designs/`, are copied to renderer dirs for Vite `?raw` import. The loader is the normalization boundary between design files and game state.
 - **Validation:** `npm run build && npm run lint && npm run test` — all green (0 errors, 294 tests pass).
+
+### 2026-03-17: Territory Drafting Phase for Risk
+
+- **Replaced auto-deal with drafting**: `onGameStart()` in `RiskPlugin.ts` no longer auto-distributes all 42 territories. Game now starts in `setup-pick` phase with all territories unclaimed (owner: "", armyCount: 0).
+- **New `pickTerritory` action**: Players take turns claiming one unclaimed territory at a time. Each claim sets owner + armyCount 1, advances turn. When all 42 territories are claimed, transitions to `setup-place` with remaining army allotment calculated (initialArmies - territoriesOwned).
+- **Client `setup-pick` handling**: `RiskRenderer.ts` sends `pickTerritory` action (not `placeArmy`) during setup-pick. Unclaimed territories already render in neutral BG_CARD color. Phase banner already shows "Setup • Pick Territories".
+- **Validation added**: `validateAction` now handles `pickTerritory` action type during `setup-pick` phase.
+- **Tests updated**: Replaced 3 auto-deal tests with 7 drafting tests (pick, claim conflict, phase guard, transition, army count, territory count). Updated 4 integration tests to use new `createDraftedGame()` helper. All 299 tests pass.
+- **Removed dead code**: `shuffleArray` function removed from plugin (no longer needed without auto-deal).
+- **Validation:** `npm run build && npm run lint && npm run test` — all green (0 errors, 299 tests pass).
