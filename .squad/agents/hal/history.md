@@ -1062,3 +1062,42 @@ Steeply delivered CPU opponent E2E tests — the final E2E gap issue. Six tests 
 
 **Output:**
 - PR review comment posted on #143
+
+## 2026-03-17: Reviewed PR #144 (Risk Setup Fix)
+
+**Status:** Approved
+
+**Analysis:**
+- **Deadlock Resolution:** The global completion check in `placeArmy` correctly handles the transition when all players are done.
+- **Verification:** 14 regression tests passed. Full suite passed.
+- **Limitations:** Disconnected players with remaining armies still block transition (out of scope, pre-existing).
+
+**Learnings:**
+- **Implicit State Transitions:** Relying on individual player actions to trigger global phase changes requires checking global state (all players done), not just local state (current player done).
+- **Testing Global State:** Regression tests for global state transitions must simulate multiple players to be effective.
+
+**Output:**
+- PR review comment posted on #144
+
+## 2026-03-17 — Risk Setup Phase Deadlock PR Review & Pattern Codification
+
+**Outcome:** APPROVED — PR #144 reviewed and merged, phase transition pattern codified as team standard.
+
+**Work:**
+- Reviewed Gately's PR #144 (Risk setup deadlock fix)
+- Approved the fix (global allDone check in placeArmy handler)
+- Codified two team decisions for all game plugins:
+  1. Auto-transition pattern: Action handlers must check global completion and trigger phase transitions
+  2. Global Phase Transitions: Multi-player transitions must be evaluated against all players, independent of current turn
+
+**Cross-Agent Context:**
+- Gately implemented the fix in RiskPlugin.ts
+- Steeply wrote 14 regression tests covering all player count variants
+- Pattern now codified for Risk and all future games with multi-player phases
+
+**Decisions Made:**
+- Game plugins must auto-transition at phase boundaries
+- Global Phase Transitions (team pattern for all plugins)
+
+**PR:** #144 (approved, merged to dev, pushed to UAT)  
+**Result:** Risk setup deadlock resolved, team has shared pattern for phase transitions

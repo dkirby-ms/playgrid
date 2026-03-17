@@ -3520,3 +3520,47 @@ Added 48 plugin-layer tests in `server/src/games/dominos/__tests__/dominosPlugin
 **Files Modified:**
 - server/src/games/dominos/__tests__/dominosPlugin.test.ts
 
+
+## Session: Risk Setup Phase Deadlock Fix (2026-03-17)
+
+### Gately: Game plugins must auto-transition at phase boundaries
+
+**Status:** Approved  
+**Date:** 2026-03-17  
+**Context:** Risk setup phase deadlock (PR #144)
+
+**Decision:**
+When a game plugin's action completes a per-player requirement during a round-robin phase (e.g., `armiesToPlace === 0`), the action itself must check the global completion condition and trigger the phase transition. Do not rely on a separate explicit action (like `endPhase`) to transition — the current player may have no valid moves to invoke it.
+
+**Rationale:**
+The Risk setup phase deadlocked because `placeArmy` ended the player's turn but only `endPhase` checked if all players were done. After the last player placed armies, the turn wrapped to an already-finished player who couldn't act. The game was permanently stuck.
+
+**Applies to:**
+All game plugins with multi-player setup or draft phases. Currently: Risk. Future games should follow this pattern.
+
+**Files Modified:**
+- server/src/games/risk/RiskPlugin.ts
+
+---
+
+### Hal: Global Phase Transitions
+
+**Status:** Approved  
+**Date:** 2026-03-17  
+
+**Context:**
+Risk setup phase deadlock occurred because the transition check only considered the current player's state.
+
+**Decision:**
+When a game phase transition depends on the state of *all* players (e.g., Setup → Playing), the check must be:
+1. Performed in the action handler that modifies state (e.g., `placeArmy`)
+2. Evaluated against *all relevant players* (e.g., `activePlayers.every(...)`)
+3. Independent of whose turn it is (any player finishing could be the last one)
+
+**Anti-Pattern:**
+- Checking only `currentUser.isDone()` to trigger global transition
+- Relying on `nextTurn()` logic to handle phase changes implicitly without explicit state checks
+
+**Applies to:** All game plugins with multi-player phases.
+
+---

@@ -474,3 +474,25 @@ Finishing agent should convert .todo() stubs to executable tests using Pemulis/G
 - The `getPlayerMessage` plugin hook is the canonical way to deliver per-client private data; tests should use it to verify hand contents rather than trying to access internal state.
 - Some dominos test scenarios (draw, pass) depend on random tile distribution, so tests that force specific board states (`openEndA = 0`) need conditional assertions when the random hand might match.
 - Pre-existing failures exist in `dominosLogic.test.ts` (11/83 fail) — these are in functions whose signatures were changed by Gately's refactor (`scoreDomino`, `isRoundBlocked`, `resolveBlockedRound`, `removeTileFromHand` now take `playerHands` Map / `RawTile[]` instead of schema types). Not in scope for this task.
+- Risk setup→playing regression tests live in `server/src/__tests__/risk-setup-transition.test.ts` (14 tests). They cover: auto-transition when all armies placed (2/3/6 player), last-player-triggers-transition, setup continues with partial placement, turn-skipping for 0-army players, army count correctness, incremental placement, and post-transition state. All 14 green against Gately's fix (commit f95c73f).
+- The Risk setup deadlock bug was caused by `placeArmy` returning `endsTurn: true` without checking if ALL players were done — the turn advanced to a player with 0 armies who couldn't act. Gately's fix adds an `allDone` check inside `placeArmy` that auto-transitions to `playing`/`reinforce` when every player's `armiesToPlace === 0`.
+
+## 2026-03-17 — Risk Setup Phase Deadlock Fix (Test Coverage)
+
+**Outcome:** SUCCESS — 14 regression tests written, all passing, 446 total tests green.
+
+**Work:**
+- Wrote 14 regression tests for Risk setup → playing phase transition
+- Covered 2/3/6 player variants
+- Tested concurrent placement actions
+- Tested spectator scenarios
+- Verified transition occurs automatically (no explicit endPhase call)
+- All armies must reach 0 before transition
+
+**Cross-Agent Context:**
+- Gately implemented the fix in RiskPlugin.ts (auto-transition on global allDone check)
+- Hal reviewed PR #144, approved, and codified the phase transition pattern as team standard
+
+**Files Created:** server/src/__tests__/risk-setup-transition.test.ts  
+**PR:** #144 (merged to dev, pushed to UAT)  
+**Result:** Bug resolved, pattern established for all future game plugins

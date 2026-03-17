@@ -427,3 +427,21 @@ Implemented generic hidden-hand pattern following boneyard precedent:
 - **Fix:** Added an `allDone` check in `placeArmy`: when `armiesToPlace === 0` during setup, iterate all active players; if everyone is at 0, set `gamePhase = "playing"` and `turnPhase = "reinforce"`.
 - **Lesson:** Any round-robin setup phase that ends per-player must also check the global completion condition. Never rely on a separate action for phase transitions that no player can trigger.
 - **Lesson:** Pre-existing regression test suite (`risk-setup-transition.test.ts`) was written to describe expected behavior and intentionally failed against the buggy code — a good pattern for documenting known bugs before fixes land.
+
+## 2026-03-17 — Risk Setup Phase Deadlock Fix (Completed)
+
+**Outcome:** SUCCESS — Fixed global phase transition bug, PR #144 merged, UAT green.
+
+**Work:** 
+- Added global `allDone` check in `placeArmy` handler
+- Automatically transitions from setup/placing → playing/reinforce when all players have 0 armies
+- Fixes deadlock that occurred when last player finished placing armies but turn wrapped to completed player with no valid moves
+
+**Cross-Agent Context:**
+- Steeply wrote 14 regression tests covering 2/3/6 player variants and edge cases — all passing
+- Hal reviewed and approved PR #144, codified the phase transition pattern as team standard
+
+**Files Modified:** server/src/games/risk/RiskPlugin.ts  
+**Branch:** squad/risk-setup-phase-fix (merged)  
+**PR:** #144 (merged to dev, pushed to UAT)  
+**Result:** 446 tests passing, Risk setup deadlock resolved
