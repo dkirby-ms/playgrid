@@ -915,3 +915,35 @@ Steeply delivered CPU opponent E2E tests — the final E2E gap issue. Six tests 
 - Session orchestration log: `.squad/orchestration-log/2026-03-16T22-47-43Z-full-session.md`
 - Session log: `.squad/log/2026-03-16T22-46-00Z-full-session.md`
 - 7 PRs merged, 7 issues closed, 289 tests passing, 0 lint errors
+
+---
+
+## Session: Triage Game Requests #107 & #124 (2026-03-16T22:40:00Z)
+
+**Event:** Triaged two open game feature requests; classified one as blocked, one as ready.
+
+**Issue #107 (Scrabble):**
+- **Status:** Blocked — Needs Clarification
+- **Action:** Added triage comment requesting scope details
+- **Reason:** Submission contains only the word "Scrabble"; no rules, player count, dictionary strategy, or rendering constraints. Word validation is architecturally critical and cannot be assumed.
+- **Next:** Author must provide details before assignment to Pemulis + Gately.
+
+**Issue #124 (Dominos):**
+- **Status:** Ready for Work
+- **Assigned to:** Pemulis (game systems) + Gately (rendering)
+- **Labels:** `squad:pemulis`, `squad:gately`
+- **Complexity:** Large (L) — Full plugin (server, shared, client) following proven Checkers/Backgammon pattern
+- **Estimate:** ~1000–1500 lines (server plugin ~300–400, shared schema ~100–150, client renderer ~400–600, E2E tests ~200–300)
+- **Blocked on:** Infrastructure stability (Checkers + Backgammon merged, reconnection live, E2E pattern proven)
+- **Action:** Added detailed triage comment with execution plan (Phase 1: Pemulis server logic, Phase 2: Gately rendering, Phase 3: Steeply E2E tests)
+
+**Decision Generated:** `.squad/decisions/inbox/hal-triage-new-games.md`
+- Triage summary comparing both issues
+- Execution plan for Dominos plugin (3-phase approach)
+- Policy proposal: Require game requests to include rules summary, player count, complexity indicators, and dependencies
+
+**Cross-Agent Context:**
+- Pemulis + Gately are ready for this work immediately after Wave 4 PM review/merge (likely 2026-03-17+)
+- This follows the Wave 4 pattern: new game plugin work is post-infrastructure-stable work
+- E2E test strategy proven in PR #58 (Checkers tests by Steeply); Dominos tests will reuse that grey-box pattern
+

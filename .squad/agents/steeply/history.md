@@ -321,3 +321,31 @@ Finishing agent should convert .todo() stubs to executable tests using Pemulis/G
 - When the client UI moves text from PixiJS canvas to HTML DOM, E2E `page.evaluate()` snapshots must read from DOM selectors instead of renderer properties.
 - The sidebar `.sidebar-note` class is the reliable selector for player color labels across all game renderers.
 - BackgammonRenderer still exposes `playerColorText` as a PixiJS Text property; Checkers and Risk do not (post Phase 4 redesign).
+
+## Fix: E2E getSnapshot() statusText reads from getHUDStatus() (2026-03-16)
+
+**Root Cause:** Phase 4 visual redesign removed the `statusText` PixiJS Text property from `CheckersRenderer`. E2E `getSnapshot()` functions read `renderer.statusText.text`, returning `null` for Checkers. This broke assertions like `expect(statusText).toBe("Your turn")`.
+
+**Investigation:**
+- RiskRenderer: still has `statusText` and `phaseText` as functional PixiJS Text objects (added to HUD layer, actively updated) → no fix needed
+- BackgammonRenderer: still has `statusText` as PixiJS Text → no fix needed
+- CheckersRenderer: no `statusText` property, but exposes `getHUDStatus(state)` which returns `{ text: "Your turn", ... }`
+
+**Fix:** Updated `statusText` extraction in `getSnapshot()` across 4 spec files to use an IIFE that tries the PixiJS renderer property first (backward compat for Backgammon/Risk), then falls back to `renderer.getHUDStatus(state).text`.
+
+**Files Changed:**
+- `e2e/checkers.spec.ts`
+- `e2e/cpu-opponent.spec.ts` (getCheckersSnapshot only)
+- `e2e/reconnection.spec.ts`
+- `e2e/spectator.spec.ts`
+
+**Not Changed:**
+- `e2e/risk.spec.ts` — RiskRenderer still has both `statusText` and `phaseText` as PixiJS Text
+- `e2e/backgammon.spec.ts` — BackgammonRenderer still has `statusText` as PixiJS Text
+
+**Verification:** `npm run build` ✅, `npm run lint` ✅, `npm run test` (292 passing) ✅, `npx playwright test e2e/checkers.spec.ts` (3/3 passing) ✅
+
+**Learnings:**
+- `getHUDStatus(state)` is the universal fallback for status text across all renderers that have moved away from PixiJS Text. It returns `{ label, text, detail, accentColor }`.
+- BackgammonRenderer does NOT implement `getHUDStatus()` — it's the only renderer that still relies entirely on PixiJS Text for status display.
+- The IIFE-with-fallback pattern (try PixiJS → try HUD → return null) is now the standard for E2E snapshot extraction when renderer properties may or may not exist.

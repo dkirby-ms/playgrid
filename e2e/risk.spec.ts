@@ -630,7 +630,7 @@ test.describe("Risk E2E — Setup phase", () => {
 
       const errorPromise = waitForRoomError(page);
       await sendAction(page, "placeArmy", { territoryId: opponentTerritories[0] });
-      await expect(errorPromise).resolves.toEqual({ message: "Invalid action." });
+      await expect(errorPromise).resolves.toEqual({ message: "You don't own this territory." });
 
       // State should be unchanged
       const after = await getSnapshot(page);
@@ -997,7 +997,7 @@ test.describe("Risk E2E — Fortification", () => {
         to: enemyTerritories[0],
         count: 1,
       });
-      await expect(errorPromise).resolves.toEqual({ message: "Invalid action." });
+      await expect(errorPromise).resolves.toEqual({ message: "Invalid fortify move." });
     } finally {
       await closeMatch(match);
     }

@@ -893,6 +893,7 @@ export class CheckersRenderer implements GameRenderer {
     return Array.from(this.players.entries()).some(([sessionId, player]) => (
       !player.isSpectator
       && sessionId !== localSessionId
+      && sessionId !== "cpu-opponent"
       && player.controllerSessionId === localSessionId
     ));
   }

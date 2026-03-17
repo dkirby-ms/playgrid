@@ -244,6 +244,12 @@ async function getCheckersSnapshot(page: Page): Promise<CheckersSnapshot> {
         if (typeof renderer?.playerColorText?.text === "string") {
           return renderer.playerColorText.text;
         }
+        if (typeof renderer?.getHUDStatus === "function") {
+          const hud = renderer.getHUDStatus(state);
+          if (hud?.detail && (hud.detail.includes('You are playing as') || hud.detail.includes('You are spectating'))) {
+            return hud.detail;
+          }
+        }
         const sidebarNotes = document.querySelectorAll('.sidebar-note');
         for (const note of sidebarNotes) {
           const text = note.textContent ?? '';
@@ -306,6 +312,12 @@ async function getBackgammonSnapshot(page: Page): Promise<BackgammonSnapshot> {
       playerColorText: (() => {
         if (typeof renderer?.playerColorText?.text === "string") {
           return renderer.playerColorText.text;
+        }
+        if (typeof renderer?.getHUDStatus === "function") {
+          const hud = renderer.getHUDStatus(state);
+          if (hud?.detail && (hud.detail.includes('You are playing as') || hud.detail.includes('You are spectating'))) {
+            return hud.detail;
+          }
         }
         const sidebarNotes = document.querySelectorAll('.sidebar-note');
         for (const note of sidebarNotes) {

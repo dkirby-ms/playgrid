@@ -550,3 +550,12 @@ Issue #87 requests CPU-controlled opponents in Backgammon to enable single-playe
 - PR #135 merged (Risk E2E with deterministic waits)
 - Issue #87 and #127 closed
 - All 289 tests passing
+
+### Risk reinforcement calculation bug fix (2026-03-16)
+
+- Root cause: `endPhase` in `RiskPlugin.ts` calculated reinforcements for the CURRENT player (the one calling endPhase) then returned `endsTurn: true`, which advanced the turn to the NEXT player. The next player started their reinforce phase with 0 `armiesToPlace`. Affected both the setup→playing transition and the fortify→reinforce transition.
+- Fix: Added `onTurnStarted?(state, newPlayerId)` lifecycle hook to the `GameLifecycle` interface in `shared/src/gamePlugin.ts`. `BaseGameRoom.advanceTurn()` now calls it after advancing the turn. `RiskPlugin` implements it to set `turnPhase = "reinforce"`, reset `earnedCardThisTurn`, and calculate reinforcements for the correct player.
+- Removed the incorrect reinforcement calc from the setup→playing path and the phase-reset logic from the fortify→reinforce path in `endPhase`, since `onTurnStarted` now owns per-turn initialization.
+- The `onTurnStarted` hook is optional on `GameLifecycle` — existing plugins (Checkers, Backgammon) are unaffected.
+- Added 4 regression tests: `onTurnStarted` calculates reinforcements, `endPhase` doesn't leak reinforcements to the wrong player, setup→playing transition correctness.
+- All 292 tests passing, build and lint clean.

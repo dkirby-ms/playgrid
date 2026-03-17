@@ -175,7 +175,7 @@ export class BaseGameRoom extends Room {
     }
 
     if (!isSpectator) {
-      this.ensureCpuParticipant();
+      this.ensureCpuParticipant(client.sessionId);
       this.ensureHeadToHeadParticipant(client);
       if (this.shouldStartGame()) {
         this.startGame();
@@ -218,6 +218,11 @@ export class BaseGameRoom extends Room {
     }
 
     this.finalizeParticipantDeparture(client.sessionId);
+
+    if (player.isSpectator) {
+      this.state.players.delete(client.sessionId);
+      return;
+    }
 
     if (this.state.phase !== "playing") {
       if (this.headToHeadMode && !this.hasConnectedController()) {
@@ -398,6 +403,7 @@ export class BaseGameRoom extends Room {
 
     this.state.currentTurn = this.turnManager.nextTurn();
     this.state.turnNumber = this.turnManager.getTurnNumber();
+    this.plugin.lifecycle.onTurnStarted?.(this.state, this.state.currentTurn);
     this.updateTurnTimeRemaining();
     this.queueCpuTurnIfNeeded();
   }
@@ -496,7 +502,7 @@ export class BaseGameRoom extends Room {
     }
   }
 
-  private ensureCpuParticipant() {
+  private ensureCpuParticipant(controllerSessionId: string) {
     if (!this.cpuOpponentEnabled || this.state.players.has(CPU_OPPONENT_SESSION_ID)) {
       return;
     }
@@ -508,6 +514,7 @@ export class BaseGameRoom extends Room {
     player.playerIndex = playerIndex;
     player.isSpectator = false;
     player.isConnected = true;
+    player.controllerSessionId = controllerSessionId;
 
     this.state.players.set(CPU_OPPONENT_SESSION_ID, player);
     this.plugin.lifecycle.onPlayerJoin?.(

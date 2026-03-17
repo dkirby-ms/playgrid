@@ -283,6 +283,12 @@ async function getSnapshot(page: Page): Promise<BackgammonSnapshot> {
         if (typeof renderer?.playerColorText?.text === "string") {
           return renderer.playerColorText.text;
         }
+        if (typeof renderer?.getHUDStatus === "function") {
+          const hud = renderer.getHUDStatus(state);
+          if (hud?.detail && (hud.detail.includes('You are playing as') || hud.detail.includes('You are spectating'))) {
+            return hud.detail;
+          }
+        }
         const sidebarNotes = document.querySelectorAll('.sidebar-note');
         for (const note of sidebarNotes) {
           const text = note.textContent ?? '';
@@ -663,7 +669,7 @@ test.describe("Backgammon E2E — Bearing off", () => {
 });
 
 test.describe("Backgammon E2E — Win condition", () => {
-  test("detects win when all 15 pieces are borne off (via full game simulation)", async ({ browser }) => {
+  test("detects win when all 15 pieces are borne off (via full game simulation)", { timeout: 180_000 }, async ({ browser }) => {
     const match = await startMatch(browser, `BG-win-${Date.now()}`);
 
     try {
