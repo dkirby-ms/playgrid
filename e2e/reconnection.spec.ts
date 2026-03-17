@@ -142,6 +142,7 @@ async function savePlayerName(page: Page, displayName: string): Promise<void> {
   await playerNameInput.fill(displayName);
   await playerNameInput.blur();
   await expect(page.locator(".lobby-notice.visible")).toHaveText("Player name saved.");
+  await expect(page.locator(".lobby-notice.visible")).not.toBeVisible();
   await expect(playerNameInput).toHaveValue(displayName.trim());
 }
 
