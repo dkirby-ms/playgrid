@@ -3024,3 +3024,36 @@ Or equivalent check depending on notice implementation (CSS class toggle, aria-h
 - e2e/game-disconnect.spec.ts
 - e2e/game-end.spec.ts
 
+
+---
+
+### Hal: Risk SVG Map Architecture (PR #139)
+
+**Status:** Approved  
+**Date:** 2026-03-17  
+
+The Risk renderer now uses SVG path-based territory shapes instead of card rectangles. Map data is separated from rendering logic via the `RiskMapDefinition` type format.
+
+**Key Architectural Choices:**
+
+1. **Map data format (`RiskMapDefinition`)** is the canonical type for Risk map definitions. Future maps (variants, community maps) must conform to this interface.
+
+2. **SVG path parser (`drawSvgPath`)** supports M/L/H/V/C/S/Q/T/Z. Arc (A/a) is deferred — add when a map requires curved paths.
+
+3. **Label layer** renders above all territory shapes. This is the correct z-ordering for text readability.
+
+4. **Adjacency lists must be symmetric.** If territory A lists B, territory B must list A. Validate programmatically when adding or modifying maps.
+
+5. **ConnectionOverrides** handle non-standard topology (wrap-around, portals). Use waypoints for custom connection rendering.
+
+**For Future Work:**
+
+- New maps: create a new `{mapName}RiskMap.ts` file implementing `RiskMapDefinition`. No renderer changes needed.
+- If arc support is needed: extend `svgPathParser.ts` with A/a command handling.
+- If map data becomes user-contributed: add validation for adjacency symmetry, territory ID uniqueness, and continent coverage.
+
+**Files Modified:**
+- client/src/renderers/RiskRenderer.ts
+- shared/src/games/risk/RiskMapDefinition.ts
+
+**PR:** #139 (squad/136-risk-svg-map → dev) — merged

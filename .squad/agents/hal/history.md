@@ -983,3 +983,28 @@ Steeply delivered CPU opponent E2E tests — the final E2E gap issue. Six tests 
 - Zero regressions
 - Cross-agent coordination via orchestration logs and decisions.md
 
+
+## 2026-03-17: PR #139 Review — Risk SVG Map (Completed)
+
+**Session:** Single-agent review gate  
+**Outcome:** ✅ APPROVED
+
+**Review Summary:**
+- PR #139 (squad/136-risk-svg-map → dev) passed full review
+- Clean architecture: Map definition format separates geometry from rendering
+- All 42 territories verified, correct adjacency, correct SVG parser
+- Zero issues found
+
+**Decision Logged:**
+- Risk SVG Map Architecture decision merged to `.squad/decisions.md`
+- Key rules: RiskMapDefinition canonical type, SVG path parser support (M/L/H/V/C/S/Q/T/Z), label z-ordering, symmetric adjacency requirement, ConnectionOverrides for custom topology
+
+**Actions:**
+- PR merged (squash) into dev
+- Branch squad/136-risk-svg-map deleted
+- Issue #136 closed
+
+**Output:**
+- Orchestration log: `.squad/orchestration-log/2026-03-17T14-55-20Z-hal.md`
+- Session log: `.squad/log/2026-03-17T14-55-20Z-hal-pr139-review.md`
+- Decisions updated: `.squad/decisions.md` (Risk SVG Map Architecture entry)
