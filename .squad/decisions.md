@@ -3309,3 +3309,214 @@ Games against CPU don't need an invite share link. Captured for team memory.
 **Status:** Proposed
 
 Add early return `if (state.gamePhase === "setup") return null;` in `checkGameEnd` during Risk setup phases to prevent false win condition evaluation while territories distributed.
+
+---
+
+## Session: UX Redesign — Lobby & Dominos (2026-03-17)
+
+### 2026-03-17T19:25Z: User Directive — Generic Hidden-Hand Pattern
+
+**By:** dkirby-ms (via Copilot)
+
+The server-side hand management pattern being built for Dominos must be generic and reusable for any future game where players have hands of cards or other hidden tokens. Do not hard-code it to Dominos.
+
+**Context:** User request — establishes that hidden-information games (Scrabble, card games, etc.) share a common pattern.
+
+---
+
+### 2026-03-17T19:50Z: User Directive — Design Pipeline (superseded by 2026-03-17T20:14Z)
+
+**By:** dkirby-ms (via Copilot)
+
+Dominos UX will be updated from Figma design exports. The Figma export will be React-based components. The team should convert React designs to PixiJS for the client-side renderer, using shadcn components as needed for non-canvas UI.
+
+**Context:** Establishes the design-to-implementation pipeline.
+
+---
+
+### 2026-03-17T20:14Z: User Directive — Universal Design Pipeline
+
+**By:** dkirby-ms (via Copilot) [Supersedes 2026-03-17T19:50Z]
+
+ALL game UX starts as Figma mockups exported to static React/HTML. The team converts these to PixiJS renderers with shadcn for DOM-based UI. This is the standard design pipeline for the entire project, not just Dominos.
+
+**Context:** Establishes the universal design-to-implementation workflow for all games.
+
+---
+
+### 2026-03-17T20:16Z: User Directive — Iterative Design Updates
+
+**By:** dkirby-ms (via Copilot)
+
+UX design is iterative. Figma mockups will be updated over time, producing new React/HTML exports. The team must review each update and incorporate changes into the live PixiJS renderers. This is an ongoing workflow, not a one-shot conversion.
+
+**Context:** Renderer work includes reviewing and merging design updates, not just initial builds.
+
+---
+
+### 2026-03-17T20:45Z: User Directive — Design Artifacts Ignored
+
+**By:** dkirby-ms (via Copilot)
+
+The Figma design zip and extracted files in docs/ are intentionally excluded from the repo via .gitignore. They are reference-only — never commit them.
+
+**Context:** Design exports are working files, not source-controlled artifacts.
+
+---
+
+### Mario: UX Gap Analysis Complete
+
+**Status:** Approved  
+**Date:** 2026-03-17
+
+Completed a comprehensive gap analysis comparing the new Figma export (`docs/designs/playgrid-ux/`) against the current live implementation. Full document at `docs/designs/playgrid-ux/GAP-ANALYSIS.md`.
+
+**Key Findings:**
+1. Accent color shift from violet → blue across all interactive elements
+2. Player info bars — New design introduces opponent/player bars above and below the game board
+3. Lobby overhaul — Game tiles become photo cards (7 game types up from 3)
+4. Dominos board goes green — Emerald felt background replaces dark canvas
+5. 3 new game designs — Catan, Scrabble, Hungry Hippos (need implementation)
+
+**Priority Order:**
+- P0: Lobby (entry point, game tiles, active games, online players, shared header bar)
+- P1: Dominos alignment (green board, player bars, selection color, empty state)
+- P2: Existing game refreshes (Checkers, Backgammon, Risk — player bars, colors, sidebar alignment)
+- P3: New games (Catan, Scrabble, Hungry Hippos)
+
+**Action Items:**
+- Gately: Use GAP-ANALYSIS.md as implementation spec, starting with P0 items
+- Team: Review accent color shift decision (violet → blue)
+- Team: Confirm whether Activity Feed in lobby should be removed
+
+**Files Created:**
+- `docs/designs/playgrid-ux/GAP-ANALYSIS.md`
+
+---
+
+### Gately: UX Redesign — Lobby + Dominos Renderer (Figma Match)
+
+**Status:** Implemented (PR #143 open)  
+**Date:** 2026-03-17  
+**Branch:** `squad/ux-redesign-lobby-dominos`
+
+Migrate lobby and Dominos renderer visual styling to match the new Figma export at `docs/designs/playgrid-ux/`. Lobby shifts from zinc/violet palette to dark slate/blue; Dominos gains an emerald green board surface and new sidebar panels.
+
+**Rationale:**
+- Design-first workflow: Figma → React export → convert to live implementation
+- Dark slate palette (slate-950/900/800) feels more polished than prior zinc-only background
+- Blue accents for game tiles, buttons, and avatars align with the Figma design language
+- Emerald board surface for Dominos makes the playing area visually distinct from the dark chrome
+- "How to Play" sidebar panel improves onboarding for new players
+
+**Implementation:**
+- `client/index.html`: CSS color values migrated from zinc/violet to slate/blue
+- `client/src/ui/LobbyScreen.ts`: Added Dominos to `GAME_TYPE_OPTIONS` and `GAME_TILE_ARTWORK`
+- `client/src/renderers/DominosRenderer.ts`: Emerald board background, "How to Play" sidebar panel, updated UI
+- `client/src/renderers/DesignTokens.ts`: Added `EMERALD_800`, `EMERALD_900` tokens
+
+**Impact:**
+- Visual-only changes: No game logic, state management, or networking modified
+- All existing Colyseus integration preserved
+- Dominos now appears in the lobby game type selector
+
+**Files Modified:**
+- client/index.html
+- client/src/ui/LobbyScreen.ts
+- client/src/renderers/DominosRenderer.ts
+- client/src/renderers/DesignTokens.ts
+
+---
+
+### Gately: Server-side hands for Dominos hidden information
+
+**Status:** Implemented on `squad/124-dominos`  
+**Date:** 2026-03-17  
+**Context:** Hal's review of PR #141 found opponent hand tiles visible to all clients via Colyseus schema sync
+
+**Problem:**
+`DominosPlayerState.hand` was an `ArraySchema<DominoTile>` — Colyseus syncs all schema data to all clients. Any player could inspect opponent tiles in browser devtools.
+
+**Decision:**
+Follow the existing boneyard pattern: store player hands in a server-only `Map` outside the schema, send each player their own hand via targeted room messages.
+
+**Implementation:**
+- **Schema changes:** Removed `hand: ArraySchema<DominoTile>` from `DominosPlayerState`. Added `handCount: number` (public: opponents can see tile count)
+- **Server-side storage:** `playerHandsMap = Map<DominosState, Map<string, RawTile[]>>` in DominosPlugin.ts. Exported `getPlayerHand`, `setPlayerHand`, `getPlayerHands` for test access.
+- **Per-client messaging:** Added `getPlayerMessage?(state, sessionId)` to `StateFilter` interface. BaseGameRoom calls it after successful actions, game start, and reconnection. Dominos plugin returns `{ type: "hand", tiles: RawTile[] }` for each player.
+- **Client changes:** Renderer listens for `"player-data"` room messages instead of reading schema hand. Opponent counts from `handCount`, own hand from messages.
+
+**Consequences:**
+- **Security:** Opponent hand tiles are no longer in the schema or network traffic
+- **Generic pattern:** Any future game with hidden info can use `getPlayerMessage` on its stateFilter
+- **Breaking change:** `DominosPlayerState.hand` removed from schema — any code reading it needs migration
+- **Test impact:** Logic functions now require a `playerHands` map parameter
+
+**Files Modified:**
+- shared/src/gamePlugin.ts
+- shared/src/games/dominos/DominosState.ts
+- server/src/game/BaseGameRoom.ts
+- server/src/games/dominos/DominosPlugin.ts
+- server/src/games/dominos/dominosLogic.ts
+- client/src/renderers/DominosRenderer.ts
+- server/src/games/dominos/__tests__/dominosPlugin.test.ts
+
+---
+
+### Hal: Hidden-Hand Pattern via StateFilter.getPlayerMessage
+
+**Status:** Approved  
+**Date:** 2026-03-17
+
+For games with hidden tokens (tiles, cards), remove private data from Colyseus schema entirely. Store server-side in plugin memory, deliver per-player via targeted `client.send("player-data", msg)` using the new `StateFilter.getPlayerMessage` hook.
+
+**Rationale:**
+- Colyseus `stateFilter` (filterForClient) operates on schema objects and is unreliable for hiding nested collections — the original Dominos implementation proved this was a no-op
+- Moving private data off-schema entirely eliminates the leak surface. Schema carries only public counts (`handCount`, `boneyardCount`)
+- `getPlayerMessage` on the shared `StateFilter` interface is generic: returns `unknown`, called by `BaseGameRoom` at game start, after action processing, and on reconnection
+- Future hidden-token games (Poker, Hearts/Spades) implement `getPlayerMessage` in their plugin and get the same privacy guarantees with zero framework changes
+
+**Implementation Details:**
+- `shared/src/gamePlugin.ts`: Added optional `getPlayerMessage?(state, sessionId): unknown` to `StateFilter`
+- `server/src/game/BaseGameRoom.ts`: Added `broadcastPlayerMessages()` (all clients) and `sendPlayerMessage(client)` (single client on reconnect)
+- `server/src/games/dominos/DominosPlugin.ts`: Server-side hand Map, `getPlayerMessage` returns `{ type: "hand", tiles }`, schema uses `handCount: number`
+- `client/src/renderers/DominosRenderer.ts`: Receives hand via `room.onMessage("player-data", ...)`, properly unsubscribed in cleanup
+
+**Files Modified:**
+- shared/src/gamePlugin.ts
+- shared/src/games/dominos/DominosState.ts
+- server/src/game/BaseGameRoom.ts
+- server/src/games/dominos/DominosPlugin.ts
+- server/src/games/dominos/dominosLogic.ts
+- client/src/renderers/DominosRenderer.ts
+- server/src/games/dominos/__tests__/dominosPlugin.test.ts (48 verification tests)
+
+---
+
+### Steeply: Hidden State Verification Tests for Dominos
+
+**Status:** Approved  
+**Date:** 2026-03-17  
+**Context:** PR #141 reviewer rejection — Dominos stateFilter was a no-op
+
+**Decision:**
+Added 48 plugin-layer tests in `server/src/games/dominos/__tests__/dominosPlugin.test.ts` verifying that the hidden-state fix correctly prevents opponent hand tile leakage.
+
+**Key Verifications:**
+1. **Schema privacy:** `DominosPlayerState.hand` (ArraySchema) is gone. Replaced with `handCount` (number). No tile data on the synced schema.
+2. **Server-side hands:** Plugin stores hands in a module-level `Map<DominosState, Map<string, RawTile[]>>`, inaccessible to clients.
+3. **getPlayerMessage:** New hook delivers hand tiles as direct messages per player — verified tiles are correct, per-player unique, and updated after play/draw actions.
+4. **filterForClient:** Correctly returns full state (safe — no hidden data in schema to leak).
+5. **handCount accuracy:** Schema `handCount` stays in sync with server-side hand size after every action (deal, play, draw).
+6. **Boneyard privacy:** Only `boneyardCount` (number) is synced, no tile array.
+
+**Pre-existing Issue Noted:**
+`dominosLogic.test.ts` has 11/83 failures — function signatures for `scoreDomino`, `isRoundBlocked`, `resolveBlockedRound`, `removeTileFromHand` changed (now take `playerHands` Map / `RawTile[]`). Those tests need updating separately.
+
+**Impact:**
+- PR #141 now has test coverage for the specific security concern Hal flagged
+- All 48 new tests passing, lint clean, build green
+
+**Files Modified:**
+- server/src/games/dominos/__tests__/dominosPlugin.test.ts
+

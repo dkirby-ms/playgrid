@@ -1046,3 +1046,19 @@ Steeply delivered CPU opponent E2E tests — the final E2E gap issue. Six tests 
 **Output:**
 - PR review comment posted on #141
 - Decision: `.squad/decisions/inbox/hal-dominos-review.md`
+
+## 2026-03-17: Reviewed PR #143 (UX Redesign)
+
+**Status:** Approved (PR author self-review via CLI)
+
+**Analysis:**
+- **Code Quality:** Type-safe, correct schema access, proper cleanup.
+- **Design:** Implementation matches Figma spec (Emerald/Slate palette).
+- **Architecture:** "How to Play" panel pattern in `GameSidebar` is reusable and improves onboarding.
+
+**Learnings:**
+- **Design-First Workflow:** The Figma → React → Live implementation pipeline yields high fidelity results quickly.
+- **Onboarding Pattern:** The "How to Play" sidebar panel should be standard for all games (Checkers, Backgammon, etc.) moving forward.
+
+**Output:**
+- PR review comment posted on #143
