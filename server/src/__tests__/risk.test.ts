@@ -998,6 +998,7 @@ describe("Risk Game — Win Conditions", () => {
 
     it("game ends when one player controls all territories", () => {
       const state = createStartedGame(2);
+      state.gamePhase = "playing";
       
       grantAllTerritories(state, "player-1");
       
@@ -1009,6 +1010,7 @@ describe("Risk Game — Win Conditions", () => {
 
     it("eliminated player has zero territories", () => {
       const state = createStartedGame(2);
+      state.gamePhase = "playing";
       
       grantAllTerritories(state, "player-1");
       
