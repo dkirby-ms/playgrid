@@ -1,7 +1,7 @@
 import type { RiskState } from "@eschaton/shared";
 import { CONTINENTS, TERRITORIES, areTerritoriesAdjacent } from "@eschaton/shared";
 
-type TurnPhase = "setup-pick" | "setup-place" | "reinforce" | "attack" | "fortify";
+type TurnPhase = "setup-pick" | "setup-place" | "reinforce" | "attack" | "capture-move" | "fortify";
 
 export function calculateReinforcements(
   territoriesOwned: number,

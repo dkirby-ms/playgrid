@@ -978,4 +978,140 @@ describe("dominosPlugin", () => {
       expect(draws).toBeGreaterThan(0);
     });
   });
+
+  // ─── Spinner Gameplay Flow ──────────────────────────────────────
+
+  describe("spinner gameplay flow", () => {
+    it("accepts play on end c when C arm is active", () => {
+      const { state } = startGame(2);
+      const currentPlayer = state.currentTurn;
+
+      // Play first tile to set up board, then configure 4-way state
+      const firstTile = getFirstHandTile(state, currentPlayer)!;
+      dominosPlugin.actions.play(state, mockClient(currentPlayer), {
+        tileId: firstTile.id,
+        end: "a" as const,
+      });
+
+      // Activate C/D
+      state.openEndA = 2;
+      state.openEndB = 1;
+      state.openEndC = 4;
+      state.openEndD = 4;
+      state.spinnerTileId = 0;
+
+      // Give the player a tile matching C
+      setPlayerHand(state, currentPlayer, [
+        { id: 100, highPips: 4, lowPips: 3 },
+      ]);
+
+      const result = dominosPlugin.actions.play(
+        state,
+        mockClient(currentPlayer),
+        { tileId: 100, end: "c" as const },
+      );
+
+      expect(result.success).toBe(true);
+      expect(state.openEndC).toBe(3);
+    });
+
+    it("accepts play on end d when D arm is active", () => {
+      const { state } = startGame(2);
+      const currentPlayer = state.currentTurn;
+
+      const firstTile = getFirstHandTile(state, currentPlayer)!;
+      dominosPlugin.actions.play(state, mockClient(currentPlayer), {
+        tileId: firstTile.id,
+        end: "a" as const,
+      });
+
+      state.openEndA = 2;
+      state.openEndB = 1;
+      state.openEndC = 4;
+      state.openEndD = 5;
+      state.spinnerTileId = 0;
+
+      setPlayerHand(state, currentPlayer, [
+        { id: 101, highPips: 5, lowPips: 3 },
+      ]);
+
+      const result = dominosPlugin.actions.play(
+        state,
+        mockClient(currentPlayer),
+        { tileId: 101, end: "d" as const },
+      );
+
+      expect(result.success).toBe(true);
+      expect(state.openEndD).toBe(3);
+    });
+
+    it("rejects play on end c when C arm is inactive", () => {
+      const { state } = startGame(2);
+      const currentPlayer = state.currentTurn;
+
+      const firstTile = getFirstHandTile(state, currentPlayer)!;
+      dominosPlugin.actions.play(state, mockClient(currentPlayer), {
+        tileId: firstTile.id,
+        end: "a" as const,
+      });
+
+      // C/D inactive
+      state.openEndC = -1;
+      state.openEndD = -1;
+
+      setPlayerHand(state, currentPlayer, [
+        { id: 102, highPips: state.openEndA, lowPips: 3 },
+      ]);
+
+      const result = dominosPlugin.actions.play(
+        state,
+        mockClient(currentPlayer),
+        { tileId: 102, end: "c" as const },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("cannot be played on that end");
+    });
+
+    it("validates 4-way plays correctly", () => {
+      const { state } = startGame(2);
+      const currentPlayer = state.currentTurn;
+
+      const firstTile = getFirstHandTile(state, currentPlayer)!;
+      dominosPlugin.actions.play(state, mockClient(currentPlayer), {
+        tileId: firstTile.id,
+        end: "a" as const,
+      });
+
+      state.openEndA = 2;
+      state.openEndB = 1;
+      state.openEndC = 4;
+      state.openEndD = 5;
+      state.spinnerTileId = 0;
+
+      setPlayerHand(state, currentPlayer, [
+        { id: 103, highPips: 4, lowPips: 3 },
+      ]);
+
+      // Tile matches C (=4) → valid on end c
+      expect(
+        dominosPlugin.conditions.validateAction(
+          state,
+          mockClient(currentPlayer),
+          "play",
+          { tileId: 103, end: "c" },
+        ),
+      ).toBe(true);
+
+      // Tile does not match D (=5) → invalid on end d
+      expect(
+        dominosPlugin.conditions.validateAction(
+          state,
+          mockClient(currentPlayer),
+          "play",
+          { tileId: 103, end: "d" },
+        ),
+      ).toBe(false);
+    });
+  });
 });

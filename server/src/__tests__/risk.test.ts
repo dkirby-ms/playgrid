@@ -697,7 +697,16 @@ describe("Risk Game — Attack Phase", () => {
         );
       }
       
-      // Captured territory should have armies equal to attack dice count
+      // Complete capture-move if entered
+      if (state.turnPhase === "capture-move") {
+        riskPlugin.actions.captureMove(
+          state,
+          mockClient("player-1"),
+          { count: state.captureDiceCount }
+        );
+      }
+      
+      // Captured territory should have armies moved into it
       const capturedTerritory = state.territories.get("kamchatka");
       expect(capturedTerritory?.owner).toBe("player-1");
       expect(capturedTerritory?.armyCount).toBeGreaterThan(0);
@@ -763,6 +772,13 @@ describe("Risk Game — Attack Phase", () => {
         );
       }
       
+      // Complete capture-move if needed
+      if (state.turnPhase === "capture-move") {
+        riskPlugin.actions.captureMove(state, mockClient("player-1"), {
+          count: state.captureDiceCount,
+        });
+      }
+      
       const cardsAfterFirst = riskPlayer?.cardsHeld ?? 0;
       expect(cardsAfterFirst).toBe(initialCards + 1);
       
@@ -776,6 +792,13 @@ describe("Risk Game — Attack Phase", () => {
           mockClient("player-1"),
           { from: "greenland", to: "iceland", attackerDice: 3 }
         );
+      }
+      
+      // Complete capture-move if needed
+      if (state.turnPhase === "capture-move") {
+        riskPlugin.actions.captureMove(state, mockClient("player-1"), {
+          count: state.captureDiceCount,
+        });
       }
       
       // Should still have same number of cards
@@ -1382,6 +1405,309 @@ describe("Risk Game — Integration", () => {
         const riskPlayer = state.riskPlayers.get(player.sessionId);
         expect(riskPlayer?.armiesToPlace).toBeGreaterThan(0);
       });
+    });
+  });
+
+  // ============================================================================
+  // Card Transfer on Elimination
+  // ============================================================================
+
+  describe("Card transfer on elimination", () => {
+    it("transfers cards from eliminated player to attacker", () => {
+      const state = createStartedGame(3);
+
+      // Player 2 owns only kamchatka, player 1 owns alaska with many armies
+      state.territories.forEach((territory, id) => {
+        if (id === "alaska") {
+          territory.owner = "player-1";
+          territory.armyCount = 20;
+        } else if (id === "kamchatka") {
+          territory.owner = "player-2";
+          territory.armyCount = 1;
+        } else {
+          territory.owner = "player-3";
+          territory.armyCount = 1;
+        }
+      });
+
+      state.gamePhase = "playing";
+      state.turnPhase = "attack";
+      state.currentTurn = "player-1";
+      state.earnedCardThisTurn = false;
+
+      const p2 = state.riskPlayers.get("player-2");
+      if (p2) {
+        p2.cardsHeld = 4;
+        p2.territoriesOwned = 1;
+      }
+      const p1 = state.riskPlayers.get("player-1");
+      if (p1) {
+        p1.cardsHeld = 1;
+        p1.territoriesOwned = 1;
+      }
+
+      // Attack until kamchatka is conquered
+      for (let i = 0; i < 50; i++) {
+        const territory = state.territories.get("kamchatka");
+        if (!territory || territory.owner === "player-1") break;
+        riskPlugin.actions.attack(state, mockClient("player-1"), {
+          from: "alaska",
+          to: "kamchatka",
+          attackerDice: 3,
+        });
+      }
+
+      // Complete capture-move if needed
+      if (state.turnPhase === "capture-move") {
+        riskPlugin.actions.captureMove(state, mockClient("player-1"), {
+          count: state.captureDiceCount,
+        });
+      }
+
+      const afterP1 = state.riskPlayers.get("player-1");
+      const afterP2 = state.riskPlayers.get("player-2");
+
+      expect(state.territories.get("kamchatka")?.owner).toBe("player-1");
+      // Player 1: original 1 + 1 earned + 4 transferred = 6
+      expect(afterP1?.cardsHeld).toBe(6);
+      expect(afterP2?.cardsHeld).toBe(0);
+    });
+
+    it("does not transfer cards when defender still has territories", () => {
+      const state = createStartedGame(2);
+
+      setTerritoryState(state, "alaska", "player-1", 20);
+      setTerritoryState(state, "kamchatka", "player-2", 1);
+      setTerritoryState(state, "japan", "player-2", 5);
+
+      state.gamePhase = "playing";
+      state.turnPhase = "attack";
+      state.currentTurn = "player-1";
+      state.earnedCardThisTurn = false;
+
+      const p1 = state.riskPlayers.get("player-1");
+      const p2 = state.riskPlayers.get("player-2");
+      if (p1) p1.cardsHeld = 0;
+      if (p2) {
+        p2.cardsHeld = 3;
+        p2.territoriesOwned = 2;
+      }
+
+      // Attack kamchatka until conquered
+      for (let i = 0; i < 50; i++) {
+        const territory = state.territories.get("kamchatka");
+        if (!territory || territory.owner === "player-1") break;
+        riskPlugin.actions.attack(state, mockClient("player-1"), {
+          from: "alaska",
+          to: "kamchatka",
+          attackerDice: 3,
+        });
+      }
+
+      // Complete capture-move if needed
+      if (state.turnPhase === "capture-move") {
+        riskPlugin.actions.captureMove(state, mockClient("player-1"), {
+          count: state.captureDiceCount,
+        });
+      }
+
+      expect(state.territories.get("kamchatka")?.owner).toBe("player-1");
+      expect(p2?.cardsHeld).toBe(3);
+      expect(p1?.cardsHeld).toBe(1);
+    });
+  });
+
+  // ============================================================================
+  // Capture Army Movement
+  // ============================================================================
+
+  describe("Capture army movement", () => {
+    it("enters capture-move phase when attacker has movement choice", () => {
+      const state = createStartedGame(2);
+
+      setTerritoryState(state, "alaska", "player-1", 10);
+      setTerritoryState(state, "kamchatka", "player-2", 1);
+
+      state.gamePhase = "playing";
+      state.turnPhase = "attack";
+      state.currentTurn = "player-1";
+      state.earnedCardThisTurn = false;
+
+      for (let i = 0; i < 50; i++) {
+        const territory = state.territories.get("kamchatka");
+        if (!territory || territory.owner === "player-1") break;
+        riskPlugin.actions.attack(state, mockClient("player-1"), {
+          from: "alaska",
+          to: "kamchatka",
+          attackerDice: 3,
+        });
+      }
+
+      if (state.turnPhase === "capture-move") {
+        expect(state.captureFromId).toBe("alaska");
+        expect(state.captureToId).toBe("kamchatka");
+        expect(state.captureDiceCount).toBeGreaterThanOrEqual(1);
+        expect(state.territories.get("kamchatka")?.armyCount).toBe(0);
+      }
+    });
+
+    it("captureMove action moves armies and returns to attack phase", () => {
+      const state = createStartedGame(2);
+
+      setTerritoryState(state, "alaska", "player-1", 8);
+      setTerritoryState(state, "kamchatka", "player-1", 0);
+
+      state.gamePhase = "playing";
+      state.turnPhase = "capture-move";
+      state.currentTurn = "player-1";
+      state.captureFromId = "alaska";
+      state.captureToId = "kamchatka";
+      state.captureDiceCount = 3;
+
+      const result = riskPlugin.actions.captureMove(state, mockClient("player-1"), { count: 5 });
+      expect(result.success).toBe(true);
+      expect(state.territories.get("alaska")?.armyCount).toBe(3);
+      expect(state.territories.get("kamchatka")?.armyCount).toBe(5);
+      expect(state.turnPhase).toBe("attack");
+      expect(state.captureFromId).toBe("");
+      expect(state.captureToId).toBe("");
+      expect(state.captureDiceCount).toBe(0);
+    });
+
+    it("captureMove rejects count below minimum (dice rolled)", () => {
+      const state = createStartedGame(2);
+
+      setTerritoryState(state, "alaska", "player-1", 8);
+      setTerritoryState(state, "kamchatka", "player-1", 0);
+
+      state.gamePhase = "playing";
+      state.turnPhase = "capture-move";
+      state.currentTurn = "player-1";
+      state.captureFromId = "alaska";
+      state.captureToId = "kamchatka";
+      state.captureDiceCount = 3;
+
+      const result = riskPlugin.actions.captureMove(state, mockClient("player-1"), { count: 2 });
+      expect(result.success).toBe(false);
+      expect(state.territories.get("alaska")?.armyCount).toBe(8);
+    });
+
+    it("captureMove rejects count above maximum (all but 1)", () => {
+      const state = createStartedGame(2);
+
+      setTerritoryState(state, "alaska", "player-1", 8);
+      setTerritoryState(state, "kamchatka", "player-1", 0);
+
+      state.gamePhase = "playing";
+      state.turnPhase = "capture-move";
+      state.currentTurn = "player-1";
+      state.captureFromId = "alaska";
+      state.captureToId = "kamchatka";
+      state.captureDiceCount = 3;
+
+      const result = riskPlugin.actions.captureMove(state, mockClient("player-1"), { count: 8 });
+      expect(result.success).toBe(false);
+      expect(state.territories.get("alaska")?.armyCount).toBe(8);
+    });
+
+    it("captureMove allows moving exactly the minimum", () => {
+      const state = createStartedGame(2);
+
+      setTerritoryState(state, "alaska", "player-1", 8);
+      setTerritoryState(state, "kamchatka", "player-1", 0);
+
+      state.gamePhase = "playing";
+      state.turnPhase = "capture-move";
+      state.currentTurn = "player-1";
+      state.captureFromId = "alaska";
+      state.captureToId = "kamchatka";
+      state.captureDiceCount = 3;
+
+      const result = riskPlugin.actions.captureMove(state, mockClient("player-1"), { count: 3 });
+      expect(result.success).toBe(true);
+      expect(state.territories.get("alaska")?.armyCount).toBe(5);
+      expect(state.territories.get("kamchatka")?.armyCount).toBe(3);
+    });
+
+    it("captureMove allows moving maximum (all but 1)", () => {
+      const state = createStartedGame(2);
+
+      setTerritoryState(state, "alaska", "player-1", 8);
+      setTerritoryState(state, "kamchatka", "player-1", 0);
+
+      state.gamePhase = "playing";
+      state.turnPhase = "capture-move";
+      state.currentTurn = "player-1";
+      state.captureFromId = "alaska";
+      state.captureToId = "kamchatka";
+      state.captureDiceCount = 3;
+
+      const result = riskPlugin.actions.captureMove(state, mockClient("player-1"), { count: 7 });
+      expect(result.success).toBe(true);
+      expect(state.territories.get("alaska")?.armyCount).toBe(1);
+      expect(state.territories.get("kamchatka")?.armyCount).toBe(7);
+    });
+
+    it("cannot attack during capture-move phase", () => {
+      const state = createStartedGame(2);
+
+      setTerritoryState(state, "alaska", "player-1", 8);
+      setTerritoryState(state, "kamchatka", "player-2", 3);
+
+      state.gamePhase = "playing";
+      state.turnPhase = "capture-move";
+      state.currentTurn = "player-1";
+
+      const result = riskPlugin.actions.attack(state, mockClient("player-1"), {
+        from: "alaska",
+        to: "kamchatka",
+        attackerDice: 3,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("cannot end phase during capture-move", () => {
+      const state = createStartedGame(2);
+
+      state.gamePhase = "playing";
+      state.turnPhase = "capture-move";
+      state.currentTurn = "player-1";
+
+      const result = riskPlugin.actions.endPhase(state, mockClient("player-1"), {});
+      expect(result.success).toBe(false);
+    });
+
+    it("auto-completes capture when only one valid army count", () => {
+      const state = createStartedGame(2);
+
+      // 4 armies, attacking with 3 dice: if no attacker losses, from has 4, min=3, max=3
+      setTerritoryState(state, "alaska", "player-1", 4);
+      setTerritoryState(state, "kamchatka", "player-2", 1);
+
+      state.gamePhase = "playing";
+      state.turnPhase = "attack";
+      state.currentTurn = "player-1";
+      state.earnedCardThisTurn = false;
+
+      for (let i = 0; i < 50; i++) {
+        const territory = state.territories.get("kamchatka");
+        if (!territory || territory.owner === "player-1") break;
+        const fromBefore = state.territories.get("alaska")?.armyCount ?? 0;
+        if (fromBefore <= 1) break;
+        const maxDice = Math.min(3, fromBefore - 1);
+        riskPlugin.actions.attack(state, mockClient("player-1"), {
+          from: "alaska",
+          to: "kamchatka",
+          attackerDice: maxDice,
+        });
+      }
+
+      if (state.territories.get("kamchatka")?.owner === "player-1") {
+        const fromArmies = state.territories.get("alaska")?.armyCount ?? 0;
+        const toArmies = state.territories.get("kamchatka")?.armyCount ?? 0;
+        expect(fromArmies).toBeGreaterThanOrEqual(1);
+        expect(toArmies).toBeGreaterThanOrEqual(1);
+      }
     });
   });
 });

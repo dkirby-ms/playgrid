@@ -289,8 +289,8 @@ describe("dominosLogic", () => {
       expect(getValidEnds(tile(0, 3, 6), 3, 6)).toEqual(["a", "b"]);
     });
 
-    it("returns ['a'] when both ends are the same value (avoids duplicates)", () => {
-      expect(getValidEnds(tile(0, 4, 2), 4, 4)).toEqual(["a"]);
+    it("returns ['a', 'b'] when both ends are the same value (spinner allows both arms)", () => {
+      expect(getValidEnds(tile(0, 4, 2), 4, 4)).toEqual(["a", "b"]);
     });
   });
 
@@ -807,6 +807,245 @@ describe("dominosLogic", () => {
       // Both have 5 pips — implementation picks the first one iterated
       expect(["p1", "p2"]).toContain(result.winnerId);
       expect(result.scores[result.winnerId]).toBe(5);
+    });
+  });
+
+  // ── Spinner detection ──────────────────────────────────────────────
+
+  describe("spinner detection", () => {
+    it("first tile as double creates immediate spinner", () => {
+      const state = createState();
+      placeTileOnBoard(state, tile(0, 6, 6), "a");
+
+      expect(state.spinnerTileId).toBe(0);
+      expect(state.board[0].arm).toBe("spinner");
+      expect(state.board[0].isDouble).toBe(true);
+      expect(state.openEndA).toBe(6);
+      expect(state.openEndB).toBe(6);
+      expect(state.openEndC).toBe(-1);
+      expect(state.openEndD).toBe(-1);
+    });
+
+    it("first tile as non-double does not create spinner", () => {
+      const state = createState();
+      placeTileOnBoard(state, tile(0, 5, 3), "a");
+
+      expect(state.spinnerTileId).toBe(-1);
+      expect(state.board[0].arm).toBe("");
+      expect(state.board[0].isDouble).toBe(false);
+    });
+
+    it("second double played becomes spinner mid-chain", () => {
+      const state = createState();
+      placeTileOnBoard(state, tile(0, 5, 3), "a"); // ends: 3, 5
+      placeTileOnBoard(state, tile(1, 3, 3), "a"); // double on end A → spinner
+
+      expect(state.spinnerTileId).toBe(1);
+      expect(state.board[1].arm).toBe("spinner");
+      // Previous tile retroactively assigned arm a
+      expect(state.board[0].arm).toBe("a");
+    });
+
+    it("only first double becomes spinner, subsequent doubles are regular", () => {
+      const state = createState();
+      placeTileOnBoard(state, tile(0, 5, 3), "a"); // ends: 3, 5
+      placeTileOnBoard(state, tile(1, 3, 3), "a"); // spinner, ends: 3, 5
+
+      // Play another double on end A (still 3)
+      placeTileOnBoard(state, tile(2, 3, 3), "a");
+
+      expect(state.spinnerTileId).toBe(1); // unchanged
+      expect(state.board[2].arm).toBe("a"); // regular arm, not spinner
+      expect(state.board[2].isDouble).toBe(true);
+    });
+  });
+
+  // ── Arm assignment ─────────────────────────────────────────────────
+
+  describe("arm assignment", () => {
+    it("tiles before spinner get arm a, tiles after get arm b", () => {
+      const state = createState();
+      placeTileOnBoard(state, tile(0, 5, 3), "a"); // ends: 3, 5
+      placeTileOnBoard(state, tile(1, 3, 1), "a"); // ends: 1, 5
+      placeTileOnBoard(state, tile(2, 5, 5), "b"); // spinner on end B
+      placeTileOnBoard(state, tile(3, 5, 2), "b"); // post-spinner on B
+
+      expect(state.board[0].arm).toBe("a");
+      expect(state.board[1].arm).toBe("a");
+      expect(state.board[2].arm).toBe("spinner");
+      expect(state.board[3].arm).toBe("b");
+    });
+
+    it("post-spinner tiles on end A get arm a", () => {
+      const state = createState();
+      placeTileOnBoard(state, tile(0, 6, 6), "a"); // immediate spinner, ends: 6, 6
+      placeTileOnBoard(state, tile(1, 6, 3), "a"); // post-spinner on A
+
+      expect(state.board[1].arm).toBe("a");
+      expect(state.armACount).toBe(1);
+    });
+
+    it("post-spinner tiles on end B get arm b", () => {
+      const state = createState();
+      placeTileOnBoard(state, tile(0, 6, 6), "a"); // immediate spinner, ends: 6, 6
+      placeTileOnBoard(state, tile(1, 6, 3), "b"); // post-spinner on B
+
+      expect(state.board[1].arm).toBe("b");
+      expect(state.armBCount).toBe(1);
+    });
+  });
+
+  // ── C/D activation ─────────────────────────────────────────────────
+
+  describe("C/D activation", () => {
+    it("C/D arms activate when both A and B have ≥1 tile", () => {
+      const state = createState();
+      placeTileOnBoard(state, tile(0, 4, 4), "a"); // spinner, ends: 4, 4
+      placeTileOnBoard(state, tile(1, 4, 2), "a"); // arm A, ends: 2, 4
+      expect(state.openEndC).toBe(-1); // not yet
+
+      placeTileOnBoard(state, tile(2, 4, 1), "b"); // arm B → triggers activation
+      expect(state.openEndC).toBe(4); // spinner pip value
+      expect(state.openEndD).toBe(4);
+    });
+
+    it("C/D arms stay inactive when only A has tiles", () => {
+      const state = createState();
+      placeTileOnBoard(state, tile(0, 4, 4), "a"); // spinner
+      placeTileOnBoard(state, tile(1, 4, 2), "a"); // only arm A
+
+      expect(state.armACount).toBe(1);
+      expect(state.armBCount).toBe(0);
+      expect(state.openEndC).toBe(-1);
+      expect(state.openEndD).toBe(-1);
+    });
+
+    it("C/D arms stay inactive with only one arm occupied", () => {
+      const state = createState();
+      placeTileOnBoard(state, tile(0, 4, 4), "a"); // spinner
+      placeTileOnBoard(state, tile(1, 4, 2), "b"); // only arm B
+
+      expect(state.armACount).toBe(0);
+      expect(state.armBCount).toBe(1);
+      expect(state.openEndC).toBe(-1);
+      expect(state.openEndD).toBe(-1);
+    });
+  });
+
+  // ── 4-way placement ────────────────────────────────────────────────
+
+  describe("4-way placement", () => {
+    function setupActiveFourEnds(): DominosState {
+      const state = createState();
+      placeTileOnBoard(state, tile(0, 4, 4), "a"); // spinner, ends: 4, 4
+      placeTileOnBoard(state, tile(1, 4, 2), "a"); // arm A, ends: 2, 4
+      placeTileOnBoard(state, tile(2, 4, 1), "b"); // arm B → activates C/D
+      return state;
+    }
+
+    it("can play tile on end C after activation", () => {
+      const state = setupActiveFourEnds(); // C=4, D=4
+      const success = placeTileOnBoard(state, tile(3, 4, 6), "c");
+
+      expect(success).toBe(true);
+      expect(state.openEndC).toBe(6);
+      expect(state.board[3].arm).toBe("c");
+    });
+
+    it("can play tile on end D after activation", () => {
+      const state = setupActiveFourEnds(); // C=4, D=4
+      const success = placeTileOnBoard(state, tile(3, 4, 5), "d");
+
+      expect(success).toBe(true);
+      expect(state.openEndD).toBe(5);
+      expect(state.board[3].arm).toBe("d");
+    });
+
+    it("getValidEnds returns C/D when active and matching", () => {
+      // ends: A=2, B=1, C=4, D=4; tile [4,3] matches C and D
+      const ends = getValidEnds(tile(0, 4, 3), 2, 1, 4, 4);
+      expect(ends).toContain("c");
+      expect(ends).toContain("d");
+      expect(ends).not.toContain("a");
+      expect(ends).not.toContain("b");
+    });
+
+    it("canPlayTile checks all 4 ends", () => {
+      // Tile [4,3] only matches C (=4), not A(=2), B(=1), D(=6)
+      expect(canPlayTile(tile(0, 4, 3), 2, 1, 4, 6)).toBe(true);
+    });
+
+    it("rejects play on C when C is inactive", () => {
+      const state = createState();
+      state.openEndA = 4;
+      state.openEndB = 3;
+      // openEndC defaults to -1 (inactive)
+      const success = placeTileOnBoard(state, tile(0, 4, 2), "c");
+
+      expect(success).toBe(false);
+    });
+  });
+
+  // ── Board tile fields ──────────────────────────────────────────────
+
+  describe("board tile fields", () => {
+    it("sets isDouble true for double tiles", () => {
+      const state = createState();
+      placeTileOnBoard(state, tile(0, 3, 3), "a");
+      expect(state.board[0].isDouble).toBe(true);
+    });
+
+    it("sets isDouble false for non-double tiles", () => {
+      const state = createState();
+      placeTileOnBoard(state, tile(0, 5, 3), "a");
+      expect(state.board[0].isDouble).toBe(false);
+    });
+  });
+
+  // ── Blocked round with 4 ends ──────────────────────────────────────
+
+  describe("blocked round with 4 ends", () => {
+    it("round is not blocked if a tile matches C or D end", () => {
+      const state = createState();
+      state.openEndA = 3;
+      state.openEndB = 5;
+      state.openEndC = 4;
+      state.openEndD = 4;
+      addPlayer(state, "p1", 0, [tile(0, 4, 1)]); // matches C/D
+      addPlayer(state, "p2", 1, [tile(1, 6, 6)]); // matches nothing
+
+      const hands = buildHands([
+        ["p1", [tile(0, 4, 1)]],
+        ["p2", [tile(1, 6, 6)]],
+      ]);
+      expect(isRoundBlocked(state, [], hands)).toBe(false);
+    });
+
+    it("round is blocked only when no tile matches any of 4 ends", () => {
+      const state = createState();
+      state.openEndA = 3;
+      state.openEndB = 5;
+      state.openEndC = 4;
+      state.openEndD = 2;
+      addPlayer(state, "p1", 0, [tile(0, 1, 0)]); // matches none of 3,5,4,2
+      addPlayer(state, "p2", 1, [tile(1, 6, 6)]); // matches none
+
+      const hands = buildHands([
+        ["p1", [tile(0, 1, 0)]],
+        ["p2", [tile(1, 6, 6)]],
+      ]);
+      expect(isRoundBlocked(state, [], hands)).toBe(true);
+    });
+  });
+
+  // ── getValidEnds — spinner edge case ───────────────────────────────
+
+  describe("getValidEnds — spinner edge case", () => {
+    it("returns both A and B when spinner has same value on both ends", () => {
+      // When spinner is placed, openEndA = openEndB = spinner pip value
+      const ends = getValidEnds(tile(0, 4, 2), 4, 4);
+      expect(ends).toContain("a");
+      expect(ends).toContain("b");
     });
   });
 });
