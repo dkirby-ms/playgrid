@@ -88,3 +88,46 @@
 - `client/src/renderers/DesignTokens.ts` (shared color system)
 
 **Status:** Complete. Design foundation ready for game-specific sidebar customization.
+
+---
+
+## 2026-03-17: UX Gap Analysis — Figma vs. Live Implementation
+
+**Session:** Concurrent with Gately (UX redesign) and Copilot (CI fix)
+
+**Work Completed:**
+- Comprehensive gap analysis comparing new Figma export to current live implementation
+- Created docs/designs/playgrid-ux/GAP-ANALYSIS.md (canonical UX reference)
+- Identified 5 major gap areas with priority sequencing
+
+**Key Findings:**
+1. Accent color shift: violet → blue across all interactive elements (most pervasive change)
+2. Player info bars: New design introduces opponent/player bars above and below game board
+3. Lobby overhaul: Game tiles become photo cards (7 types, up from 3), Active Games/Online Players get avatar-based card treatment
+4. Dominos board: Emerald felt background replaces dark canvas
+5. New games designed: Catan, Scrabble, Hungry Hippos (need implementation)
+
+**Priority Roadmap:**
+- **P0:** Lobby (entry point, game tiles, active games, online players, shared header)
+- **P1:** Dominos alignment (green board, player bars, selection color, empty state)
+- **P2:** Existing game refreshes (Checkers, Backgammon, Risk — player bars, colors, sidebar alignment)
+- **P3:** New games (Catan, Scrabble, Hungry Hippos)
+
+**Action Items:**
+- Gately: Use GAP-ANALYSIS.md as implementation spec (started P0/P1)
+- Team: Review accent color shift (violet → blue) impact on brand
+- Team: Decide on Activity Feed presence in lobby (in current design, absent in new)
+
+**User Directives Captured:**
+- Universal design pipeline: Figma → React export → PixiJS conversion + shadcn for UI
+- Iterative workflow: Design updates happen over time; renderers must incorporate changes
+- Figma exports gitignored; reference-only, never committed
+
+**Files Created:**
+- docs/designs/playgrid-ux/GAP-ANALYSIS.md
+
+**Impact:**
+- Gately's UX redesign PR #143 informed by this analysis
+- Design-first workflow now canonical for all future games
+- Clear prioritization prevents scope creep
+

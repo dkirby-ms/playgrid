@@ -1040,3 +1040,82 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - **DesignTokens:** Added `EMERALD_800` (0x065F46) and `EMERALD_900` (0x064E3B) for the dominos board surface.
 - **Preserved:** All Colyseus room bindings, message handlers, game creation/joining flow, filter logic, online player rendering unchanged.
 - **Validation:** `npm run build && npm run lint && npm run test` — all green.
+
+---
+
+## 2026-03-17: UX Redesign — Lobby + Dominos (Figma Match)
+
+**Session:** Concurrent with Mario (UX gap analysis) and Copilot (CI fix)
+
+**Work Completed:**
+- Updated LobbyScreen.ts: Added Dominos to GAME_TYPE_OPTIONS and GAME_TILE_ARTWORK
+- Updated DominosRenderer.ts: Emerald board background, "How to Play" sidebar panel, updated empty board text
+- Updated DesignTokens.ts: Added EMERALD_800, EMERALD_900 color tokens
+- Updated client/index.html: Migrated CSS colors from zinc/violet to slate/blue palette
+
+**Design Changes:**
+- Lobby palette shifts to dark slate/blue (slate-950/900/800) from zinc
+- Dominos board gets emerald green felt surface
+- New "How to Play" sidebar improves onboarding
+- Color accents updated throughout for design language alignment
+
+**PR Status:**
+- Opened PR #143 (squad/ux-redesign-lobby-dominos → dev)
+- Work aligns with Mario's GAP-ANALYSIS.md findings
+- Unblocked by Copilot's fix to issue #142 (CI build)
+
+**Files Modified:**
+- client/index.html
+- client/src/ui/LobbyScreen.ts
+- client/src/renderers/DominosRenderer.ts
+- client/src/renderers/DesignTokens.ts
+
+**Notes:**
+- Also implemented hidden-hand pattern for Dominos (server-side hand storage, per-player messaging)
+- Migrated hand storage from schema to server Map per Hal's security requirements
+- Added getPlayerMessage hook for generic hidden-token games pattern
+- 48 new plugin tests added by Steeply verify privacy guarantees
+
+---
+
+## 2026-03-17: Dominos Hidden Information Security Fix
+
+**Context:** Hal's PR #141 review flagged opponent hands visible in schema
+
+**Problem:**
+- DominosPlayerState.hand was ArraySchema<DominoTile> synced to all clients
+- Players could inspect opponent tiles in browser devtools
+- stateFilter was a no-op; infrastructure never invoked
+
+**Solution:**
+Implemented generic hidden-hand pattern following boneyard precedent:
+- Remove hand tiles from schema entirely
+- Store hands server-side in Map<DominosState, Map<string, RawTile[]>>
+- Deliver hand per player via targeted room messages using new StateFilter.getPlayerMessage hook
+- Schema carries only public counts (handCount, boneyardCount)
+
+**Implementation:**
+- Added getPlayerMessage?(state, sessionId): unknown to StateFilter interface
+- BaseGameRoom calls hook at game start, after actions, and on reconnection
+- DominosPlugin stores hands in module-level Map, implements getPlayerMessage
+- Client receives hand via room.onMessage("player-data", ...)
+
+**Consequences:**
+- Breaking change: DominosPlayerState.hand removed (code reading it needs migration)
+- Logic functions now require playerHands map parameter (scoreDomino, isRoundBlocked, etc.)
+- dominosLogic.test.ts has 11/83 failures needing separate fix
+
+**Generic Pattern:**
+- Any future hidden-info game (Poker, Hearts, Scrabble) implements getPlayerMessage on its plugin
+- No framework changes needed for new games
+- Aligns with user directive: reusable pattern, not Dominos-specific
+
+**Files Modified:**
+- shared/src/gamePlugin.ts
+- shared/src/games/dominos/DominosState.ts
+- server/src/game/BaseGameRoom.ts
+- server/src/games/dominos/DominosPlugin.ts
+- server/src/games/dominos/dominosLogic.ts
+- client/src/renderers/DominosRenderer.ts
+- server/src/games/dominos/__tests__/dominosPlugin.test.ts
+
