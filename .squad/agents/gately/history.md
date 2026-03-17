@@ -1017,3 +1017,17 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - **Validation:** `npm run build && npm run lint` — all green.
 
 **PR #141:** squad/124-dominos → dev. Ready for review with Pemulis (schema/plugin) and Steeply (tests).
+
+## Learnings
+
+### 2026-03-17: Hidden-hand security fix for Dominos (Hal's PR #141 review)
+
+- **Security issue**: `DominosPlayerState.hand` (ArraySchema<DominoTile>) was synced to ALL clients via Colyseus schema. Any player could see opponent tiles via browser devtools. The `stateFilter.filterForClient` was a no-op.
+- **Fix pattern — server-side hands**: Followed the existing boneyard pattern. Hands are now stored in a module-scoped `Map<DominosState, Map<string, RawTile[]>>` in DominosPlugin.ts, never synced via schema.
+- **Schema change**: Replaced `hand: ArraySchema<DominoTile>` with `handCount: number` on `DominosPlayerState`. Clients can see how many tiles opponents hold, but not which tiles.
+- **Per-client messaging**: Added `getPlayerMessage?(state, sessionId)` to the `StateFilter` interface. BaseGameRoom calls it after every successful action, after game start, and on player reconnect. Each client receives their own hand tiles via a `"player-data"` room message.
+- **Renderer changes**: DominosRenderer now listens for `"player-data"` messages to populate the local player's hand. Opponent hand counts come from schema `handCount`. Also fixed `room.send()` format — was sending `"action"` message type which didn't match BaseGameRoom's per-action-type registration.
+- **Logic function signatures**: `isRoundBlocked`, `resolveBlockedRound`, `scoreDomino` now accept a `Map<string, RawTile[]>` parameter. `removeTileFromHand` now works on `RawTile[]` instead of schema ArraySchema.
+- **Exported test helpers**: `getPlayerHand`, `setPlayerHand`, `getPlayerHands` exported from DominosPlugin.ts for test setup.
+- **Key insight**: Colyseus schema auto-syncs everything to all clients. The ONLY way to keep data hidden is to NOT put it in the schema. Module-scoped Maps keyed by state instance work well for this.
+- **Validation:** `npm run build && npm run lint && npm run test` — all green (0 errors, 382 tests pass, 12 todo).

@@ -20,8 +20,6 @@ import {
   scoreDomino,
   shuffle,
   tilesPerPlayer,
-  toRawTile,
-  toSchemaTile,
   type PlayEnd,
   type RawTile,
 } from "./dominosLogic.js";
@@ -57,6 +55,36 @@ function setBoneyard(state: DominosState, tiles: RawTile[]): void {
 
 function clearBoneyard(state: DominosState): void {
   boneyards.delete(state);
+}
+
+// ── Server-side player hands (not synced to clients) ─────────────────
+
+const playerHandsMap = new Map<DominosState, Map<string, RawTile[]>>();
+
+/** Get or create the hands map for a game state. */
+export function getPlayerHands(state: DominosState): Map<string, RawTile[]> {
+  let hands = playerHandsMap.get(state);
+  if (!hands) {
+    hands = new Map();
+    playerHandsMap.set(state, hands);
+  }
+  return hands;
+}
+
+/** Get a single player's server-side hand. */
+export function getPlayerHand(state: DominosState, sessionId: string): RawTile[] {
+  return getPlayerHands(state).get(sessionId) ?? [];
+}
+
+/** Set a player's server-side hand and sync handCount on the schema. */
+export function setPlayerHand(state: DominosState, sessionId: string, tiles: RawTile[]): void {
+  getPlayerHands(state).set(sessionId, tiles);
+  const ps = state.playerStates.get(sessionId);
+  if (ps) ps.handCount = tiles.length;
+}
+
+function clearPlayerHands(state: DominosState): void {
+  playerHandsMap.delete(state);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -122,27 +150,26 @@ export const dominosPlugin: GamePlugin<DominosState> = {
       const activePlayers = getActivePlayers(state);
       const dealCount = tilesPerPlayer(activePlayers.length);
 
-      // Deal tiles to each player
-      const playerHands = new Map<string, RawTile[]>();
+      // Deal tiles to each player (server-side only)
+      const hands = getPlayerHands(state);
       let cursor = 0;
       for (const sessionId of activePlayers) {
         const ps = new DominosPlayerState();
         const hand: RawTile[] = [];
         for (let i = 0; i < dealCount; i += 1) {
-          const raw = allTiles[cursor];
-          ps.hand.push(toSchemaTile(raw));
-          hand.push(raw);
+          hand.push(allTiles[cursor]);
           cursor += 1;
         }
+        ps.handCount = hand.length;
         state.playerStates.set(sessionId, ps);
-        playerHands.set(sessionId, hand);
+        hands.set(sessionId, hand);
       }
 
       // Remaining tiles become the boneyard
       setBoneyard(state, allTiles.slice(cursor));
 
       // Determine who starts
-      const startingPlayer = determineStartingPlayer(playerHands);
+      const startingPlayer = determineStartingPlayer(hands);
       state.currentTurn = startingPlayer;
     },
 
@@ -170,6 +197,7 @@ export const dominosPlugin: GamePlugin<DominosState> = {
     onGameEnd(state) {
       state.phase = "ended";
       clearBoneyard(state);
+      clearPlayerHands(state);
     },
   },
 
@@ -184,15 +212,12 @@ export const dominosPlugin: GamePlugin<DominosState> = {
         return { success: false, error: "Player not found." };
       }
 
-      // Find tile in hand
-      const schemaT = Array.from(playerState.hand).find(
-        (t) => t.id === payload.tileId,
-      );
-      if (!schemaT) {
+      // Find tile in server-side hand
+      const hand = getPlayerHand(state, client.sessionId);
+      const raw = hand.find((t) => t.id === payload.tileId);
+      if (!raw) {
         return { success: false, error: "Tile not in hand." };
       }
-
-      const raw = toRawTile(schemaT);
 
       // Validate the tile can go on the chosen end
       if (!canPlayTile(raw, state.openEndA, state.openEndB)) {
@@ -209,12 +234,14 @@ export const dominosPlugin: GamePlugin<DominosState> = {
         return { success: false, error: "Failed to place tile." };
       }
 
-      removeTileFromHand(playerState, payload.tileId);
+      removeTileFromHand(hand, payload.tileId);
+      setPlayerHand(state, client.sessionId, hand);
       resetPassFlags(state);
 
       // Check if player emptied their hand → domino!
-      if (playerState.hand.length === 0) {
-        const scores = scoreDomino(state, client.sessionId);
+      if (hand.length === 0) {
+        const allHands = getPlayerHands(state);
+        const scores = scoreDomino(state, client.sessionId, allHands);
         buildScoreResult(state, client.sessionId, scores);
         return { success: true, endsTurn: true, endsGame: true };
       }
@@ -228,7 +255,7 @@ export const dominosPlugin: GamePlugin<DominosState> = {
         return { success: false, error: "Player not found." };
       }
 
-      const hand = Array.from(playerState.hand).map(toRawTile);
+      const hand = getPlayerHand(state, client.sessionId);
       if (hasPlayableTile(hand, state.openEndA, state.openEndB)) {
         return {
           success: false,
@@ -247,7 +274,8 @@ export const dominosPlugin: GamePlugin<DominosState> = {
       // Draw one tile
       const drawn = boneyard.pop()!;
       setBoneyard(state, boneyard);
-      playerState.hand.push(toSchemaTile(drawn));
+      hand.push(drawn);
+      setPlayerHand(state, client.sessionId, hand);
 
       // If the drawn tile is playable, the player still has their turn
       // If not, they keep drawing (client sends another draw) or pass
@@ -261,7 +289,7 @@ export const dominosPlugin: GamePlugin<DominosState> = {
         return { success: false, error: "Player not found." };
       }
 
-      const hand = Array.from(playerState.hand).map(toRawTile);
+      const hand = getPlayerHand(state, client.sessionId);
       if (hasPlayableTile(hand, state.openEndA, state.openEndB)) {
         return {
           success: false,
@@ -280,8 +308,9 @@ export const dominosPlugin: GamePlugin<DominosState> = {
       playerState.passed = true;
 
       // Check if round is now blocked
-      if (isRoundBlocked(state, boneyard)) {
-        const { winnerId, scores } = resolveBlockedRound(state);
+      const allHands = getPlayerHands(state);
+      if (isRoundBlocked(state, boneyard, allHands)) {
+        const { winnerId, scores } = resolveBlockedRound(state, allHands);
         buildScoreResult(state, winnerId, scores);
         return { success: true, endsTurn: true, endsGame: true };
       }
@@ -292,10 +321,13 @@ export const dominosPlugin: GamePlugin<DominosState> = {
 
   conditions: {
     checkGameEnd(state): GameResult | null {
+      const allHands = getPlayerHands(state);
+
       // Check domino (empty hand)
-      for (const [sessionId, ps] of state.playerStates.entries()) {
-        if (ps.hand.length === 0) {
-          const scores = scoreDomino(state, sessionId);
+      for (const sessionId of state.playerStates.keys()) {
+        const hand = allHands.get(sessionId) ?? [];
+        if (hand.length === 0) {
+          const scores = scoreDomino(state, sessionId, allHands);
           return {
             type: "win",
             winnerId: sessionId,
@@ -306,8 +338,8 @@ export const dominosPlugin: GamePlugin<DominosState> = {
 
       // Check blocked round
       const boneyard = getBoneyard(state);
-      if (isRoundBlocked(state, boneyard)) {
-        const { winnerId, scores } = resolveBlockedRound(state);
+      if (isRoundBlocked(state, boneyard, allHands)) {
+        const { winnerId, scores } = resolveBlockedRound(state, allHands);
         return {
           type: "win",
           winnerId,
@@ -324,7 +356,7 @@ export const dominosPlugin: GamePlugin<DominosState> = {
       const playerState = state.playerStates.get(client.sessionId);
       if (!playerState) return false;
 
-      const hand = Array.from(playerState.hand).map(toRawTile);
+      const hand = getPlayerHand(state, client.sessionId);
 
       if (actionType === "play") {
         if (!isPlayPayload(payload)) return false;
@@ -358,25 +390,18 @@ export const dominosPlugin: GamePlugin<DominosState> = {
   stateFilter: {
     filterForClient(
       state: DominosState,
-      sessionId: string | null,
-      isSpectator: boolean,
+      _sessionId: string | null,
+      _isSpectator: boolean,
     ): Partial<DominosState> {
-      // Spectators and null sessionId see tile counts but not actual tiles
-      // Players see only their own hand tiles; opponents show count only
-      //
-      // We return a partial — the base room framework handles merging.
-      // Hands are the only hidden information; board/scores/openEnds are public.
-      if (isSpectator || sessionId === null) {
-        // Replace all hands with empty (clients see hand count via playerStates)
-        return state;
-      }
-
-      // For a playing client, the full state is fine because Colyseus
-      // schema filtering is handled at the transport layer. The stateFilter
-      // here annotates what should be hidden. Since the boneyard is already
-      // server-only (not in the schema), the only hidden info is opponent hands.
-      // Return as-is; the renderer should only display the current player's hand.
+      // Hands are no longer in the schema — nothing to filter.
+      // Board, scores, openEnds, handCounts are all public.
       return state;
+    },
+
+    getPlayerMessage(state: DominosState, sessionId: string): unknown {
+      if (!state.playerStates.has(sessionId)) return null;
+      const hand = getPlayerHand(state, sessionId);
+      return { type: "hand", tiles: hand };
     },
   },
 };

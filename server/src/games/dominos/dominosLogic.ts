@@ -1,7 +1,6 @@
 import {
   BoardTile,
   DominoTile,
-  DominosPlayerState,
   DominosState,
 } from "@eschaton/shared";
 
@@ -216,17 +215,16 @@ export function placeTileOnBoard(
 }
 
 /**
- * Remove a tile from a player's hand by tile id.
+ * Remove a tile from a server-side hand by tile id.
+ * Mutates the array in place and returns the removed tile, or null.
  */
 export function removeTileFromHand(
-  playerState: DominosPlayerState,
+  hand: RawTile[],
   tileId: number,
-): DominoTile | null {
-  const index = Array.from(playerState.hand).findIndex((t) => t.id === tileId);
+): RawTile | null {
+  const index = hand.findIndex((t) => t.id === tileId);
   if (index === -1) return null;
-  const removed = playerState.hand[index];
-  playerState.hand.splice(index, 1);
-  return removed;
+  return hand.splice(index, 1)[0];
 }
 
 /**
@@ -251,11 +249,12 @@ export function getValidEnds(
 export function isRoundBlocked(
   state: DominosState,
   boneyard: RawTile[],
+  playerHands: Map<string, RawTile[]>,
 ): boolean {
   if (boneyard.length > 0) return false;
 
-  for (const ps of state.playerStates.values()) {
-    const hand = Array.from(ps.hand).map(toRawTile);
+  for (const sessionId of state.playerStates.keys()) {
+    const hand = playerHands.get(sessionId) ?? [];
     if (hasPlayableTile(hand, state.openEndA, state.openEndB)) return false;
   }
 
@@ -269,13 +268,15 @@ export function isRoundBlocked(
  */
 export function resolveBlockedRound(
   state: DominosState,
+  playerHands: Map<string, RawTile[]>,
 ): { winnerId: string; scores: Record<string, number> } {
   let lowestTotal = Infinity;
   let winnerId = "";
   const totals: Record<string, number> = {};
 
-  for (const [sessionId, ps] of state.playerStates.entries()) {
-    const total = handPipTotal(Array.from(ps.hand).map(toRawTile));
+  for (const sessionId of state.playerStates.keys()) {
+    const hand = playerHands.get(sessionId) ?? [];
+    const total = handPipTotal(hand);
     totals[sessionId] = total;
     if (total < lowestTotal) {
       lowestTotal = total;
@@ -306,13 +307,15 @@ export function resolveBlockedRound(
 export function scoreDomino(
   state: DominosState,
   winnerId: string,
+  playerHands: Map<string, RawTile[]>,
 ): Record<string, number> {
   let winnerScore = 0;
   const scores: Record<string, number> = {};
 
-  for (const [sessionId, ps] of state.playerStates.entries()) {
+  for (const sessionId of state.playerStates.keys()) {
     if (sessionId !== winnerId) {
-      const total = handPipTotal(Array.from(ps.hand).map(toRawTile));
+      const hand = playerHands.get(sessionId) ?? [];
+      const total = handPipTotal(hand);
       winnerScore += total;
       scores[sessionId] = 0;
     }

@@ -1,7 +1,6 @@
 import type { Room } from "@colyseus/sdk";
 import type {
   BoardTile,
-  DominosPlayerState,
   DominosState,
   GameResult,
 } from "@eschaton/shared";
@@ -178,6 +177,7 @@ export class DominosRenderer implements GameRenderer {
   private turnClockSeconds: number | null = null;
   private showTurnClock = false;
   private unsubscribeGameEnded: (() => void) | null = null;
+  private unsubscribePlayerData: (() => void) | null = null;
 
   private phase = "waiting";
   private currentTurn = "";
@@ -187,8 +187,11 @@ export class DominosRenderer implements GameRenderer {
   private openEndB = -1;
   private boneyardCount = 0;
   private lastPlayedTileId = -1;
-  private playerStates = new Map<string, { hand: HandTile[]; score: number; passed: boolean }>();
+  private playerStates = new Map<string, { handCount: number; score: number; passed: boolean }>();
   private gameResult: GameResult | null = null;
+
+  // Local player's hand received via server message (hidden from other clients)
+  private myHand: HandTile[] = [];
 
   // Interaction
   private selectedTileId: number | null = null;
@@ -298,6 +301,7 @@ export class DominosRenderer implements GameRenderer {
     this.requestLeave = null;
     this.players.clear();
     this.playerStates.clear();
+    this.myHand = [];
     this.boardTiles = [];
     this.selectedTileId = null;
     this.choosingEnd = false;
@@ -322,11 +326,20 @@ export class DominosRenderer implements GameRenderer {
       this.gameResult = result;
       this.redrawAll();
     });
+    this.unsubscribePlayerData = this.room.onMessage<{ type: string; tiles: HandTile[] }>("player-data", (data) => {
+      if (data?.type === "hand" && Array.isArray(data.tiles)) {
+        this.myHand = data.tiles.map((t) => ({ id: t.id, highPips: t.highPips, lowPips: t.lowPips }));
+        this.syncSelection();
+        this.redrawAll();
+      }
+    });
   }
 
   private unsubscribeFromRoomEvents(): void {
     this.unsubscribeGameEnded?.();
     this.unsubscribeGameEnded = null;
+    this.unsubscribePlayerData?.();
+    this.unsubscribePlayerData = null;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -368,12 +381,12 @@ export class DominosRenderer implements GameRenderer {
 
     this.playerStates.clear();
     if (s?.playerStates) {
-      s.playerStates.forEach((ps: DominosPlayerState, key: string) => {
-        const hand: HandTile[] = [];
-        ps.hand?.forEach((t) => {
-          hand.push({ id: t.id, highPips: t.highPips, lowPips: t.lowPips });
+      s.playerStates.forEach((ps, key: string) => {
+        this.playerStates.set(key, {
+          handCount: typeof ps.handCount === "number" ? ps.handCount : 0,
+          score: ps.score,
+          passed: ps.passed,
         });
-        this.playerStates.set(key, { hand, score: ps.score, passed: ps.passed });
       });
     }
   }
@@ -464,14 +477,14 @@ export class DominosRenderer implements GameRenderer {
   private sendPlay(tileId: number, end: "a" | "b"): void {
     this.selectedTileId = null;
     this.choosingEnd = false;
-    this.room?.send("action", { type: "play", tileId, end });
+    this.room?.send("play", { tileId, end });
     this.redrawAll();
   }
 
   private sendAction(type: "draw" | "pass"): void {
     this.selectedTileId = null;
     this.choosingEnd = false;
-    this.room?.send("action", { type });
+    this.room?.send(type, {});
     this.redrawAll();
   }
 
@@ -725,7 +738,7 @@ export class DominosRenderer implements GameRenderer {
       }
       const player = this.players.get(sessionId);
       const name = player?.displayName ?? "Opponent";
-      const count = ps.hand.length;
+      const count = ps.handCount;
 
       // Name label
       const nameText = new Text({
@@ -841,7 +854,7 @@ export class DominosRenderer implements GameRenderer {
       playerRows.push(
         `<div class="sidebar-player-row">
           <span class="sidebar-stat-label">${turnDot}${escapeHtml(p.displayName)}${passedLabel}</span>
-          <span class="sidebar-stat-value">Score: ${ps?.score ?? 0} • Hand: ${ps?.hand.length ?? "?"}</span>
+          <span class="sidebar-stat-value">Score: ${ps?.score ?? 0} • Hand: ${ps?.handCount ?? "?"}</span>
         </div>`,
       );
     });
@@ -962,10 +975,6 @@ export class DominosRenderer implements GameRenderer {
   }
 
   private getMyHand(): HandTile[] {
-    const sid = this.getMySessionId();
-    if (!sid) {
-      return [];
-    }
-    return this.playerStates.get(sid)?.hand ?? [];
+    return this.myHand;
   }
 }

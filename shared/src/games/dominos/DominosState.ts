@@ -42,19 +42,20 @@ defineTypes(BoardTile, {
 });
 
 export class DominosPlayerState extends Schema {
-  declare hand: ArraySchema<DominoTile>;
+  /** Number of tiles in this player's hand (actual tiles are server-side only) */
+  declare handCount: number;
   declare score: number;
   declare passed: boolean;
 
   constructor() {
     super();
-    this.hand = new ArraySchema<DominoTile>();
+    this.handCount = 0;
     this.score = 0;
     this.passed = false;
   }
 }
 defineTypes(DominosPlayerState, {
-  hand: [DominoTile],
+  handCount: "number",
   score: "number",
   passed: "boolean",
 });

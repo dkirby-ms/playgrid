@@ -129,6 +129,7 @@ export class BaseGameRoom extends Room {
       if (wasDisconnected) {
         this.resumeTurnTimerFor(client.sessionId);
         this.plugin.lifecycle.onPlayerReconnect?.(this.state, client);
+        this.sendPlayerMessage(client);
         trackEvent("player_reconnected", {
           gameType: this.plugin.name,
           roomId: this.roomId,
@@ -347,6 +348,8 @@ export class BaseGameRoom extends Room {
       return false;
     }
 
+    this.broadcastPlayerMessages();
+
     const gameResult = this.plugin.conditions.checkGameEnd(this.state);
     if (result.endsGame || gameResult) {
       await this.endGame(gameResult ?? this.createFallbackGameResult());
@@ -387,6 +390,7 @@ export class BaseGameRoom extends Room {
     this.state.currentTurn = this.turnManager.getCurrentPlayer();
     this.state.turnNumber = this.turnManager.getTurnNumber();
     this.updateTurnTimeRemaining();
+    this.broadcastPlayerMessages();
     this.queueCpuTurnIfNeeded();
     trackEvent("game_started", {
       gameType: this.plugin.name,
@@ -827,5 +831,27 @@ export class BaseGameRoom extends Room {
     }
 
     return `Player ${playerIndex + 1}`;
+  }
+
+  private broadcastPlayerMessages() {
+    const getMsg = this.plugin.stateFilter?.getPlayerMessage;
+    if (!getMsg) return;
+
+    for (const client of this.clients) {
+      const msg = getMsg(this.state, client.sessionId);
+      if (msg !== null && msg !== undefined) {
+        client.send("player-data", msg);
+      }
+    }
+  }
+
+  private sendPlayerMessage(client: Client) {
+    const getMsg = this.plugin.stateFilter?.getPlayerMessage;
+    if (!getMsg) return;
+
+    const msg = getMsg(this.state, client.sessionId);
+    if (msg !== null && msg !== undefined) {
+      client.send("player-data", msg);
+    }
   }
 }

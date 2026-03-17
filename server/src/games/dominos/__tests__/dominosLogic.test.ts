@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  BoardTile,
   DominoTile,
   DominosPlayerState,
   DominosState,
@@ -59,10 +58,13 @@ function addPlayer(
   state.players.set(sessionId, player);
 
   const ps = new DominosPlayerState();
-  for (const raw of tiles) {
-    ps.hand.push(toSchemaTile(raw));
-  }
+  ps.handCount = tiles.length;
   state.playerStates.set(sessionId, ps);
+}
+
+/** Build a playerHands map from session IDs and tiles. */
+function buildHands(entries: [string, RawTile[]][]): Map<string, RawTile[]> {
+  return new Map(entries);
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -438,7 +440,12 @@ describe("dominosLogic", () => {
       // Opponent 2: [6,1] + [2,2] = 7 + 4 = 11 pips
       addPlayer(state, "opp2", 2, [tile(1, 6, 1), tile(2, 2, 2)]);
 
-      const scores = scoreDomino(state, "winner");
+      const hands = buildHands([
+        ["winner", []],
+        ["opp1", [tile(0, 5, 3)]],
+        ["opp2", [tile(1, 6, 1), tile(2, 2, 2)]],
+      ]);
+      const scores = scoreDomino(state, "winner", hands);
 
       expect(scores["winner"]).toBe(19); // 8 + 11
       expect(scores["opp1"]).toBe(0);
@@ -450,7 +457,11 @@ describe("dominosLogic", () => {
       addPlayer(state, "winner", 0, []);
       addPlayer(state, "opp", 1, [tile(0, 0, 0)]);
 
-      const scores = scoreDomino(state, "winner");
+      const hands = buildHands([
+        ["winner", []],
+        ["opp", [tile(0, 0, 0)]],
+      ]);
+      const scores = scoreDomino(state, "winner", hands);
       expect(scores["winner"]).toBe(0);
       expect(scores["opp"]).toBe(0);
     });
@@ -465,7 +476,8 @@ describe("dominosLogic", () => {
       state.openEndB = 5;
       addPlayer(state, "p1", 0, [tile(0, 1, 0)]); // can't play
 
-      expect(isRoundBlocked(state, [tile(99, 6, 6)])).toBe(false);
+      const hands = buildHands([["p1", [tile(0, 1, 0)]]]);
+      expect(isRoundBlocked(state, [tile(99, 6, 6)], hands)).toBe(false);
     });
 
     it("returns false when a player has a playable tile", () => {
@@ -475,7 +487,11 @@ describe("dominosLogic", () => {
       addPlayer(state, "p1", 0, [tile(0, 3, 1)]); // can play on end A
       addPlayer(state, "p2", 1, [tile(1, 6, 6)]); // can't play
 
-      expect(isRoundBlocked(state, [])).toBe(false);
+      const hands = buildHands([
+        ["p1", [tile(0, 3, 1)]],
+        ["p2", [tile(1, 6, 6)]],
+      ]);
+      expect(isRoundBlocked(state, [], hands)).toBe(false);
     });
 
     it("returns true when no player can play and boneyard is empty", () => {
@@ -485,7 +501,11 @@ describe("dominosLogic", () => {
       addPlayer(state, "p1", 0, [tile(0, 1, 0)]);
       addPlayer(state, "p2", 1, [tile(1, 6, 6)]);
 
-      expect(isRoundBlocked(state, [])).toBe(true);
+      const hands = buildHands([
+        ["p1", [tile(0, 1, 0)]],
+        ["p2", [tile(1, 6, 6)]],
+      ]);
+      expect(isRoundBlocked(state, [], hands)).toBe(true);
     });
   });
 
@@ -499,7 +519,12 @@ describe("dominosLogic", () => {
       // p3: [4,3] = 7 pips
       addPlayer(state, "p3", 2, [tile(2, 4, 3)]);
 
-      const result = resolveBlockedRound(state);
+      const hands = buildHands([
+        ["p1", [tile(0, 2, 1)]],
+        ["p2", [tile(1, 6, 5)]],
+        ["p3", [tile(2, 4, 3)]],
+      ]);
+      const result = resolveBlockedRound(state, hands);
 
       expect(result.winnerId).toBe("p1");
     });
@@ -509,7 +534,11 @@ describe("dominosLogic", () => {
       addPlayer(state, "p1", 0, [tile(0, 2, 1)]); // 3 pips
       addPlayer(state, "p2", 1, [tile(1, 6, 5)]); // 11 pips
 
-      const result = resolveBlockedRound(state);
+      const hands = buildHands([
+        ["p1", [tile(0, 2, 1)]],
+        ["p2", [tile(1, 6, 5)]],
+      ]);
+      const result = resolveBlockedRound(state, hands);
 
       expect(result.winnerId).toBe("p1");
       expect(result.scores["p1"]).toBe(11); // opponent's pips
@@ -522,7 +551,12 @@ describe("dominosLogic", () => {
       addPlayer(state, "p2", 1, [tile(1, 5, 3)]); // 8 pips
       addPlayer(state, "p3", 2, [tile(2, 6, 4)]); // 10 pips
 
-      const result = resolveBlockedRound(state);
+      const hands = buildHands([
+        ["p1", [tile(0, 1, 0)]],
+        ["p2", [tile(1, 5, 3)]],
+        ["p3", [tile(2, 6, 4)]],
+      ]);
+      const result = resolveBlockedRound(state, hands);
 
       expect(result.winnerId).toBe("p1");
       expect(result.scores["p1"]).toBe(18); // 8 + 10
@@ -684,34 +718,29 @@ describe("dominosLogic", () => {
 
   describe("removeTileFromHand", () => {
     it("removes a tile by id and returns it", () => {
-      const ps = new DominosPlayerState();
-      ps.hand.push(toSchemaTile(tile(0, 3, 1)));
-      ps.hand.push(toSchemaTile(tile(1, 5, 2)));
-      ps.hand.push(toSchemaTile(tile(2, 6, 4)));
+      const hand: RawTile[] = [tile(0, 3, 1), tile(1, 5, 2), tile(2, 6, 4)];
 
-      const removed = removeTileFromHand(ps, 1);
+      const removed = removeTileFromHand(hand, 1);
 
       expect(removed).not.toBeNull();
       expect(removed!.id).toBe(1);
-      expect(ps.hand.length).toBe(2);
+      expect(hand.length).toBe(2);
     });
 
     it("returns null when tile id is not in hand", () => {
-      const ps = new DominosPlayerState();
-      ps.hand.push(toSchemaTile(tile(0, 3, 1)));
+      const hand: RawTile[] = [tile(0, 3, 1)];
 
-      expect(removeTileFromHand(ps, 99)).toBeNull();
-      expect(ps.hand.length).toBe(1);
+      expect(removeTileFromHand(hand, 99)).toBeNull();
+      expect(hand.length).toBe(1);
     });
 
     it("handles removing the last tile from a hand", () => {
-      const ps = new DominosPlayerState();
-      ps.hand.push(toSchemaTile(tile(5, 4, 2)));
+      const hand: RawTile[] = [tile(5, 4, 2)];
 
-      const removed = removeTileFromHand(ps, 5);
+      const removed = removeTileFromHand(hand, 5);
 
       expect(removed).not.toBeNull();
-      expect(ps.hand.length).toBe(0);
+      expect(hand.length).toBe(0);
     });
   });
 
@@ -769,7 +798,11 @@ describe("dominosLogic", () => {
       addPlayer(state, "p1", 0, [tile(0, 3, 2)]); // 5 pips
       addPlayer(state, "p2", 1, [tile(1, 4, 1)]); // 5 pips
 
-      const result = resolveBlockedRound(state);
+      const hands = buildHands([
+        ["p1", [tile(0, 3, 2)]],
+        ["p2", [tile(1, 4, 1)]],
+      ]);
+      const result = resolveBlockedRound(state, hands);
 
       // Both have 5 pips — implementation picks the first one iterated
       expect(["p1", "p2"]).toContain(result.winnerId);
