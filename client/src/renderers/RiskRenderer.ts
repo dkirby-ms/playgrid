@@ -747,6 +747,56 @@ export class RiskRenderer implements GameRenderer {
     const selectedTerritory = this.selectedTerritory ? this.territoryDefMap.get(this.selectedTerritory) : null;
     const selectedCopy = selectedTerritory ? `Selected: ${selectedTerritory.name}.` : "Select a territory on the board for context.";
 
+    const isMyTurn = this.state.currentTurn === this.room?.sessionId;
+    const isCaptureMove = this.state.turnPhase === "capture-move" && isMyTurn;
+
+    if (isCaptureMove) {
+      const fromName = this.territoryDefMap.get(this.state.captureFromId)?.name ?? this.state.captureFromId;
+      const toName = this.territoryDefMap.get(this.state.captureToId)?.name ?? this.state.captureToId;
+      const fromTerritory = this.state.territories?.get(this.state.captureFromId);
+      const minMove = this.state.captureDiceCount;
+      const maxMove = Math.max(minMove, (fromTerritory?.armyCount ?? 1) - 1);
+
+      this.sidebar.updatePanel(
+        "controls",
+        `<div class="sidebar-note" style="margin-bottom:8px;">Move armies from <strong>${escapeHtml(fromName)}</strong> to <strong>${escapeHtml(toName)}</strong>.</div>
+        <div class="sidebar-button-group" style="align-items:center; gap:6px;">
+          <button type="button" class="sidebar-button sidebar-button--secondary" data-action="capture-dec" style="width:36px; min-width:36px; padding:0;">−</button>
+          <span data-role="capture-count" style="font-size:1.1em; font-weight:600; min-width:32px; text-align:center;">${minMove}</span>
+          <button type="button" class="sidebar-button sidebar-button--secondary" data-action="capture-inc" style="width:36px; min-width:36px; padding:0;">+</button>
+          <button type="button" class="sidebar-button" data-action="capture-confirm">Move</button>
+        </div>
+        <div class="sidebar-note" style="margin-top:4px;">Min: ${minMove} / Max: ${maxMove}</div>`,
+      );
+
+      let captureCount = minMove;
+      const controlsPanel = this.sidebar.getPanelContent("controls");
+      const countDisplay = controlsPanel?.querySelector('[data-role="capture-count"]');
+
+      const updateCount = (newCount: number) => {
+        captureCount = Math.max(minMove, Math.min(maxMove, newCount));
+        if (countDisplay) {
+          countDisplay.textContent = String(captureCount);
+        }
+      };
+
+      const decBtn = controlsPanel?.querySelector('[data-action="capture-dec"]');
+      if (decBtn instanceof HTMLButtonElement) {
+        decBtn.onclick = () => updateCount(captureCount - 1);
+      }
+      const incBtn = controlsPanel?.querySelector('[data-action="capture-inc"]');
+      if (incBtn instanceof HTMLButtonElement) {
+        incBtn.onclick = () => updateCount(captureCount + 1);
+      }
+      const confirmBtn = controlsPanel?.querySelector('[data-action="capture-confirm"]');
+      if (confirmBtn instanceof HTMLButtonElement) {
+        confirmBtn.onclick = () => {
+          this.room?.send("captureMove", { count: captureCount });
+        };
+      }
+      return;
+    }
+
     this.sidebar.updatePanel(
       "controls",
       `<div class="sidebar-button-group">
@@ -887,7 +937,7 @@ export class RiskRenderer implements GameRenderer {
           this.room.send("attack", {
             from: this.selectedTerritory,
             to: territoryId,
-            attackDiceCount: 3,
+            attackerDice: 3,
           });
           this.clearSelection();
         } else if (canSelectForAttack(this.state, territoryId, sessionId)) {
@@ -898,6 +948,11 @@ export class RiskRenderer implements GameRenderer {
       } else if (canSelectForAttack(this.state, territoryId, sessionId)) {
         this.setSelection(territoryId);
       }
+      return;
+    }
+
+    if (this.state.turnPhase === "capture-move") {
+      // Territory clicks disabled — army movement is handled via sidebar controls
       return;
     }
 
@@ -1030,6 +1085,7 @@ export class RiskRenderer implements GameRenderer {
       "setup-place": "Setup • Place Armies",
       reinforce: "Reinforce Phase",
       attack: "Attack Phase",
+      "capture-move": "Move Armies Into Captured Territory",
       fortify: "Fortify Phase",
     };
 

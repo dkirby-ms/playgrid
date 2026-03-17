@@ -427,3 +427,65 @@ Implemented generic hidden-hand pattern following boneyard precedent:
 - **Fix:** Added an `allDone` check in `placeArmy`: when `armiesToPlace === 0` during setup, iterate all active players; if everyone is at 0, set `gamePhase = "playing"` and `turnPhase = "reinforce"`.
 - **Lesson:** Any round-robin setup phase that ends per-player must also check the global completion condition. Never rely on a separate action for phase transitions that no player can trigger.
 - **Lesson:** Pre-existing regression test suite (`risk-setup-transition.test.ts`) was written to describe expected behavior and intentionally failed against the buggy code — a good pattern for documenting known bugs before fixes land.
+
+## 2026-03-17 — Risk Setup Phase Deadlock Fix (Completed)
+
+**Outcome:** SUCCESS — Fixed global phase transition bug, PR #144 merged, UAT green.
+
+**Work:** 
+- Added global `allDone` check in `placeArmy` handler
+- Automatically transitions from setup/placing → playing/reinforce when all players have 0 armies
+- Fixes deadlock that occurred when last player finished placing armies but turn wrapped to completed player with no valid moves
+
+**Cross-Agent Context:**
+- Steeply wrote 14 regression tests covering 2/3/6 player variants and edge cases — all passing
+- Hal reviewed and approved PR #144, codified the phase transition pattern as team standard
+
+**Files Modified:** server/src/games/risk/RiskPlugin.ts  
+**Branch:** squad/risk-setup-phase-fix (merged)  
+**PR:** #144 (merged to dev, pushed to UAT)  
+**Result:** 446 tests passing, Risk setup deadlock resolved
+
+---
+
+## 2026-03-16: Dominos Spinner & 4-Way Cross Layout — Session Complete
+
+**From:** dkirby-ms request  
+**Event:** DominosRenderer updated for spinner + 4-way board layout
+
+### Learnings
+
+- **Cross layout architecture:** When a spinner exists, board tiles are separated by `arm` field (`"spinner"`, `"a"`, `"b"`, `"c"`, `"d"`) and rendered as a cross shape. Horizontal arms (A/B) extend left/right; vertical arms (C/D) extend up/down. The entire cross scales uniformly to fit the board area.
+
+- **Tile orientation rule:** On horizontal arms, regular tiles render horizontal and doubles render vertical (crosswise). On vertical arms, regular tiles render vertical and doubles render horizontal. The spinner is always vertical since it's a double on the horizontal chain.
+
+- **End marker positioning:** Marker positions are computed during `redrawBoard` and stored in `endPositions` so `redrawEndMarkers` can read them without duplicating layout math. Only markers for `validEnds` are shown.
+
+- **Selection logic with 4 ends:** `onTileClick` checks all 4 open ends, collects valid ones into `validEnds[]`, auto-plays when exactly one match, shows markers when multiple. The `onEndChoice` / `sendPlay` methods accept `"a" | "b" | "c" | "d"`.
+
+- **Pre-spinner backward compat:** When `spinnerTileId === -1`, `redrawBoardLinear()` renders the original horizontal chain identically to the old code. Cross layout only activates when the spinner tile is set.
+
+- **Shared helper: `drawBoardTile`:** Extracted tile rendering (shadow, body, highlight, divider, pips) into a reusable method that accepts orientation. This replaced the inline drawing in both linear and cross modes.
+
+- **Key file:** `client/src/renderers/DominosRenderer.ts` — now ~1100 lines after cross layout addition.
+
+- **Schema fields consumed:** `BoardTile.arm`, `BoardTile.isDouble`, `DominosState.openEndC`, `DominosState.openEndD`, `DominosState.spinnerTileId` (from `shared/src/games/dominos/DominosState.ts`).
+
+## 2026-03-17 Session: Dominos Cross Layout Rendering (Orchestrated)
+
+**Status:** Complete ✅  
+**Depends on:** Pemulis (spinner state schema)
+
+Implemented cross-shaped board layout for Dominos 4-way spinner arms:
+- Spinner centered, arms A/B horizontal, C/D perpendicular
+- Uniform scaling for consistent tile sizes
+- Stored end positions (avoid duplicate layout math)
+- ValidEnds array for flexible marker display
+- Extracted drawBoardTile helper for reusable rendering
+
+**Decisions merged:**
+- Gately: Dominos Cross Layout Rendering Strategy
+
+**Build/Lint/Test:** ✅ All green (470 tests pass)
+
+---

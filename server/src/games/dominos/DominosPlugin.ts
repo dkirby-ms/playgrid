@@ -36,7 +36,7 @@ function isPlayPayload(payload: unknown): payload is PlayPayload {
   const candidate = payload as Record<string, unknown>;
   return (
     typeof candidate.tileId === "number" &&
-    (candidate.end === "a" || candidate.end === "b")
+    (candidate.end === "a" || candidate.end === "b" || candidate.end === "c" || candidate.end === "d")
   );
 }
 
@@ -220,11 +220,11 @@ export const dominosPlugin: GamePlugin<DominosState> = {
       }
 
       // Validate the tile can go on the chosen end
-      if (!canPlayTile(raw, state.openEndA, state.openEndB)) {
+      if (!canPlayTile(raw, state.openEndA, state.openEndB, state.openEndC, state.openEndD)) {
         return { success: false, error: "Tile does not match any open end." };
       }
 
-      const validEnds = getValidEnds(raw, state.openEndA, state.openEndB);
+      const validEnds = getValidEnds(raw, state.openEndA, state.openEndB, state.openEndC, state.openEndD);
       if (!validEnds.includes(payload.end)) {
         return { success: false, error: "Tile cannot be played on that end." };
       }
@@ -256,7 +256,7 @@ export const dominosPlugin: GamePlugin<DominosState> = {
       }
 
       const hand = getPlayerHand(state, client.sessionId);
-      if (hasPlayableTile(hand, state.openEndA, state.openEndB)) {
+      if (hasPlayableTile(hand, state.openEndA, state.openEndB, state.openEndC, state.openEndD)) {
         return {
           success: false,
           error: "You have a playable tile. You must play it.",
@@ -290,7 +290,7 @@ export const dominosPlugin: GamePlugin<DominosState> = {
       }
 
       const hand = getPlayerHand(state, client.sessionId);
-      if (hasPlayableTile(hand, state.openEndA, state.openEndB)) {
+      if (hasPlayableTile(hand, state.openEndA, state.openEndB, state.openEndC, state.openEndD)) {
         return {
           success: false,
           error: "You have a playable tile. You must play it.",
@@ -362,23 +362,25 @@ export const dominosPlugin: GamePlugin<DominosState> = {
         if (!isPlayPayload(payload)) return false;
         const tile = hand.find((t) => t.id === payload.tileId);
         if (!tile) return false;
-        if (!canPlayTile(tile, state.openEndA, state.openEndB)) return false;
+        if (!canPlayTile(tile, state.openEndA, state.openEndB, state.openEndC, state.openEndD)) return false;
         const validEnds = getValidEnds(
           tile,
           state.openEndA,
           state.openEndB,
+          state.openEndC,
+          state.openEndD,
         );
         return validEnds.includes(payload.end);
       }
 
       if (actionType === "draw") {
-        if (hasPlayableTile(hand, state.openEndA, state.openEndB)) return false;
+        if (hasPlayableTile(hand, state.openEndA, state.openEndB, state.openEndC, state.openEndD)) return false;
         const boneyard = getBoneyard(state);
         return boneyard.length > 0;
       }
 
       if (actionType === "pass") {
-        if (hasPlayableTile(hand, state.openEndA, state.openEndB)) return false;
+        if (hasPlayableTile(hand, state.openEndA, state.openEndB, state.openEndC, state.openEndD)) return false;
         const boneyard = getBoneyard(state);
         return boneyard.length === 0;
       }

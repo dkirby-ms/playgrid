@@ -39,7 +39,7 @@ defineTypes(RiskPlayerState, {
   armiesToPlace: "number",
 });
 
-export type TurnPhase = "setup-pick" | "setup-place" | "reinforce" | "attack" | "fortify";
+export type TurnPhase = "setup-pick" | "setup-place" | "reinforce" | "attack" | "capture-move" | "fortify";
 export type GamePhase = "setup" | "playing";
 
 export class RiskState extends BaseGameState {
@@ -50,6 +50,9 @@ export class RiskState extends BaseGameState {
   declare setupTerritoryIndex: number;
   declare cardTradeInCount: number;
   declare earnedCardThisTurn: boolean;
+  declare captureFromId: string;
+  declare captureToId: string;
+  declare captureDiceCount: number;
 
   constructor() {
     super();
@@ -60,6 +63,9 @@ export class RiskState extends BaseGameState {
     this.setupTerritoryIndex = 0;
     this.cardTradeInCount = 0;
     this.earnedCardThisTurn = false;
+    this.captureFromId = "";
+    this.captureToId = "";
+    this.captureDiceCount = 0;
   }
 }
 
@@ -71,4 +77,7 @@ defineTypes(RiskState, {
   setupTerritoryIndex: "number",
   cardTradeInCount: "number",
   earnedCardThisTurn: "boolean",
+  captureFromId: "string",
+  captureToId: "string",
+  captureDiceCount: "number",
 });
