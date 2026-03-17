@@ -114,7 +114,7 @@ function getPlayerColorFromPlayerIndex(playerIndex: number): BackgammonColor | n
   return null;
 }
 
-function getAvailableDice(dice: number[], usedDice: boolean[]): number[] {
+function getAvailableDice(dice: number[], usedDice: boolean[], doublesMovesUsed = 0): number[] {
   const [die1 = 0, die2 = 0] = dice;
   const [used1 = false, used2 = false] = usedDice;
 
@@ -123,8 +123,7 @@ function getAvailableDice(dice: number[], usedDice: boolean[]): number[] {
   }
 
   if (die1 === die2) {
-    const usedCount = (used1 ? 1 : 0) + (used2 ? 1 : 0);
-    const remainingCount = Math.max(0, 4 - (usedCount * 2));
+    const remainingCount = Math.max(0, 4 - doublesMovesUsed);
     return Array.from({ length: remainingCount }, () => die1);
   }
 
@@ -378,6 +377,7 @@ export class BackgammonRenderer implements GameRenderer {
   private redBorneOff = 0;
   private dice = [0, 0];
   private usedDice = [false, false];
+  private doublesMovesUsed = 0;
   private phase = "waiting";
   private currentTurn = "";
   private players = new Map<string, PlayerSnapshot>();
@@ -1192,6 +1192,7 @@ export class BackgammonRenderer implements GameRenderer {
     }
     this.dice = newDice;
     this.usedDice = this.parseUsedDice(nextState);
+    this.doublesMovesUsed = typeof nextState?.doublesMovesUsed === "number" ? nextState.doublesMovesUsed : 0;
     this.phase = typeof nextState?.phase === "string" ? nextState.phase : "waiting";
     this.currentTurn = typeof nextState?.currentTurn === "string" ? nextState.currentTurn : "";
     this.players = this.parsePlayers(nextState);
@@ -1355,7 +1356,7 @@ export class BackgammonRenderer implements GameRenderer {
       return [];
     }
 
-    const availableDice = getAvailableDice(this.dice, this.usedDice);
+    const availableDice = getAvailableDice(this.dice, this.usedDice, this.doublesMovesUsed);
     if (availableDice.length === 0) {
       return [];
     }

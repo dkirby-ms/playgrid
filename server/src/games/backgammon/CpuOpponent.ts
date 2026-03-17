@@ -45,7 +45,7 @@ export function selectCpuAction(state: BackgammonState): CpuAction | null {
     return { actionType: "roll" };
   }
 
-  const availableDice = getAvailableDice(Array.from(state.dice), Array.from(state.usedDice));
+  const availableDice = getAvailableDice(Array.from(state.dice), Array.from(state.usedDice), state.doublesMovesUsed);
   if (availableDice.length === 0) {
     return null;
   }

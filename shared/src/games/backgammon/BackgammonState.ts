@@ -13,6 +13,7 @@ export class BackgammonState extends BaseGameState {
   declare redBorneOff: number;
   declare dice: ArraySchema<number>;
   declare usedDice: ArraySchema<boolean>;
+  declare doublesMovesUsed: number;
 
   constructor() {
     super();
@@ -23,6 +24,7 @@ export class BackgammonState extends BaseGameState {
     this.redBorneOff = 0;
     this.dice = new ArraySchema<number>(0, 0);
     this.usedDice = new ArraySchema<boolean>(false, false);
+    this.doublesMovesUsed = 0;
   }
 }
 
@@ -34,4 +36,5 @@ defineTypes(BackgammonState, {
   redBorneOff: "number",
   dice: ["number"],
   usedDice: ["boolean"],
+  doublesMovesUsed: "number",
 });

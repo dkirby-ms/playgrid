@@ -142,6 +142,7 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
       state.dice[1] = 0;
       state.usedDice[0] = false;
       state.usedDice[1] = false;
+      state.doublesMovesUsed = 0;
     },
     onPlayerJoin(state, client, playerIndex) {
       const existingPlayer = state.players.get(client.sessionId);
@@ -183,6 +184,7 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
       state.dice[1] = nextDie2;
       state.usedDice[0] = false;
       state.usedDice[1] = false;
+      state.doublesMovesUsed = 0;
 
       return {
         success: true,
@@ -223,7 +225,7 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
       }
 
       // Mark die as used
-      const availableDice = getAvailableDice(Array.from(state.dice), Array.from(state.usedDice));
+      const availableDice = getAvailableDice(Array.from(state.dice), Array.from(state.usedDice), state.doublesMovesUsed);
       const dieIndex = availableDice.indexOf(payload.die);
       if (dieIndex === -1) {
         return { success: false, error: "Die not available." };
@@ -231,12 +233,8 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
 
       const [die1, die2] = state.dice;
       if (die1 === die2) {
-        // Doubles: mark one of the indices as used
-        if (!state.usedDice[0]) {
-          state.usedDice[0] = true;
-        } else {
-          state.usedDice[1] = true;
-        }
+        // Doubles: increment the counter instead of toggling usedDice
+        state.doublesMovesUsed++;
       } else {
         // Regular: mark specific die as used
         if (payload.die === die1) {
@@ -265,7 +263,7 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
       state.redBorneOff = moveResult.redBorneOff;
 
       // Check if turn ends
-      const remainingDice = getAvailableDice(Array.from(state.dice), Array.from(state.usedDice));
+      const remainingDice = getAvailableDice(Array.from(state.dice), Array.from(state.usedDice), state.doublesMovesUsed);
       const hasMoreMoves = hasValidMoves(
         moveResult.points,
         moveResult.blackBar,
@@ -279,11 +277,11 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
       const endsTurn = remainingDice.length === 0 || !hasMoreMoves;
 
       if (endsTurn) {
-        // Reset dice to 0,0 - next player must roll
         state.dice[0] = 0;
         state.dice[1] = 0;
         state.usedDice[0] = false;
         state.usedDice[1] = false;
+        state.doublesMovesUsed = 0;
       }
 
       const winnerColor = checkWinCondition(moveResult.blackBorneOff, moveResult.redBorneOff);
@@ -305,6 +303,7 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
       state.dice[1] = 0;
       state.usedDice[0] = false;
       state.usedDice[1] = false;
+      state.doublesMovesUsed = 0;
 
       return {
         success: true,
@@ -353,7 +352,7 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
           return false;
         }
 
-        const availableDice = getAvailableDice(Array.from(state.dice), Array.from(state.usedDice));
+        const availableDice = getAvailableDice(Array.from(state.dice), Array.from(state.usedDice), state.doublesMovesUsed);
         return !hasValidMoves(
           Array.from(state.points),
           state.blackBar,
