@@ -1031,3 +1031,12 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - **Exported test helpers**: `getPlayerHand`, `setPlayerHand`, `getPlayerHands` exported from DominosPlugin.ts for test setup.
 - **Key insight**: Colyseus schema auto-syncs everything to all clients. The ONLY way to keep data hidden is to NOT put it in the schema. Module-scoped Maps keyed by state instance work well for this.
 - **Validation:** `npm run build && npm run lint && npm run test` — all green (0 errors, 382 tests pass, 12 todo).
+
+### 2026-03-17: UX Redesign — Lobby + Dominos Renderer (Figma → Live)
+
+- **Design pipeline:** Figma exports land in `docs/designs/playgrid-ux/` as React/shadcn components. We convert them to the live PixiJS + HTML DOM implementation.
+- **Lobby changes:** Migrated color palette from zinc/violet to slate/blue. Background gradient `from-slate-950 via-slate-900 to-slate-800`. Header, filter buttons, game tiles, sidebar panels, active game cards, online players all updated. Added Dominos to `GAME_TYPE_OPTIONS` (2-4 players) and `GAME_TILE_ARTWORK`.
+- **DominosRenderer:** Added emerald green board background (EMERALD_800/900 tokens). New "How to Play" sidebar panel with gameplay instructions. Renamed "Game Info" to "Game Status". Empty board text now shows "Play any domino to start" in emerald-tinted color.
+- **DesignTokens:** Added `EMERALD_800` (0x065F46) and `EMERALD_900` (0x064E3B) for the dominos board surface.
+- **Preserved:** All Colyseus room bindings, message handlers, game creation/joining flow, filter logic, online player rendering unchanged.
+- **Validation:** `npm run build && npm run lint && npm run test` — all green.

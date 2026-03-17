@@ -135,6 +135,12 @@ const GAME_TYPE_OPTIONS: GameTypeOption[] = [
     playerCountLabel: "2-6 players",
     selectablePlayerCounts: [2, 3, 4, 5, 6],
   },
+  {
+    value: "dominos",
+    label: "Dominos",
+    playerCountLabel: "2-4 players",
+    selectablePlayerCounts: [2, 3, 4],
+  },
 ];
 const MAX_DISPLAY_NAME_LENGTH = 24;
 
@@ -146,6 +152,7 @@ const GAME_TILE_ARTWORK: Record<string, string> = {
   checkers: "/game-thumbnails/checkers.jpg",
   backgammon: "/game-thumbnails/backgammon.jpg",
   risk: "/game-thumbnails/risk.jpg",
+  dominos: "/game-thumbnails/dominos.jpg",
   default: "/game-thumbnails/checkers.jpg",
 };
 

@@ -14,8 +14,9 @@ import {
   BLACK as TOKEN_BLACK,
   BORDER_LIGHT,
   BORDER_LIGHT_ALPHA,
+  EMERALD_800,
+  EMERALD_900,
   STATUS_ONLINE,
-  TEXT_MUTED,
   TEXT_PRIMARY,
   TEXT_SECONDARY,
   TEXT_SUBTLE,
@@ -126,6 +127,7 @@ export class DominosRenderer implements GameRenderer {
   readonly container = new Container();
 
   // ── Layers ──────────────────────────────────────────────────────────────
+  private readonly boardBackground = new Graphics();
   private readonly boardLayer = new Container();
   private readonly handLayer = new Container();
   private readonly overlayLayer = new Container();
@@ -221,6 +223,7 @@ export class DominosRenderer implements GameRenderer {
     this.boneyardCountText.anchor.set(0.5);
 
     this.container.addChild(
+      this.boardBackground,
       this.boardLayer,
       this.endMarkerA,
       this.endMarkerB,
@@ -248,8 +251,9 @@ export class DominosRenderer implements GameRenderer {
 
     this.sidebar?.destroy();
     this.sidebar = new GameSidebar();
-    this.sidebar.addPanel("game-info", "Game Info");
+    this.sidebar.addPanel("game-info", "Game Status");
     this.sidebar.addPanel("players", "Players");
+    this.sidebar.addPanel("how-to-play", "How to Play");
     this.sidebar.addPanel("controls", "Controls");
     this.sidebar.show();
 
@@ -502,12 +506,35 @@ export class DominosRenderer implements GameRenderer {
   // ═══════════════════════════════════════════════════════════════════════════
 
   private redrawAll(): void {
+    this.redrawBoardBackground();
     this.redrawBoard();
     this.redrawHand();
     this.redrawBoneyard();
     this.redrawEndMarkers();
     this.updateOverlay();
     this.updateSidebar();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Board background (emerald green playing surface)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  private redrawBoardBackground(): void {
+    this.boardBackground.clear();
+    const padding = VIEW_PADDING;
+    const x = padding;
+    const y = TOP_HUD_SPACE;
+    const w = this.width - padding * 2;
+    const h = this.height - TOP_HUD_SPACE - BOTTOM_HUD_SPACE;
+
+    this.boardBackground
+      .roundRect(x, y, w, h, 10)
+      .fill(EMERALD_900);
+
+    // Subtle lighter emerald inner area
+    this.boardBackground
+      .roundRect(x + 4, y + 4, w - 8, h - 8, 8)
+      .fill(EMERALD_800);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -519,8 +546,8 @@ export class DominosRenderer implements GameRenderer {
 
     if (this.boardTiles.length === 0) {
       const emptyText = new Text({
-        text: "No tiles played yet",
-        style: { fontFamily: "sans-serif", fontSize: 16, fill: TEXT_MUTED },
+        text: "Play any domino to start",
+        style: { fontFamily: "sans-serif", fontSize: 16, fill: 0xa7f3d0 },
       });
       emptyText.anchor.set(0.5);
       emptyText.position.set(this.width / 2, (TOP_HUD_SPACE + (this.height - BOTTOM_HUD_SPACE)) / 2);
@@ -823,20 +850,16 @@ export class DominosRenderer implements GameRenderer {
         ${this.getCurrentTurnRowMarkup()}
         ${getTurnClockMarkup(this.turnClockSeconds, this.showTurnClock)}
         <div class="sidebar-stat-row">
-          <span class="sidebar-stat-label">Board tiles</span>
+          <span class="sidebar-stat-label">Tiles Played</span>
           <span class="sidebar-stat-value">${this.boardTiles.length}</span>
         </div>
         <div class="sidebar-stat-row">
           <span class="sidebar-stat-label">Boneyard</span>
-          <span class="sidebar-stat-value">${this.boneyardCount}</span>
+          <span class="sidebar-stat-value">${this.boneyardCount} tiles</span>
         </div>
         <div class="sidebar-stat-row">
           <span class="sidebar-stat-label">Open ends</span>
           <span class="sidebar-stat-value">${this.openEndA === -1 ? "—" : `${this.openEndA} | ${this.openEndB}`}</span>
-        </div>
-        <div class="sidebar-stat-row">
-          <span class="sidebar-stat-label">Status</span>
-          <span class="sidebar-stat-value">${escapeHtml(this.getSidebarStatus())}</span>
         </div>
       </div>`,
     );
@@ -863,6 +886,18 @@ export class DominosRenderer implements GameRenderer {
       playerRows.length > 0
         ? `<div class="sidebar-player-list">${playerRows.join("")}</div>`
         : `<div class="sidebar-empty">Waiting for players to join.</div>`,
+    );
+
+    // How to Play panel
+    this.sidebar.updatePanel(
+      "how-to-play",
+      `<ul class="sidebar-stat-list" style="list-style:none;padding:0;margin:0;">
+        <li class="sidebar-stat-row" style="gap:0.5rem"><span style="color:#a78bfa">•</span><span class="sidebar-stat-label" style="flex:1">Match numbers on the ends of the domino chain</span></li>
+        <li class="sidebar-stat-row" style="gap:0.5rem"><span style="color:#a78bfa">•</span><span class="sidebar-stat-label" style="flex:1">Click a domino to select it</span></li>
+        <li class="sidebar-stat-row" style="gap:0.5rem"><span style="color:#a78bfa">•</span><span class="sidebar-stat-label" style="flex:1">Click A or B markers to play on either end</span></li>
+        <li class="sidebar-stat-row" style="gap:0.5rem"><span style="color:#a78bfa">•</span><span class="sidebar-stat-label" style="flex:1">Draw from boneyard or pass if you can't play</span></li>
+        <li class="sidebar-stat-row" style="gap:0.5rem"><span style="color:#a78bfa">•</span><span class="sidebar-stat-label" style="flex:1">First to play all tiles wins!</span></li>
+      </ul>`,
     );
 
     // Controls panel
@@ -914,26 +949,6 @@ export class DominosRenderer implements GameRenderer {
     }
     const p = this.players.get(this.currentTurn);
     return p?.displayName ?? "Player";
-  }
-
-  private getSidebarStatus(): string {
-    if (this.phase === "waiting") {
-      return "Waiting for players to join.";
-    }
-    if (this.phase === "ended") {
-      return this.gameResult ? "Game over." : "Match complete.";
-    }
-    const local = this.getLocalPlayer();
-    if (!local || local.isSpectator) {
-      return "Spectating.";
-    }
-    if (this.isLocalPlayersTurn()) {
-      if (this.choosingEnd) {
-        return "Choose which end to place your tile (A or B).";
-      }
-      return "Select a tile from your hand to play.";
-    }
-    return "Waiting for opponent's move.";
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

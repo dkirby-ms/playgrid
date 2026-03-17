@@ -110,6 +110,11 @@ export const ZINC_800 = 0x18181B;
 export const ZINC_900 = 0x0A0A0A;
 export const ZINC_950 = 0x09090B;
 
+// === Emerald (Dominos board) ===
+export const EMERALD_800 = 0x065F46;
+export const EMERALD_900 = 0x064E3B;
+
+// === Slate (Dark theme palette) ===
 export const SLATE_100 = 0xF1F5F9;
 export const SLATE_300 = 0xCBD5E1;
 export const SLATE_400 = 0x94A3B8;
