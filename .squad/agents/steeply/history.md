@@ -496,3 +496,35 @@ Finishing agent should convert .todo() stubs to executable tests using Pemulis/G
 **Files Created:** server/src/__tests__/risk-setup-transition.test.ts  
 **PR:** #144 (merged to dev, pushed to UAT)  
 **Result:** Bug resolved, pattern established for all future game plugins
+
+## Work Complete — Spinner & 4-Way Dominos Test Coverage (2026-03-17)
+
+### Learnings
+- Dominos spinner logic uses a multi-phase placement model: pre-spinner (arm=""), spinner assignment (arm="spinner"), and post-spinner (arm="a"/"b"/"c"/"d"). Tests must trace through each phase to verify retroactive arm reassignment.
+- C/D arm activation is conditional on BOTH A and B having ≥1 tile post-spinner. A common edge case is only one arm being populated — C/D must stay at -1 until the condition is strictly met.
+- When openEndA === openEndB (e.g., immediately after spinner placement), getValidEnds correctly returns both ["a", "b"] via a special-case branch. This is important to test because the standard dedup logic would otherwise collapse them.
+- The `placeTileOnBoard` function handles the `end === "c" | "d"` path before the A/B path, guarding on `endValue < 0` to reject plays on inactive arms. Test the guard explicitly.
+- Plugin integration tests for C/D plays require setting up `openEndC`/`openEndD`/`spinnerTileId` directly on state before calling the action, since random dealing makes it impractical to reach 4-way state organically.
+- All 24 new tests (20 logic + 4 plugin) added without modifying any existing tests — the new schema fields (`arm`, `isDouble`, `openEndC`, `openEndD`, `spinnerTileId`, `armACount`, `armBCount`) have sensible defaults that don't break prior assertions.
+- Use the `setupActiveFourEnds()` helper pattern for any future test that needs all 4 ends active — places spinner + one tile on each arm in 3 calls.
+
+## 2026-03-17 Session: Dominos Spinner & 4-Way Test Coverage (Orchestrated)
+
+**Status:** Complete ✅  
+**Depends on:** Pemulis (spinner logic)
+
+Added 24 new tests (20 logic + 4 plugin) for Dominos spinner rules and 4-way branching:
+- Spinner detection (4 tests)
+- Arm assignment (3 tests)
+- C/D activation (3 tests)
+- 4-way placement (5 tests)
+- Board tile fields (2 tests)
+- Blocked round with 4 ends (2 tests)
+- Plugin spinner flow (4 tests)
+
+**Decisions merged:**
+- Steeply: Spinner & 4-Way Dominos Test Strategy
+
+**Build/Lint/Test:** ✅ 470/470 tests pass (backward-compatible)
+
+---

@@ -3564,3 +3564,107 @@ When a game phase transition depends on the state of *all* players (e.g., Setup 
 **Applies to:** All game plugins with multi-player phases.
 
 ---
+
+### Pemulis: Dominos Spinner & 4-Way Branching Logic
+
+**Status:** Implemented  
+**Date:** 2026-03-18  
+**Requested by:** dkirby-ms
+
+#### Decision
+
+Standard dominos spinner rule: the first double played becomes the spinner tile, enabling 4-way branching from that tile. Perpendicular arms C and D activate only after both primary arms A and B each have at least one tile placed.
+
+#### Rationale
+
+- Standard tournament dominos rules require a spinner for proper play
+- C/D activation gating (both A/B must have ≥1 tile first) follows the most common house rules and prevents premature branching
+- Backward-compatible: all function signatures use optional params with -1 defaults, so existing 2-param call sites still work
+- Retroactive arm assignment when a double becomes spinner mid-chain ensures correct state even when the first tile played is not a double
+
+#### State Model
+
+- `spinnerTileId`: -1 until a double is played, then locked to that tile's ID
+- `openEndC/D`: -1 (inactive) until both armACount ≥ 1 and armBCount ≥ 1, then set to spinner pip value
+- `BoardTile.arm`: tracks which arm each tile belongs to for rendering/layout
+- `BoardTile.isDouble`: auto-set based on highPips === lowPips
+
+#### Impact
+
+- **Gately (client):** DominosRenderer needs to handle 4-way board layout using `BoardTile.arm` for positioning. Spinner tile centered, A/B horizontal, C/D perpendicular.
+- **Steeply (tests):** New spinner-specific test coverage needed for all 6 placement cases.
+- **Existing tests:** One expectation updated (getValidEnds equal-ends returns both arms).
+
+#### Files Modified
+
+- `shared/src/games/dominos/DominosState.ts`
+- `server/src/games/dominos/dominosLogic.ts`
+- `server/src/games/dominos/DominosPlugin.ts`
+- `server/src/games/dominos/__tests__/dominosLogic.test.ts`
+
+---
+
+### Gately: Dominos Cross Layout Rendering Strategy
+
+**Author:** Gately  
+**Date:** 2026-03-16  
+**Status:** Implemented
+
+#### Context
+
+The server now supports standard dominos spinner rules with 4-way branching (arms A, B, C, D from the first double played). The renderer needed to match.
+
+#### Decision
+
+Render a cross-shaped board layout when a spinner exists, with the spinner tile at the center and four arms extending outward. Pre-spinner boards render as the original horizontal chain.
+
+##### Key design choices:
+
+1. **Uniform scaling:** The entire cross (all 4 arms + spinner) scales as one unit to fit the available board area, rather than scaling each arm independently. This keeps tile sizes consistent and avoids visual asymmetry.
+
+2. **Stored end positions:** Board layout computes `endPositions` during rendering and stores them for `redrawEndMarkers` to consume. This avoids duplicating layout math across methods.
+
+3. **ValidEnds array:** Selection logic collects all valid ends into `validEnds[]` and only shows markers for those ends. The previous two-end boolean approach was replaced with a flexible array.
+
+4. **drawBoardTile helper:** Tile rendering (shadow, body, highlight, divider, pips) extracted into a shared method accepting orientation, used by both linear and cross modes.
+
+#### Impact
+
+- `DominosRenderer.ts` is the only file modified
+- No changes to server protocol — the renderer consumes existing schema fields
+- Build, lint, and all 470 tests pass
+
+---
+
+### Steeply: Spinner & 4-Way Dominos Test Strategy
+
+**Author:** Steeply  
+**Date:** 2026-03-17  
+**Status:** Implemented
+
+#### Context
+
+Dominos logic was updated to support standard rules with a spinner (first double) and 4-way branching (C/D arms). Existing tests needed updating and new coverage was required.
+
+#### Decision
+
+Added 24 new tests (20 in dominosLogic.test.ts, 4 in dominosPlugin.test.ts) covering spinner detection, arm assignment, C/D activation, 4-way placement, board tile fields, blocked-round with 4 ends, and plugin-level C/D gameplay. Zero existing tests were modified — all new schema fields have backward-compatible defaults.
+
+#### Coverage Categories
+
+1. **Spinner Detection** (4 tests): immediate spinner, non-double first tile, mid-chain spinner, subsequent doubles are regular
+2. **Arm Assignment** (3 tests): retroactive arm="a" before spinner, post-spinner arm="a"/"b"
+3. **C/D Activation** (3 tests): activation when both arms populated, inactive with one arm only
+4. **4-Way Placement** (5 tests): play on C/D, getValidEnds with 4 ends, canPlayTile 4-end check, reject inactive C
+5. **Board Tile Fields** (2 tests): isDouble true/false
+6. **Blocked Round with 4 Ends** (2 tests): unblocked via C/D match, truly blocked across all 4
+7. **getValidEnds Edge Case** (1 test): same-value spinner ends
+8. **Plugin Spinner Flow** (4 tests): play on c/d success, reject inactive c, validateAction 4-way
+
+#### Impact
+
+- Test count: 446 → 470 (all green)
+- No existing test modifications needed
+- Pattern: `setupActiveFourEnds()` helper available for future 4-way tests
+
+---
