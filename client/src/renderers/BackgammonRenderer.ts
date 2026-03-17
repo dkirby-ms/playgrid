@@ -53,6 +53,7 @@ const PIECE_SHADOW_ALPHA = 0.2;
 const PIECE_HOVER_RING_ALPHA = 0.45;
 const PIECE_SELECTION_RING_ALPHA = 0.92;
 const DICE_TRAY_ALPHA = 0.94;
+const DICE_UNROLLED_ALPHA = 0.28;
 const OFF_AREA_FILL_ALPHA = 0.88;
 const GAME_ENDED_MESSAGE = "game-end";
 const MAX_VISIBLE_STACK = 5;
@@ -413,7 +414,10 @@ export class BackgammonRenderer implements GameRenderer {
 
   constructor() {
     this.piecesLayer.eventMode = "none";
-    this.diceLayer.eventMode = "none";
+    this.diceLayer.eventMode = "static";
+    this.diceLayer.on("pointertap", () => {
+      this.handleRollDice();
+    });
     this.overlayLayer.eventMode = "none";
     this.overlayLayer.visible = false;
     this.statusText.anchor.set(0.5);
@@ -765,16 +769,24 @@ export class BackgammonRenderer implements GameRenderer {
   private redrawDice(): void {
     this.diceLayer.clear();
 
-    let [die1, die2] = this.dice;
-    
+    const unrolled = this.dice[0] <= 0 || this.dice[1] <= 0;
+    const canClick = this.isLocalPlayersTurn() && unrolled && !this.isRollingDice;
+
+    let die1: number;
+    let die2: number;
+
     if (this.isRollingDice) {
       die1 = Math.floor(Math.random() * 6) + 1;
       die2 = Math.floor(Math.random() * 6) + 1;
+    } else if (unrolled) {
+      // Show placeholder dice when not yet rolled
+      die1 = 1;
+      die2 = 1;
+    } else {
+      [die1, die2] = this.dice;
     }
-    
-    if (die1 <= 0 || die2 <= 0) {
-      return;
-    }
+
+    this.diceLayer.cursor = canClick ? "pointer" : "default";
 
     const dieSize = Math.max(32, this.pointWidth * 0.92);
     const dieGap = dieSize * 0.24;
@@ -787,20 +799,26 @@ export class BackgammonRenderer implements GameRenderer {
     const trayWidth = totalWidth + (trayPadding * 2);
     const trayHeight = dieSize + (trayPadding * 1.1);
 
+    const trayAlpha = unrolled && !this.isRollingDice ? DICE_TRAY_ALPHA * 0.5 : DICE_TRAY_ALPHA;
     this.diceLayer.roundRect(
       trayX,
       trayY,
       trayWidth,
       trayHeight,
       Math.max(10, dieSize * 0.24),
-    ).fill({ fill: createBackgammonDiceTrayGradient(), alpha: DICE_TRAY_ALPHA }).stroke({
+    ).fill({ fill: createBackgammonDiceTrayGradient(), alpha: trayAlpha }).stroke({
       color: BORDER_LIGHT,
       width: Math.max(1, dieSize * 0.06),
-      alpha: 0.65,
+      alpha: unrolled && !this.isRollingDice ? 0.3 : 0.65,
     });
 
-    this.drawDie(startX, y, dieSize, die1, this.usedDice[0] ? BACKGAMMON_USED_DIE_ALPHA : 1);
-    this.drawDie(startX + dieSize + dieGap, y, dieSize, die2, this.usedDice[1] ? BACKGAMMON_USED_DIE_ALPHA : 1);
+    const dieAlpha = unrolled && !this.isRollingDice
+      ? DICE_UNROLLED_ALPHA
+      : this.isRollingDice ? 0.85 : 1;
+    const die1Alpha = !unrolled && this.usedDice[0] ? BACKGAMMON_USED_DIE_ALPHA : dieAlpha;
+    const die2Alpha = !unrolled && this.usedDice[1] ? BACKGAMMON_USED_DIE_ALPHA : dieAlpha;
+    this.drawDie(startX, y, dieSize, die1, die1Alpha);
+    this.drawDie(startX + dieSize + dieGap, y, dieSize, die2, die2Alpha);
   }
 
   private drawDie(x: number, y: number, size: number, value: number, alpha: number): void {
@@ -1683,23 +1701,15 @@ export class BackgammonRenderer implements GameRenderer {
       : '<div class="sidebar-empty">Moves will appear here after the opening roll.</div>';
     this.sidebar.updatePanel("move-history", historyMarkup);
 
-    const canRollDice = this.isLocalPlayersTurn() && this.dice[0] === 0 && this.dice[1] === 0 && !this.isRollingDice;
     this.sidebar.updatePanel(
       "controls",
       `<div class="sidebar-button-group">
-        <button type="button" class="sidebar-button sidebar-button--secondary" data-action="roll-dice"${canRollDice ? "" : " disabled"}>Roll Dice</button>
         <button type="button" class="sidebar-button sidebar-button--danger" data-action="resign"${this.requestLeave ? "" : " disabled"}>Resign</button>
       </div>
-      <div class="sidebar-note">Click "Roll Dice" to roll at the start of your turn. Use resign to concede the match.</div>`,
+      <div class="sidebar-note">Click the dice on the board to roll at the start of your turn. Use resign to concede the match.</div>`,
     );
 
     const controlsPanel = this.sidebar.getPanelContent("controls");
-    const rollButton = controlsPanel?.querySelector('[data-action="roll-dice"]');
-    if (rollButton instanceof HTMLButtonElement) {
-      rollButton.onclick = () => {
-        this.handleRollDice();
-      };
-    }
     const resignButton = controlsPanel?.querySelector('[data-action="resign"]');
     if (resignButton instanceof HTMLButtonElement) {
       resignButton.onclick = () => {
@@ -1736,9 +1746,13 @@ export class BackgammonRenderer implements GameRenderer {
   }
 
   private getDiceLabel(): string {
+    if (this.isRollingDice) {
+      return "Rolling…";
+    }
+
     const [die1, die2] = this.dice;
     if (die1 <= 0 || die2 <= 0) {
-      return "Awaiting roll";
+      return "Click dice to roll";
     }
 
     const values = [
