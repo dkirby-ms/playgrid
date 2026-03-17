@@ -60,3 +60,4 @@ export type {
 export * from "./games/checkers/index.js";
 export { BackgammonState } from "./games/backgammon/index.js";
 export * from "./games/risk/index.js";
+export * from "./games/dominos/index.js";

@@ -3112,3 +3112,200 @@ Risk territory paths were simple straight-line polygons that looked like blobs. 
 
 **Files Modified:**
 - client/src/renderers/risk/classicRiskMap.ts
+
+---
+
+## Session: Dominos Game Implementation (2026-03-17)
+
+### Pemulis: Dominos Schema & Plugin Design
+
+**Status:** Implemented  
+**Date:** 2026-03-17  
+**Issue:** #124  
+
+Board model: linear chain with two open ends using `ArraySchema<BoardTile>` with scalar fields `openEndA` and `openEndB` tracking pip values at each chain end.
+
+**Rationale:**
+- Simpler than graph model, correct for standard double-six dominos
+- Scalars efficiently represent open ends vs. tracking full tile objects
+
+Boneyard tiles stored server-only in `Map<SessionId, RawTile[]>` — never exposed to client. Clients see only `boneyardCount`.
+
+**Actions:** play (with end selection), draw (only when no playable tile), pass (only when no playable tile AND boneyard empty).
+
+**Scoring:** Winner of round gets sum of all opponents' remaining pip totals. Blocked rounds won by player with lowest remaining pip total.
+
+**Impact:**
+- Gately: Create DominosRenderer in client/src/renderers/ and register in RendererRegistry. Board visualization reads `openEndA/openEndB` + `board` array. Player hand in `playerStates.get(sessionId).hand`
+- Steeply: Unit tests for `dominosLogic.ts` (tile generation, matching, scoring) and integration tests for plugin lifecycle
+
+**Files Created:**
+- shared/src/games/dominos/DominosState.ts
+- shared/src/games/dominos/index.ts
+- server/src/games/dominos/dominosLogic.ts
+- server/src/games/dominos/DominosPlugin.ts
+- server/src/games/dominos/index.ts
+- Registered in server/src/index.ts and shared/src/index.ts
+
+### Steeply: Dominos Test Strategy
+
+**Status:** Implemented  
+**Date:** 2026-03-17  
+
+Dominos test file (`server/src/games/dominos/__tests__/dominosLogic.test.ts`) tests pure logic functions exported by `dominosLogic.ts`, not plugin layer. Matches checkers pattern where `checkersLogic.test.ts` tests logic and `BaseGameRoom.test.ts` tests plugin lifecycle.
+
+**Rationale:**
+- Pure function tests are stable, fast, don't require mocking Colyseus infrastructure
+- Plugin-layer tests (actions, lifecycle) belong in separate test file once plugin finalized
+- Edge cases (blank tiles, spinner ends, tie-breaking, all-doubles hands) covered at logic level where cheapest to test
+
+**Test Coverage:** 50+ test cases across 12 describe blocks. All 382/382 tests pass.
+
+**Bug Fix:** Fixed `getValidEnds()` duplicate push — was returning [a, a, b] instead of [a, b] when both board ends matched.
+
+**Impact:**
+- Pemulis: Tests import from `../dominosLogic.js` — function signatures must stay stable
+- Future: DominosPlugin.test.ts should add action validation and lifecycle tests
+
+**Files Created:**
+- server/src/games/dominos/__tests__/dominosLogic.test.ts
+
+### Gately: Dominos Renderer Interaction Pattern
+
+**Status:** Implemented  
+**Date:** 2026-03-17  
+
+Tile placement uses **select-then-route** interaction:
+
+1. Click tile in hand → if only fits one end, auto-send play action immediately
+2. If tile fits both ends (and they differ), show A/B end-choice markers on board
+3. Board empty (first play) → auto-send to end "a" with no choice needed
+
+Draw and Pass available via boneyard click area (top-right) or sidebar buttons.
+
+**Rationale:**
+- Common case (one valid end) is fast — single click
+- Gives explicit control when both ends valid
+- Matches mental model of physical dominos
+
+**Impact:**
+- Frontend only — no server changes needed
+- Other renderers unaffected
+- If server adds complex placement rules (e.g., Mexican Train branching), end-choice system can be extended
+
+**Files Created:**
+- client/src/renderers/DominosRenderer.ts
+- client/src/renderers/index.ts (registration)
+
+---
+
+## Decision: Guard checkGameEnd during setup phase (2026-03-17)
+
+**Author:** Gately  
+**Status:** Proposed  
+
+After implementing territory drafting phase (`setup-pick`), `checkWinCondition()` would fire prematurely — first player to pick territory was only owner, so `owners.size === 1` declared instant winner.
+
+**Decision:** Add early return `if (state.gamePhase === "setup") return null;` at top of `checkGameEnd` in `RiskPlugin.ts`.
+
+**Rationale:**
+- Win condition evaluation meaningless during setup when territories still distributed
+- Prevents false game-end during both `setup-pick` and `setup-place` phases
+
+**Impact:**
+- Unit tests testing win conditions must set `state.gamePhase = "playing"` explicitly
+- Pattern applies to any future game plugin with setup phase
+
+---
+
+## Decision: SVG file-based Risk map rendering (2026-03-17)
+
+**Author:** Gately  
+**Status:** Proposed  
+
+Redesign map rendering to use actual SVG file (`risk-map.svg`) as source of truth for territory geometry, imported at build time via Vite's `?raw` import.
+
+**Architecture:** Build-time SVG import
+```
+risk-map.svg → Vite ?raw → svgMapLoader.ts (DOMParser) → RiskMapDefinition → drawSvgPath() → PixiJS
+```
+
+**Why:** SVG file is single source of truth, editable in any SVG editor. Build-time import means no async loading, no runtime fetch. Existing PixiJS rendering unchanged.
+
+**Impact:**
+- Future map improvements = edit SVG file, no code changes
+- Supports alternate Risk maps (create new SVG + call `loadMapFromSvg()`)
+- SVG adds ~52KB to bundle (inlined), gzips well
+
+**Files:**
+- Added: client/src/renderers/risk/risk-map.svg, client/src/renderers/risk/svgMapLoader.ts
+- Modified: client/src/renderers/risk/classicRiskMap.ts, client/src/renderers/risk/index.ts
+
+---
+
+## Decision: Use Real Design SVG via Loader Normalization (2026-03-17)
+
+**Author:** Gately  
+**Status:** Proposed  
+
+Use Inkscape design asset (`docs/designs/risk.svg`) as source of truth for Risk map geometry, with `svgMapLoader.ts` as normalization boundary.
+
+**Rationale:**
+- Design SVG (500KB) contains geographically accurate paths for all 42 territories
+- Design tools use underscores in IDs; game state uses hyphens — loader normalizes at parse time
+- Typo correction map (`yakursk` → `yakutsk`) keeps design file unchanged
+- Label positions computed from path bounding box centroids when explicit attributes absent
+
+**Impact:**
+- svgMapLoader.ts is single normalization point
+- Connection override waypoints scale with actual viewBox dimensions
+- Continent display names derive from shared data or ID formatting
+
+**Files Modified:**
+- client/src/renderers/risk/risk-map.svg (replaced with docs/designs/risk.svg)
+- client/src/renderers/risk/svgMapLoader.ts (ID normalization, centroid computation, viewBox fallback)
+
+---
+
+## Decision: Risk Territory Drafting Phase (2026-03-17)
+
+**Author:** Gately  
+**Status:** Implemented  
+
+Replaced auto-dealt territories with proper territory drafting phase (`setup-pick`):
+
+1. Game starts with all territories unclaimed
+2. Players take turns picking one unclaimed territory (round-robin via `endsTurn: true`)
+3. When all 42 claimed, transitions to `setup-place` for remaining army placement
+4. Army allotment is `initialArmies - territoriesOwned`
+
+**Rationale:**
+- Drafting adds strategic depth — players choose territories, not random assignment
+- Matches standard Risk rules
+
+**Impact:**
+- Server: New `pickTerritory` action in RiskPlugin.ts. onGameStart simplified. validateAction updated
+- Client: RiskRenderer sends `pickTerritory` during `setup-pick` (previously `placeArmy`). No rendering changes
+- Shared: No changes — setup-pick type and state fields existed
+- Tests: 7 new drafting tests, 4 integration tests updated. 299/299 pass
+
+**Files Modified:**
+- server/src/games/risk/RiskPlugin.ts
+- client/src/renderers/RiskRenderer.ts
+- server/src/games/risk/__tests__/RiskPlugin.test.ts
+
+---
+
+### 2026-03-17T18:19:40Z: User Directive
+
+**By:** saitcho (via Copilot)
+
+Games against CPU don't need an invite share link. Captured for team memory.
+
+---
+
+## Decision: Setup Phase Guard (Gately, 2026-03-17)
+
+**Status:** Proposed
+
+Add early return `if (state.gamePhase === "setup") return null;` in `checkGameEnd` during Risk setup phases to prevent false win condition evaluation while territories distributed.
