@@ -86,6 +86,7 @@ function setDice(state: BackgammonStateInstance, die1: number, die2: number) {
   state.dice[1] = die2;
   state.usedDice[0] = false;
   state.usedDice[1] = false;
+  state.doublesMovesUsed = 0;
 }
 
 describe("Backgammon Logic — Pure Functions", () => {
@@ -134,15 +135,23 @@ describe("Backgammon Logic — Pure Functions", () => {
     });
 
     it("returns 4 moves for doubles when unused", () => {
-      expect(getAvailableDice([4, 4], [false, false])).toEqual([4, 4, 4, 4]);
+      expect(getAvailableDice([4, 4], [false, false], 0)).toEqual([4, 4, 4, 4]);
     });
 
-    it("returns 2 moves for doubles when one index used", () => {
-      expect(getAvailableDice([4, 4], [true, false])).toEqual([4, 4]);
+    it("returns 3 moves for doubles after 1 move used", () => {
+      expect(getAvailableDice([4, 4], [false, false], 1)).toEqual([4, 4, 4]);
     });
 
-    it("returns no moves for doubles when both indices used", () => {
-      expect(getAvailableDice([4, 4], [true, true])).toEqual([]);
+    it("returns 2 moves for doubles after 2 moves used", () => {
+      expect(getAvailableDice([4, 4], [false, false], 2)).toEqual([4, 4]);
+    });
+
+    it("returns 1 move for doubles after 3 moves used", () => {
+      expect(getAvailableDice([4, 4], [false, false], 3)).toEqual([4]);
+    });
+
+    it("returns no moves for doubles after all 4 moves used", () => {
+      expect(getAvailableDice([4, 4], [false, false], 4)).toEqual([]);
     });
   });
 
@@ -671,18 +680,26 @@ describe("Backgammon Plugin — Integration", () => {
       state.currentTurn = "player-1";
       setDice(state, 2, 2);
 
-      expect(getAvailableDice(Array.from(state.dice), Array.from(state.usedDice))).toEqual([2, 2, 2, 2]);
+      expect(getAvailableDice(Array.from(state.dice), Array.from(state.usedDice), state.doublesMovesUsed)).toEqual([2, 2, 2, 2]);
 
       performRoomMove(state, mockClient("player-1"), { from: 0, to: 2, die: 2 });
       expect(state.currentTurn).toBe("player-1");
-      expect(getAvailableDice(Array.from(state.dice), Array.from(state.usedDice)).length).toBe(2);
+      expect(getAvailableDice(Array.from(state.dice), Array.from(state.usedDice), state.doublesMovesUsed).length).toBe(3);
 
       performRoomMove(state, mockClient("player-1"), { from: 0, to: 2, die: 2 });
-      // Turn should end after using both dice indices (which gives 4 total moves with doubles)
+      expect(state.currentTurn).toBe("player-1");
+      expect(getAvailableDice(Array.from(state.dice), Array.from(state.usedDice), state.doublesMovesUsed).length).toBe(2);
+
+      performRoomMove(state, mockClient("player-1"), { from: 0, to: 2, die: 2 });
+      expect(state.currentTurn).toBe("player-1");
+      expect(getAvailableDice(Array.from(state.dice), Array.from(state.usedDice), state.doublesMovesUsed).length).toBe(1);
+
+      performRoomMove(state, mockClient("player-1"), { from: 2, to: 4, die: 2 });
+      // Turn should end after using all 4 doubles moves
       expect(state.currentTurn).toBe("player-2");
-      // New dice rolled for next player's turn
       expect(state.usedDice[0]).toBe(false);
       expect(state.usedDice[1]).toBe(false);
+      expect(state.doublesMovesUsed).toBe(0);
     });
   });
 
@@ -937,7 +954,7 @@ describe("Backgammon Plugin — Integration", () => {
       state.currentTurn = "player-1";
       setDice(state, 5, 6);
 
-      const availableDice = getAvailableDice(Array.from(state.dice), Array.from(state.usedDice));
+      const availableDice = getAvailableDice(Array.from(state.dice), Array.from(state.usedDice), state.doublesMovesUsed);
       expect(hasValidMoves(state.points, 0, 0, 0, 0, availableDice, BLACK)).toBe(false);
     });
 
@@ -976,6 +993,71 @@ describe("Backgammon Plugin — Integration", () => {
       backgammonPlugin.lifecycle.onGameEnd?.(state);
 
       expect(state.phase).toBe("ended");
+    });
+
+    it("pass action ends turn and resets dice when no valid moves exist", () => {
+      const state = createStartedGame();
+      setBoard(state, Array.from({ length: 24 }, () => 0));
+      // Black piece on point 0, all landing spots blocked by Red
+      state.points[0] = 1;
+      state.points[5] = -2;
+      state.points[6] = -2;
+      state.currentTurn = "player-1";
+      setDice(state, 5, 6);
+
+      // Verify no valid moves exist
+      const availableDice = getAvailableDice(Array.from(state.dice), Array.from(state.usedDice), state.doublesMovesUsed);
+      expect(hasValidMoves(state.points, 0, 0, 0, 0, availableDice, BLACK)).toBe(false);
+
+      // Validate that pass is allowed
+      const isValid = backgammonPlugin.conditions.validateAction(
+        state,
+        mockClient("player-1"),
+        "pass",
+        undefined,
+      );
+      expect(isValid).toBe(true);
+
+      // Execute the pass action
+      const result = backgammonPlugin.actions.pass(state, mockClient("player-1"), undefined);
+      expect(result.success).toBe(true);
+      expect(result.endsTurn).toBe(true);
+      expect(result.endsGame).toBe(false);
+
+      // Dice should be reset to 0,0
+      expect(state.dice[0]).toBe(0);
+      expect(state.dice[1]).toBe(0);
+    });
+
+    it("pass action is rejected when valid moves exist", () => {
+      const state = createStartedGame();
+      setBoard(state, Array.from({ length: 24 }, () => 0));
+      state.points[0] = 1;
+      state.currentTurn = "player-1";
+      setDice(state, 3, 5);
+
+      const isValid = backgammonPlugin.conditions.validateAction(
+        state,
+        mockClient("player-1"),
+        "pass",
+        undefined,
+      );
+      expect(isValid).toBe(false);
+    });
+
+    it("pass action is rejected when dice are not yet rolled", () => {
+      const state = createStartedGame();
+      state.currentTurn = "player-1";
+      state.dice[0] = 0;
+      state.dice[1] = 0;
+
+      const isValid = backgammonPlugin.conditions.validateAction(
+        state,
+        mockClient("player-1"),
+        "pass",
+        undefined,
+      );
+      expect(isValid).toBe(false);
     });
   });
 });

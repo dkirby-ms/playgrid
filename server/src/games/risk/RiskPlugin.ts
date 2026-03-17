@@ -175,6 +175,22 @@ export const riskPlugin: GamePlugin<RiskState> = {
         state.riskPlayers.set(client.sessionId, riskPlayer);
       }
     },
+    onTurnStarted(state, newPlayerId) {
+      if (state.gamePhase !== "playing") return;
+
+      state.turnPhase = "reinforce";
+      state.earnedCardThisTurn = false;
+
+      const riskPlayer = state.riskPlayers.get(newPlayerId);
+      if (riskPlayer) {
+        const ownedTerritories = getOwnedTerritories(state, newPlayerId);
+        const reinforcements = calculateReinforcements(
+          riskPlayer.territoriesOwned,
+          ownedTerritories,
+        );
+        riskPlayer.armiesToPlace = reinforcements;
+      }
+    },
     onGameStart(state) {
       for (const territory of TERRITORIES) {
         const territoryState = new TerritoryState();
@@ -388,17 +404,6 @@ export const riskPlugin: GamePlugin<RiskState> = {
 
         if (allPlayersReady) {
           state.gamePhase = "playing";
-          state.turnPhase = "reinforce";
-
-          const riskPlayer = state.riskPlayers.get(client.sessionId);
-          if (riskPlayer) {
-            const ownedTerritories = getOwnedTerritories(state, client.sessionId);
-            const reinforcements = calculateReinforcements(
-              riskPlayer.territoriesOwned,
-              ownedTerritories,
-            );
-            riskPlayer.armiesToPlace = reinforcements;
-          }
         }
         return { success: true, endsTurn: true };
       }
@@ -409,9 +414,6 @@ export const riskPlugin: GamePlugin<RiskState> = {
       }
 
       if (state.turnPhase === "fortify") {
-        state.turnPhase = "reinforce";
-        state.earnedCardThisTurn = false;
-
         const riskPlayer = state.riskPlayers.get(client.sessionId);
         if (riskPlayer && riskPlayer.cardsHeld >= 5) {
           return { success: false, error: "Must trade in cards before ending turn (5+ cards)." };

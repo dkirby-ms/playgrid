@@ -4,6 +4,7 @@ import {
   BaseGameState,
   PlayerInfo,
   type ActionHandler,
+  type BackgammonState,
   type CheckersState,
   type GameOptions,
   type GamePlugin,
@@ -11,6 +12,7 @@ import {
 } from "@eschaton/shared";
 import * as gameRepository from "../db/gameRepository.js";
 import { getPool } from "../db.js";
+import { selectCpuAction } from "../games/backgammon/CpuOpponent.js";
 import { selectCpuMove } from "../games/checkers/CpuOpponent.js";
 import { GAME_ROOM_DISPOSED_TOPIC } from "../rooms/lobbyPresence.js";
 import { trackEvent } from "../telemetry.js";
@@ -59,7 +61,8 @@ export class BaseGameRoom extends Room {
     }
 
     this.plugin = gameRegistry.get(gameType) as unknown as GamePlugin<BaseGameState>;
-    this.cpuOpponentEnabled = options.cpuOpponent === true && gameType === "checkers";
+    this.cpuOpponentEnabled = options.cpuOpponent === true
+      && (gameType === "checkers" || gameType === "backgammon");
     this.headToHeadMode = options.headToHeadMode === true && gameType === "checkers";
 
     const [minPlayers, maxPlayers] = this.plugin.metadata.playerCount;
@@ -172,7 +175,7 @@ export class BaseGameRoom extends Room {
     }
 
     if (!isSpectator) {
-      this.ensureCpuParticipant();
+      this.ensureCpuParticipant(client.sessionId);
       this.ensureHeadToHeadParticipant(client);
       if (this.shouldStartGame()) {
         this.startGame();
@@ -215,6 +218,11 @@ export class BaseGameRoom extends Room {
     }
 
     this.finalizeParticipantDeparture(client.sessionId);
+
+    if (player.isSpectator) {
+      this.state.players.delete(client.sessionId);
+      return;
+    }
 
     if (this.state.phase !== "playing") {
       if (this.headToHeadMode && !this.hasConnectedController()) {
@@ -395,6 +403,7 @@ export class BaseGameRoom extends Room {
 
     this.state.currentTurn = this.turnManager.nextTurn();
     this.state.turnNumber = this.turnManager.getTurnNumber();
+    this.plugin.lifecycle.onTurnStarted?.(this.state, this.state.currentTurn);
     this.updateTurnTimeRemaining();
     this.queueCpuTurnIfNeeded();
   }
@@ -493,7 +502,7 @@ export class BaseGameRoom extends Room {
     }
   }
 
-  private ensureCpuParticipant() {
+  private ensureCpuParticipant(controllerSessionId: string) {
     if (!this.cpuOpponentEnabled || this.state.players.has(CPU_OPPONENT_SESSION_ID)) {
       return;
     }
@@ -505,6 +514,7 @@ export class BaseGameRoom extends Room {
     player.playerIndex = playerIndex;
     player.isSpectator = false;
     player.isConnected = true;
+    player.controllerSessionId = controllerSessionId;
 
     this.state.players.set(CPU_OPPONENT_SESSION_ID, player);
     this.plugin.lifecycle.onPlayerJoin?.(
@@ -587,7 +597,6 @@ export class BaseGameRoom extends Room {
 
   private isCpuTurn(sessionId: string) {
     return this.cpuOpponentEnabled
-      && this.plugin.id === "checkers"
       && sessionId === CPU_OPPONENT_SESSION_ID;
   }
 
@@ -596,6 +605,15 @@ export class BaseGameRoom extends Room {
       return;
     }
 
+    if (this.plugin.id === "backgammon") {
+      await this.executeBackgammonCpuTurn();
+      return;
+    }
+
+    await this.executeCheckersCpuTurn();
+  }
+
+  private async executeCheckersCpuTurn() {
     const move = selectCpuMove(this.state as CheckersState);
     if (!move) {
       await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
@@ -612,6 +630,35 @@ export class BaseGameRoom extends Room {
       "move",
       move,
       moveHandler as ActionHandler<BaseGameState>,
+      false,
+    );
+
+    if (!didProcessAction) {
+      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      return;
+    }
+
+    this.queueCpuTurnIfNeeded();
+  }
+
+  private async executeBackgammonCpuTurn() {
+    const action = selectCpuAction(this.state as BackgammonState);
+    if (!action) {
+      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      return;
+    }
+
+    const handler = this.plugin.actions[action.actionType];
+    if (!handler) {
+      return;
+    }
+
+    const payload = action.actionType === "move" ? action.payload : undefined;
+    const didProcessAction = await this.processAction(
+      this.createSyntheticClient(CPU_OPPONENT_SESSION_ID),
+      action.actionType,
+      payload,
+      handler as ActionHandler<BaseGameState>,
       false,
     );
 

@@ -38,20 +38,19 @@ import {
   createRiskOceanGradient,
   withAlpha,
 } from "./DesignTokens";
+import { CLASSIC_RISK_MAP } from "./risk/classicRiskMap";
+import type { RiskMapDefinition, TerritoryDef } from "./risk/RiskMapDefinition";
+import { drawSvgPath } from "./risk/svgPathParser";
 
 const DEFAULT_WIDTH = 800;
 const DEFAULT_HEIGHT = 600;
 const VIEW_PADDING = 24;
 const TOP_HUD_SPACE = 116;
 const BOTTOM_HUD_SPACE = 96;
-const MAP_WIDTH = 840;
-const MAP_HEIGHT = 500;
 const HUD_BUTTON_WIDTH = 136;
 const HUD_BUTTON_HEIGHT = 40;
 const HUD_BUTTON_RADIUS = 12;
 const PHASE_BANNER_HEIGHT = 72;
-const GRID_COLUMNS = 12;
-const GRID_ROWS = 7;
 
 const CONTINENT_ACCENTS: Record<string, PlayerColorName> = {
   "north-america": "green",
@@ -61,76 +60,6 @@ const CONTINENT_ACCENTS: Record<string, PlayerColorName> = {
   asia: "red",
   australia: "blue",
 };
-
-interface TerritoryLayout {
-  id: string;
-  name: string;
-  continent: string;
-  x: number;
-  y: number;
-  adjacentTo: string[];
-}
-
-interface ContinentLabelLayout {
-  continent: string;
-  label: string;
-  x: number;
-  y: number;
-}
-
-const CONTINENT_LABELS: ContinentLabelLayout[] = [
-  { continent: "north-america", label: "North America", x: 120, y: 34 },
-  { continent: "south-america", label: "South America", x: 215, y: 334 },
-  { continent: "europe", label: "Europe", x: 414, y: 80 },
-  { continent: "africa", label: "Africa", x: 435, y: 310 },
-  { continent: "asia", label: "Asia", x: 646, y: 54 },
-  { continent: "australia", label: "Australia", x: 716, y: 368 },
-];
-
-const TERRITORY_LAYOUTS: TerritoryLayout[] = [
-  { id: "alaska", name: "Alaska", continent: "north-america", x: 80, y: 100, adjacentTo: ["northwest-territory", "alberta", "kamchatka"] },
-  { id: "northwest-territory", name: "NW Territory", continent: "north-america", x: 160, y: 80, adjacentTo: ["alaska", "alberta", "ontario", "greenland"] },
-  { id: "greenland", name: "Greenland", continent: "north-america", x: 300, y: 60, adjacentTo: ["northwest-territory", "ontario", "quebec", "iceland"] },
-  { id: "alberta", name: "Alberta", continent: "north-america", x: 120, y: 150, adjacentTo: ["alaska", "northwest-territory", "ontario", "western-united-states"] },
-  { id: "ontario", name: "Ontario", continent: "north-america", x: 180, y: 140, adjacentTo: ["northwest-territory", "alberta", "greenland", "quebec", "western-united-states", "eastern-united-states"] },
-  { id: "quebec", name: "Quebec", continent: "north-america", x: 240, y: 130, adjacentTo: ["ontario", "greenland", "eastern-united-states"] },
-  { id: "western-united-states", name: "W USA", continent: "north-america", x: 120, y: 200, adjacentTo: ["alberta", "ontario", "eastern-united-states", "central-america"] },
-  { id: "eastern-united-states", name: "E USA", continent: "north-america", x: 190, y: 200, adjacentTo: ["ontario", "quebec", "western-united-states", "central-america"] },
-  { id: "central-america", name: "C America", continent: "north-america", x: 140, y: 260, adjacentTo: ["western-united-states", "eastern-united-states", "venezuela"] },
-  { id: "venezuela", name: "Venezuela", continent: "south-america", x: 200, y: 310, adjacentTo: ["central-america", "peru", "brazil"] },
-  { id: "peru", name: "Peru", continent: "south-america", x: 180, y: 370, adjacentTo: ["venezuela", "brazil", "argentina"] },
-  { id: "brazil", name: "Brazil", continent: "south-america", x: 240, y: 360, adjacentTo: ["venezuela", "peru", "argentina", "north-africa"] },
-  { id: "argentina", name: "Argentina", continent: "south-america", x: 200, y: 430, adjacentTo: ["peru", "brazil"] },
-  { id: "iceland", name: "Iceland", continent: "europe", x: 360, y: 90, adjacentTo: ["greenland", "great-britain", "scandinavia"] },
-  { id: "great-britain", name: "GB", continent: "europe", x: 360, y: 140, adjacentTo: ["iceland", "scandinavia", "northern-europe", "western-europe"] },
-  { id: "scandinavia", name: "Scandinavia", continent: "europe", x: 430, y: 100, adjacentTo: ["iceland", "great-britain", "northern-europe", "ukraine"] },
-  { id: "western-europe", name: "W Europe", continent: "europe", x: 360, y: 200, adjacentTo: ["great-britain", "northern-europe", "southern-europe", "north-africa"] },
-  { id: "northern-europe", name: "N Europe", continent: "europe", x: 430, y: 160, adjacentTo: ["great-britain", "scandinavia", "ukraine", "southern-europe", "western-europe"] },
-  { id: "southern-europe", name: "S Europe", continent: "europe", x: 430, y: 210, adjacentTo: ["western-europe", "northern-europe", "ukraine", "north-africa", "egypt", "middle-east"] },
-  { id: "ukraine", name: "Ukraine", continent: "europe", x: 500, y: 130, adjacentTo: ["scandinavia", "northern-europe", "southern-europe", "ural", "afghanistan", "middle-east"] },
-  { id: "north-africa", name: "N Africa", continent: "africa", x: 380, y: 280, adjacentTo: ["brazil", "western-europe", "southern-europe", "egypt", "east-africa", "congo"] },
-  { id: "egypt", name: "Egypt", continent: "africa", x: 450, y: 270, adjacentTo: ["north-africa", "southern-europe", "middle-east", "east-africa"] },
-  { id: "east-africa", name: "E Africa", continent: "africa", x: 480, y: 330, adjacentTo: ["north-africa", "egypt", "middle-east", "congo", "south-africa", "madagascar"] },
-  { id: "congo", name: "Congo", continent: "africa", x: 420, y: 360, adjacentTo: ["north-africa", "east-africa", "south-africa"] },
-  { id: "south-africa", name: "S Africa", continent: "africa", x: 450, y: 420, adjacentTo: ["congo", "east-africa", "madagascar"] },
-  { id: "madagascar", name: "Madagascar", continent: "africa", x: 520, y: 420, adjacentTo: ["east-africa", "south-africa"] },
-  { id: "ural", name: "Ural", continent: "asia", x: 570, y: 120, adjacentTo: ["ukraine", "siberia", "afghanistan", "china"] },
-  { id: "siberia", name: "Siberia", continent: "asia", x: 630, y: 80, adjacentTo: ["ural", "yakutsk", "irkutsk", "mongolia", "china"] },
-  { id: "yakutsk", name: "Yakutsk", continent: "asia", x: 690, y: 70, adjacentTo: ["siberia", "irkutsk", "kamchatka"] },
-  { id: "kamchatka", name: "Kamchatka", continent: "asia", x: 750, y: 80, adjacentTo: ["yakutsk", "irkutsk", "mongolia", "japan", "alaska"] },
-  { id: "irkutsk", name: "Irkutsk", continent: "asia", x: 680, y: 110, adjacentTo: ["siberia", "yakutsk", "kamchatka", "mongolia"] },
-  { id: "mongolia", name: "Mongolia", continent: "asia", x: 700, y: 150, adjacentTo: ["siberia", "irkutsk", "kamchatka", "japan", "china"] },
-  { id: "japan", name: "Japan", continent: "asia", x: 760, y: 160, adjacentTo: ["kamchatka", "mongolia"] },
-  { id: "afghanistan", name: "Afghanistan", continent: "asia", x: 570, y: 180, adjacentTo: ["ukraine", "ural", "china", "india", "middle-east"] },
-  { id: "china", name: "China", continent: "asia", x: 640, y: 180, adjacentTo: ["ural", "siberia", "mongolia", "afghanistan", "india", "siam"] },
-  { id: "middle-east", name: "M East", continent: "asia", x: 520, y: 230, adjacentTo: ["ukraine", "southern-europe", "egypt", "east-africa", "afghanistan", "india"] },
-  { id: "india", name: "India", continent: "asia", x: 600, y: 250, adjacentTo: ["afghanistan", "china", "middle-east", "siam"] },
-  { id: "siam", name: "Siam", continent: "asia", x: 660, y: 270, adjacentTo: ["china", "india", "indonesia"] },
-  { id: "indonesia", name: "Indonesia", continent: "australia", x: 680, y: 330, adjacentTo: ["siam", "new-guinea", "western-australia"] },
-  { id: "new-guinea", name: "New Guinea", continent: "australia", x: 740, y: 340, adjacentTo: ["indonesia", "western-australia", "eastern-australia"] },
-  { id: "western-australia", name: "W Australia", continent: "australia", x: 700, y: 400, adjacentTo: ["indonesia", "new-guinea", "eastern-australia"] },
-  { id: "eastern-australia", name: "E Australia", continent: "australia", x: 760, y: 400, adjacentTo: ["new-guinea", "western-australia"] },
-];
 
 function toCssHexColor(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
@@ -145,15 +74,16 @@ export class RiskRenderer implements GameRenderer {
   readonly gameType = "risk";
   readonly container = new Container();
 
+  private readonly mapDef: RiskMapDefinition = CLASSIC_RISK_MAP;
   private readonly mapLayer = new Container();
   private readonly boardBackdrop = new Graphics();
   private readonly boardFrame = new Graphics();
   private readonly boardSurface = new Graphics();
   private readonly oceanOverlay = new Graphics();
-  private readonly gridOverlay = new Graphics();
   private readonly connectionLayer = new Graphics();
   private readonly continentLabelLayer = new Container();
   private readonly territoryLayer = new Container();
+  private readonly labelLayer = new Container();
   private readonly hudLayer = new Container();
   private readonly phaseBanner = new Graphics();
   private readonly turnIndicator = new Graphics();
@@ -244,6 +174,7 @@ export class RiskRenderer implements GameRenderer {
   private mapOffsetX = 0;
   private mapOffsetY = 0;
   private readonly territoryGraphics = new Map<string, Graphics>();
+  private readonly territoryDefMap = new Map<string, TerritoryDef>();
   private isEndPhaseButtonHovered = false;
   private isTradeCardsButtonHovered = false;
 
@@ -254,6 +185,11 @@ export class RiskRenderer implements GameRenderer {
     this.armiesToPlaceText.anchor.set(0, 0.5);
     this.endPhaseButtonText.anchor.set(0.5);
     this.tradeCardsButtonText.anchor.set(0.5);
+
+    // Build territory lookup from map definition
+    for (const def of this.mapDef.territories) {
+      this.territoryDefMap.set(def.id, def);
+    }
 
     this.endPhaseButton.addChild(this.endPhaseButtonBg, this.endPhaseButtonText);
     this.endPhaseButton.eventMode = "static";
@@ -284,7 +220,6 @@ export class RiskRenderer implements GameRenderer {
       this.boardFrame,
       this.boardSurface,
       this.oceanOverlay,
-      this.gridOverlay,
       this.connectionLayer,
       this.continentLabelLayer,
     );
@@ -300,7 +235,7 @@ export class RiskRenderer implements GameRenderer {
       this.tradeCardsButton,
     );
 
-    this.container.addChild(this.mapLayer, this.territoryLayer, this.hudLayer);
+    this.container.addChild(this.mapLayer, this.territoryLayer, this.labelLayer, this.hudLayer);
   }
 
   init(state: unknown, context?: GameRendererContext): void {
@@ -378,23 +313,23 @@ export class RiskRenderer implements GameRenderer {
     this.territoryGraphics.clear();
     this.territoryLayer.removeChildren().forEach((child) => child.destroy());
 
-    for (const layout of TERRITORY_LAYOUTS) {
+    for (const def of this.mapDef.territories) {
       const graphic = new Graphics();
       graphic.eventMode = "static";
       graphic.cursor = "pointer";
-      graphic.on("pointertap", () => this.handleTerritoryClick(layout.id));
+      graphic.on("pointertap", () => this.handleTerritoryClick(def.id));
       graphic.on("pointerenter", () => {
-        this.hoveredTerritory = layout.id;
+        this.hoveredTerritory = def.id;
         this.redrawMap();
       });
       graphic.on("pointerleave", () => {
-        if (this.hoveredTerritory === layout.id) {
+        if (this.hoveredTerritory === def.id) {
           this.hoveredTerritory = null;
           this.redrawMap();
         }
       });
 
-      this.territoryGraphics.set(layout.id, graphic);
+      this.territoryGraphics.set(def.id, graphic);
       this.territoryLayer.addChild(graphic);
     }
   }
@@ -402,12 +337,12 @@ export class RiskRenderer implements GameRenderer {
   private layout(): void {
     const availableWidth = this.width - (VIEW_PADDING * 2);
     const availableHeight = this.height - TOP_HUD_SPACE - BOTTOM_HUD_SPACE;
-    const scaleX = availableWidth / MAP_WIDTH;
-    const scaleY = availableHeight / MAP_HEIGHT;
+    const scaleX = availableWidth / this.mapDef.viewBoxWidth;
+    const scaleY = availableHeight / this.mapDef.viewBoxHeight;
     this.mapScale = Math.min(scaleX, scaleY, 1);
 
-    const scaledMapWidth = MAP_WIDTH * this.mapScale;
-    const scaledMapHeight = MAP_HEIGHT * this.mapScale;
+    const scaledMapWidth = this.mapDef.viewBoxWidth * this.mapScale;
+    const scaledMapHeight = this.mapDef.viewBoxHeight * this.mapScale;
 
     this.mapOffsetX = (this.width - scaledMapWidth) / 2;
     this.mapOffsetY = TOP_HUD_SPACE + ((availableHeight - scaledMapHeight) / 2);
@@ -471,42 +406,29 @@ export class RiskRenderer implements GameRenderer {
     this.oceanOverlay
       .roundRect(this.mapOffsetX, this.mapOffsetY, scaledMapWidth, scaledMapHeight, 22 * this.mapScale)
       .fill(createRiskOceanGradient());
-
-    this.gridOverlay.clear();
-    const gridStepX = scaledMapWidth / GRID_COLUMNS;
-    const gridStepY = scaledMapHeight / GRID_ROWS;
-    for (let column = 1; column < GRID_COLUMNS; column += 1) {
-      const x = this.mapOffsetX + (gridStepX * column);
-      this.gridOverlay.moveTo(x, this.mapOffsetY);
-      this.gridOverlay.lineTo(x, this.mapOffsetY + scaledMapHeight);
-    }
-    for (let row = 1; row < GRID_ROWS; row += 1) {
-      const y = this.mapOffsetY + (gridStepY * row);
-      this.gridOverlay.moveTo(this.mapOffsetX, y);
-      this.gridOverlay.lineTo(this.mapOffsetX + scaledMapWidth, y);
-    }
-    this.gridOverlay.stroke({ color: BORDER_LIGHT, width: 1, alpha: 0.15 });
   }
 
   private drawContinentLabels(): void {
     this.continentLabelLayer.removeChildren().forEach((child) => child.destroy());
 
-    for (const label of CONTINENT_LABELS) {
-      const accent = PLAYER_COLORS[CONTINENT_ACCENTS[label.continent]];
+    for (const cont of this.mapDef.continents) {
+      const accent = PLAYER_COLORS[CONTINENT_ACCENTS[cont.id]];
+      if (!accent) continue;
+
       const pill = new Graphics();
-      const width = Math.max(86, label.label.length * 7.4) * this.mapScale;
-      const height = Math.max(22, 24 * this.mapScale);
-      const x = this.mapOffsetX + (label.x * this.mapScale);
-      const y = this.mapOffsetY + (label.y * this.mapScale);
+      const pillWidth = Math.max(86, cont.name.length * 7.4) * this.mapScale;
+      const pillHeight = Math.max(22, 24 * this.mapScale);
+      const x = this.mapOffsetX + (cont.labelX * this.mapScale);
+      const y = this.mapOffsetY + (cont.labelY * this.mapScale);
 
       pill
-        .roundRect(-width / 2, -height / 2, width, height, height / 2)
+        .roundRect(-pillWidth / 2, -pillHeight / 2, pillWidth, pillHeight, pillHeight / 2)
         .fill({ color: BG_CARD_SURFACE, alpha: BG_CARD_SURFACE_ALPHA + 0.16 })
         .stroke({ color: accent.border, width: Math.max(1, this.mapScale * 1.1), alpha: 0.62 });
       pill.position.set(x, y);
 
       const text = new Text({
-        text: label.label,
+        text: cont.name,
         style: {
           fontFamily: "sans-serif",
           fontSize: Math.max(10, 12 * this.mapScale),
@@ -530,144 +452,112 @@ export class RiskRenderer implements GameRenderer {
 
   private redrawMap(): void {
     this.drawConnections();
+    this.labelLayer.removeChildren().forEach((child) => child.destroy());
 
-    for (const layout of TERRITORY_LAYOUTS) {
-      const graphic = this.territoryGraphics.get(layout.id);
-      if (!graphic) {
-        continue;
-      }
+    for (const def of this.mapDef.territories) {
+      const graphic = this.territoryGraphics.get(def.id);
+      if (!graphic) continue;
 
-      const territory = this.state?.territories?.get(layout.id);
+      const territory = this.state?.territories?.get(def.id);
       const ownerColors = territory?.owner ? this.getPlayerColorSetForSessionId(territory.owner) : null;
-      const x = this.mapOffsetX + (layout.x * this.mapScale);
-      const y = this.mapOffsetY + (layout.y * this.mapScale);
-      const cardWidth = Math.max(62, Math.min(102, (layout.name.length * 5.8) + 32)) * this.mapScale;
-      const cardHeight = Math.max(34, 46 * this.mapScale);
-      const badgeHeight = Math.max(16, 18 * this.mapScale);
-      const badgeWidth = Math.max(26, Math.min(cardWidth - (10 * this.mapScale), 34 * this.mapScale));
-      const borderWidth = Math.max(1.2, 1.8 * this.mapScale);
-      const cornerRadius = Math.max(10, 12 * this.mapScale);
-      const isSelected = this.selectedTerritory === layout.id;
-      const isHovered = this.hoveredTerritory === layout.id;
-      const isValidTarget = this.validTargets.has(layout.id);
+      const isSelected = this.selectedTerritory === def.id;
+      const isHovered = this.hoveredTerritory === def.id;
+      const isValidTarget = this.validTargets.has(def.id);
       const isAttackTarget = isValidTarget && this.state?.turnPhase === "attack";
       const isAttackSource = isSelected && this.state?.turnPhase === "attack";
       const territoryFill = ownerColors?.bg ?? BG_CARD;
       const territoryBorder = ownerColors?.border ?? BORDER_LIGHT;
       const territoryText = ownerColors?.text ?? TEXT_MUTED;
-      const scale = isSelected ? 1.08 : isHovered ? 1.05 : 1;
+      const borderWidth = Math.max(1, 1.4 * this.mapScale);
 
       graphic.clear();
-      graphic.removeChildren().forEach((child) => child.destroy());
-      graphic.position.set(x, y);
-      graphic.scale.set(scale);
       graphic.zIndex = isSelected ? 30 : isHovered ? 20 : isValidTarget ? 15 : 10;
 
-      graphic
-        .roundRect(
-          (-cardWidth / 2) + (2 * this.mapScale),
-          (-cardHeight / 2) + (5 * this.mapScale),
-          cardWidth,
-          cardHeight,
-          cornerRadius,
-        )
-        .fill({ color: BG_PRIMARY, alpha: 0.46 });
+      // Territory fill — draw SVG path shape
+      drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+      graphic.fill({ color: territoryFill, alpha: ownerColors ? 0.88 : 0.72 });
 
-      graphic
-        .roundRect(-cardWidth / 2, -cardHeight / 2, cardWidth, cardHeight, cornerRadius)
-        .fill({ color: territoryFill, alpha: ownerColors ? 0.94 : 0.88 })
-        .stroke({ color: territoryBorder, width: borderWidth, alpha: 0.96 });
+      // Border stroke
+      drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+      graphic.stroke({ color: territoryBorder, width: borderWidth, alpha: 0.9 });
 
       if (!ownerColors) {
-        graphic
-          .roundRect(-cardWidth / 2, -cardHeight / 2, cardWidth, cardHeight, cornerRadius)
-          .fill({ color: BG_CARD_SURFACE, alpha: 0.24 });
+        drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+        graphic.fill({ color: BG_CARD_SURFACE, alpha: 0.2 });
       }
 
       if (isHovered) {
-        graphic
-          .roundRect(-cardWidth / 2, -cardHeight / 2, cardWidth, cardHeight, cornerRadius)
-          .fill({ color: TEXT_PRIMARY, alpha: 0.08 });
+        drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+        graphic.fill({ color: TEXT_PRIMARY, alpha: 0.12 });
       }
 
       if (isValidTarget) {
-        graphic
-          .roundRect(-cardWidth / 2, -cardHeight / 2, cardWidth, cardHeight, cornerRadius)
-          .fill({ color: isAttackTarget ? RED_600 : ACCENT_VIOLET, alpha: isAttackTarget ? 0.24 : 0.18 });
+        drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+        graphic.fill({ color: isAttackTarget ? RED_600 : ACCENT_VIOLET, alpha: isAttackTarget ? 0.28 : 0.22 });
       }
 
       if (isSelected) {
-        graphic
-          .roundRect(
-            (-cardWidth / 2) - (4 * this.mapScale),
-            (-cardHeight / 2) - (4 * this.mapScale),
-            cardWidth + (8 * this.mapScale),
-            cardHeight + (8 * this.mapScale),
-            cornerRadius + (4 * this.mapScale),
-          )
-          .stroke({ color: ACCENT_VIOLET, width: Math.max(2, this.mapScale * 2.4), alpha: 0.95 });
+        drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+        graphic.stroke({ color: ACCENT_VIOLET, width: Math.max(2.5, this.mapScale * 3), alpha: 0.95 });
       }
 
       if (isAttackSource) {
-        graphic
-          .roundRect(
-            (-cardWidth / 2) - (8 * this.mapScale),
-            (-cardHeight / 2) - (8 * this.mapScale),
-            cardWidth + (16 * this.mapScale),
-            cardHeight + (16 * this.mapScale),
-            cornerRadius + (8 * this.mapScale),
-          )
-          .stroke({ color: territoryText, width: Math.max(3, this.mapScale * 3.2), alpha: 0.42 });
+        drawSvgPath(graphic, def.path, this.mapOffsetX, this.mapOffsetY, this.mapScale);
+        graphic.stroke({ color: territoryText, width: Math.max(3, this.mapScale * 3.5), alpha: 0.5 });
       }
 
-      const nameFontSize = Math.max(8, Math.min(12, 11 * this.mapScale) - Math.max(0, (layout.name.length - 10) * 0.18));
+      // Territory labels (rendered in a separate layer above all territory shapes)
+      const labelX = this.mapOffsetX + (def.labelX * this.mapScale);
+      const labelY = this.mapOffsetY + (def.labelY * this.mapScale);
+
+      const nameFontSize = Math.max(7, Math.min(10, 9 * this.mapScale) - Math.max(0, (def.name.length - 10) * 0.15));
       const nameText = new Text({
-        text: layout.name,
+        text: def.name,
         style: {
           fontFamily: "sans-serif",
           fontSize: nameFontSize,
           fontWeight: "700",
           fill: TEXT_PRIMARY,
           align: "center",
-          wordWrap: true,
-          wordWrapWidth: cardWidth - (12 * this.mapScale),
           dropShadow: {
             color: BG_PRIMARY,
-            alpha: 0.78,
-            blur: 2,
+            alpha: 0.9,
+            blur: 3,
             distance: 1,
           },
         },
       });
-      nameText.anchor.set(0.5);
-      nameText.position.set(0, (-cardHeight / 2) + (14 * this.mapScale));
+      nameText.anchor.set(0.5, 1);
+      nameText.position.set(labelX, labelY - (3 * this.mapScale));
 
-      const badgeTop = (cardHeight / 2) - badgeHeight - (4 * this.mapScale);
-      graphic
-        .roundRect(-badgeWidth / 2, badgeTop, badgeWidth, badgeHeight, badgeHeight / 2)
-        .fill({ color: BG_CARD_SURFACE, alpha: BG_CARD_SURFACE_ALPHA + 0.3 })
-        .stroke({ color: BORDER_DEFAULT, width: Math.max(1, this.mapScale), alpha: 0.72 });
+      // Army count badge
+      const badgeRadius = Math.max(8, 10 * this.mapScale);
+      const badge = new Graphics();
+      badge
+        .circle(labelX, labelY + (badgeRadius * 0.6), badgeRadius)
+        .fill({ color: BG_CARD_SURFACE, alpha: BG_CARD_SURFACE_ALPHA + 0.4 })
+        .stroke({ color: BORDER_DEFAULT, width: Math.max(1, this.mapScale), alpha: 0.8 });
 
       const armyText = new Text({
         text: String(territory?.armyCount ?? 0),
         style: {
           fontFamily: "sans-serif",
-          fontSize: Math.max(10, 12 * this.mapScale),
+          fontSize: Math.max(8, 10 * this.mapScale),
           fontWeight: "800",
           fill: TEXT_PRIMARY,
           align: "center",
           dropShadow: {
             color: BG_PRIMARY,
-            alpha: 0.88,
+            alpha: 0.9,
             blur: 3,
             distance: 1,
           },
         },
       });
       armyText.anchor.set(0.5);
-      armyText.position.set(0, badgeTop + (badgeHeight / 2));
+      armyText.position.set(labelX, labelY + (badgeRadius * 0.6));
 
-      graphic.addChild(nameText, armyText);
+      this.labelLayer.addChild(badge, nameText, armyText);
     }
   }
 
@@ -675,32 +565,47 @@ export class RiskRenderer implements GameRenderer {
     this.connectionLayer.clear();
 
     const drawnEdges = new Set<string>();
-    for (const territory of TERRITORY_LAYOUTS) {
-      for (const adjacentId of territory.adjacentTo) {
-        const edgeKey = [territory.id, adjacentId].sort().join(":");
-        if (drawnEdges.has(edgeKey)) {
-          continue;
-        }
+
+    for (const def of this.mapDef.territories) {
+      for (const adjacentId of def.adjacentTo) {
+        const edgeKey = [def.id, adjacentId].sort().join(":");
+        if (drawnEdges.has(edgeKey)) continue;
         drawnEdges.add(edgeKey);
 
-        const adjacent = TERRITORY_LAYOUTS.find((layout) => layout.id === adjacentId);
-        if (!adjacent) {
-          continue;
-        }
+        const adjacent = this.territoryDefMap.get(adjacentId);
+        if (!adjacent) continue;
 
-        const fromX = this.mapOffsetX + (territory.x * this.mapScale);
-        const fromY = this.mapOffsetY + (territory.y * this.mapScale);
-        const toX = this.mapOffsetX + (adjacent.x * this.mapScale);
-        const toY = this.mapOffsetY + (adjacent.y * this.mapScale);
-        const touchesSelection = this.selectedTerritory === territory.id || this.selectedTerritory === adjacent.id;
-        const touchesValidTarget = this.validTargets.has(territory.id) || this.validTargets.has(adjacent.id);
+        const touchesSelection = this.selectedTerritory === def.id || this.selectedTerritory === adjacentId;
+        const touchesValidTarget = this.validTargets.has(def.id) || this.validTargets.has(adjacentId);
         const isAttackLine = this.state?.turnPhase === "attack" && touchesSelection && touchesValidTarget;
         const lineColor = isAttackLine ? RED_700 : touchesSelection ? ACCENT_VIOLET : BORDER_LIGHT;
-        const lineAlpha = isAttackLine ? 0.36 : touchesSelection ? 0.24 : 0.18;
-        const lineWidth = isAttackLine ? Math.max(2, this.mapScale * 2.4) : Math.max(1, this.mapScale * 1.5);
+        const lineAlpha = isAttackLine ? 0.4 : touchesSelection ? 0.28 : 0.12;
+        const lineWidth = isAttackLine ? Math.max(2, this.mapScale * 2.4) : Math.max(1, this.mapScale * 1.2);
 
-        this.connectionLayer.moveTo(fromX, fromY);
-        this.connectionLayer.lineTo(toX, toY);
+        // Check for connection overrides (wrap-around lines)
+        const override = this.mapDef.connectionOverrides.find(
+          (c) => (c.from === def.id && c.to === adjacentId) || (c.from === adjacentId && c.to === def.id),
+        );
+
+        if (override?.waypoints && override.waypoints.length > 0) {
+          const fromX = this.mapOffsetX + (def.labelX * this.mapScale);
+          const fromY = this.mapOffsetY + (def.labelY * this.mapScale);
+          this.connectionLayer.moveTo(fromX, fromY);
+          for (const wp of override.waypoints) {
+            this.connectionLayer.lineTo(this.mapOffsetX + (wp.x * this.mapScale), this.mapOffsetY + (wp.y * this.mapScale));
+          }
+          const toX = this.mapOffsetX + (adjacent.labelX * this.mapScale);
+          const toY = this.mapOffsetY + (adjacent.labelY * this.mapScale);
+          this.connectionLayer.lineTo(toX, toY);
+        } else {
+          const fromX = this.mapOffsetX + (def.labelX * this.mapScale);
+          const fromY = this.mapOffsetY + (def.labelY * this.mapScale);
+          const toX = this.mapOffsetX + (adjacent.labelX * this.mapScale);
+          const toY = this.mapOffsetY + (adjacent.labelY * this.mapScale);
+          this.connectionLayer.moveTo(fromX, fromY);
+          this.connectionLayer.lineTo(toX, toY);
+        }
+
         this.connectionLayer.stroke({ color: lineColor, width: lineWidth, alpha: lineAlpha });
       }
     }
@@ -711,7 +616,7 @@ export class RiskRenderer implements GameRenderer {
     const phaseLabel = this.getPhaseLabel();
     const armiesToPlace = this.getArmiesToPlace();
     const currentTurnColors = this.state?.currentTurn ? this.getPlayerColorSetForSessionId(this.state.currentTurn) : null;
-    const bottomY = this.mapOffsetY + (MAP_HEIGHT * this.mapScale) + 20;
+    const bottomY = this.mapOffsetY + (this.mapDef.viewBoxHeight * this.mapScale) + 20;
 
     this.statusText.text = statusLabel;
     this.statusText.style.fill = statusColor;
@@ -886,7 +791,7 @@ export class RiskRenderer implements GameRenderer {
       : '<div class="sidebar-empty">Waiting for players.</div>';
     this.sidebar.updatePanel("players", playersMarkup);
 
-    const selectedTerritory = this.selectedTerritory ? TERRITORY_LAYOUTS.find((territory) => territory.id === this.selectedTerritory) : null;
+    const selectedTerritory = this.selectedTerritory ? this.territoryDefMap.get(this.selectedTerritory) : null;
     const selectedCopy = selectedTerritory ? `Selected: ${selectedTerritory.name}.` : "Select a territory on the board for context.";
 
     this.sidebar.updatePanel(
@@ -1111,7 +1016,7 @@ export class RiskRenderer implements GameRenderer {
     }
 
     const sessionId = this.room?.sessionId ?? "";
-    const selectedLayout = TERRITORY_LAYOUTS.find((territory) => territory.id === this.selectedTerritory);
+    const selectedLayout = this.selectedTerritory ? this.territoryDefMap.get(this.selectedTerritory) : undefined;
     if (!selectedLayout) {
       return;
     }

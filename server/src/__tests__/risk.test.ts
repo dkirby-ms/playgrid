@@ -694,9 +694,12 @@ describe("Risk Game — Attack Phase", () => {
       riskPlugin.actions.endPhase(state, mockClient("player-1"), {});
       expect(state.turnPhase).toBe("fortify");
       
-      // End turn
-      riskPlugin.actions.endPhase(state, mockClient("player-1"), {});
+      // End turn (fortify phase ends the turn)
+      const result = riskPlugin.actions.endPhase(state, mockClient("player-1"), {});
+      expect(result.endsTurn).toBe(true);
       
+      // onTurnStarted resets the flag for the next player
+      riskPlugin.lifecycle.onTurnStarted?.(state, "player-2");
       expect(state.earnedCardThisTurn).toBe(false);
     });
   });
@@ -1042,6 +1045,75 @@ describe("Risk Game — Edge Cases", () => {
       const result = riskPlugin.actions.endPhase(state, mockClient("player-1"), {});
       expect(result.success).toBe(true);
       expect(result.endsTurn).toBe(true);
+    });
+
+    it("onTurnStarted calculates reinforcements for the new player", () => {
+      const state = createStartedGame(2);
+
+      state.gamePhase = "playing";
+      state.turnPhase = "fortify";
+      state.currentTurn = "player-1";
+
+      const p2Risk = state.riskPlayers.get("player-2");
+      expect(p2Risk).toBeDefined();
+      if (p2Risk) {
+        p2Risk.armiesToPlace = 0;
+      }
+
+      // Simulate turn ending → BaseGameRoom calls onTurnStarted for next player
+      riskPlugin.lifecycle.onTurnStarted?.(state, "player-2");
+
+      expect(state.turnPhase).toBe("reinforce");
+      expect(p2Risk?.armiesToPlace).toBeGreaterThan(0);
+      expect(state.earnedCardThisTurn).toBe(false);
+    });
+
+    it("endPhase from fortify does not calculate reinforcements for the current player", () => {
+      const state = createStartedGame(2);
+
+      state.gamePhase = "playing";
+      state.turnPhase = "fortify";
+      state.currentTurn = "player-1";
+
+      const p1Risk = state.riskPlayers.get("player-1");
+      if (p1Risk) {
+        p1Risk.armiesToPlace = 0;
+      }
+
+      const result = riskPlugin.actions.endPhase(state, mockClient("player-1"), {});
+      expect(result.endsTurn).toBe(true);
+
+      // endPhase should NOT calculate reinforcements — that's onTurnStarted's job
+      expect(p1Risk?.armiesToPlace).toBe(0);
+    });
+
+    it("setup-to-playing transition does not give reinforcements to the wrong player", () => {
+      const state = createStartedGame(2);
+
+      // Force all players to have placed their armies
+      const activePlayers = Array.from(state.players.values()).filter(p => !p.isSpectator);
+      for (const player of activePlayers) {
+        const riskPlayer = state.riskPlayers.get(player.sessionId);
+        if (riskPlayer) {
+          riskPlayer.armiesToPlace = 0;
+        }
+      }
+
+      expect(state.gamePhase).toBe("setup");
+
+      // Player 1 triggers the transition
+      const result = riskPlugin.actions.endPhase(state, mockClient("player-1"), {});
+      expect(result.endsTurn).toBe(true);
+      expect(state.gamePhase).toBe("playing");
+
+      // player-1 should NOT have reinforcements from endPhase
+      const p1Risk = state.riskPlayers.get("player-1");
+      expect(p1Risk?.armiesToPlace).toBe(0);
+
+      // After BaseGameRoom calls onTurnStarted for the next player, they get reinforcements
+      riskPlugin.lifecycle.onTurnStarted?.(state, "player-2");
+      const p2Risk = state.riskPlayers.get("player-2");
+      expect(p2Risk?.armiesToPlace).toBeGreaterThan(0);
     });
   });
 

@@ -175,6 +175,7 @@ async function savePlayerName(page: Page, displayName: string): Promise<void> {
   await playerNameInput.fill(displayName);
   await playerNameInput.blur();
   await expect(page.locator(".lobby-notice.visible")).toHaveText("Player name saved.");
+  await expect(page.locator(".lobby-notice.visible")).not.toBeVisible();
   await expect(playerNameInput).toHaveValue(displayName.trim());
 }
 
@@ -302,10 +303,37 @@ async function getSnapshot(page: Page): Promise<GameSnapshot> {
       turnNumber: typeof state?.turnNumber === "number" ? state.turnNumber : null,
       mustCaptureFrom: typeof state?.mustCaptureFrom === "number" ? state.mustCaptureFrom : null,
       board: state?.board ? Array.from(state.board, Number) : [],
-      statusText: typeof renderer?.statusText?.text === "string" ? renderer.statusText.text : null,
-      playerColorText: typeof renderer?.playerColorText?.text === "string"
-        ? renderer.playerColorText.text
-        : null,
+      statusText: (() => {
+        if (typeof renderer?.statusText?.text === "string") {
+          return renderer.statusText.text;
+        }
+        if (typeof renderer?.getHUDStatus === "function") {
+          const hudStatus = renderer.getHUDStatus(state);
+          if (hudStatus && typeof hudStatus.text === "string") {
+            return hudStatus.text;
+          }
+        }
+        return null;
+      })(),
+      playerColorText: (() => {
+        if (typeof renderer?.playerColorText?.text === "string") {
+          return renderer.playerColorText.text;
+        }
+        if (typeof renderer?.getHUDStatus === "function") {
+          const hud = renderer.getHUDStatus(state);
+          if (hud?.detail && (hud.detail.includes('You are playing as') || hud.detail.includes('You are spectating'))) {
+            return hud.detail;
+          }
+        }
+        const sidebarNotes = document.querySelectorAll('.sidebar-note');
+        for (const note of sidebarNotes) {
+          const text = note.textContent ?? '';
+          if (text.includes('You are playing as') || text.includes('You are spectating')) {
+            return text;
+          }
+        }
+        return null;
+      })(),
       overlayTitle: typeof renderer?.overlayTitleText?.text === "string"
         ? renderer.overlayTitleText.text
         : null,

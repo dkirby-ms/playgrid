@@ -1180,3 +1180,76 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - **What changed:** Removed the temporary Pixi turn banner from `client/src/renderers/CheckersRenderer.ts`, deleted the banner view-model test files, and moved the emphasis back into the existing Game Info panel by rendering a highlighted `Current turn` row that reads `Your Turn` for the active local player.
 - **Pattern discovered:** `client/src/ui/GameSidebar.ts` is the right place for reusable turn-state treatment. Adding opt-in sidebar row/value classes plus CSS custom properties let the renderer dial in game-specific accent colors while keeping the layout inside the shared glass-panel system.
 - **User preference:** Turn prompts should be unmistakable but non-obstructive. Prefer a brighter, slightly animated sidebar treatment over any overlay/banner that sits on top of the board.
+
+### 2026-03-16: Dev Sandbox MVP — Gameboard Renderer Testing Tool
+
+- **PR #132** implements the dev sandbox for live gameboard rendering without server connection
+- **Files created:** 
+  - `client/src/scenes/SandboxScene.ts` — Scene that mounts renderers with mock state
+  - `client/src/sandbox/mockStates.ts` — Mock state generators for Checkers, Backgammon, Risk
+  - `client/src/sandbox/SandboxStatePanel.ts` — HTML overlay panel for live state editing
+- **Route detection:** Application.ts now checks for `/sandbox/{game}` URL patterns (hash or path)
+- **State editing by game:**
+  - **Checkers:** Full visual board editor (click cells to cycle pieces), mustCaptureFrom input
+  - **Backgammon/Risk:** JSON textarea editors (MVP — sufficient for testing)
+- **Architecture patterns:**
+  - Renderers already use optional chaining for state access → plain JS objects work
+  - Pass `room: undefined` in GameRendererContext — renderers handle gracefully
+  - SandboxStatePanel uses HTML/CSS overlay (not PixiJS) for controls
+- **Zero production impact:** All new files + minimal routing changes in Application.ts
+- **Success:** Build, lint, and tests all pass. Ready for renderer testing workflow.
+
+---
+
+## Session 2026-03-16: PR #125 Fix & Sandbox Completion
+
+**Role:** Blocker resolver (PR #125 fix), sandbox MVP implementation  
+**Output:** PR #125 pass-action fix, PR #132 sandbox MVP (both merged)  
+
+**Summary:**
+- PR #125 (Backgammon CPU) blocked on no-valid-moves bug → Pemulis locked out
+- Applied Hal's specification: implemented "pass" action in BackgammonPlugin
+- Added validation: pass only when dice rolled AND no valid moves exist
+- Updated selectCpuAction() to return { actionType: "pass" } instead of null
+- Added 5 tests covering pass action scenarios (plugin + CPU)
+- PR #125 re-submitted, Hal approved & merged
+
+- Implemented sandbox MVP (PR #132):
+  - Created SandboxScene.ts, mockStates.ts, SandboxStatePanel.ts
+  - Mock state builders for all 3 games (plain JS objects, not Schema)
+  - HTML overlay for state controls (Checkers: visual editor, Backgammon/Risk: JSON textarea)
+  - Route detection in Application.ts for /sandbox/{game} patterns
+  - No server connection required
+- Hal reviewed & approved #132 → merged
+
+**Key Achievement:** Fixed critical Backgammon bug using lockout protocol, then shipped dev sandbox MVP for renderer testing.
+
+**Directives:**
+- Dev sandbox must stay in sync with real game renderers (not a disposable tool)
+- Mock state builders need updates whenever real state schemas change
+
+**Output:**
+- PR #125 merged (Backgammon CPU with pass action)
+- PR #132 merged (Dev sandbox MVP)
+- Issues #87 closed via #125
+- All 289 tests passing
+
+## Session 2026-03-17: E2E Test Failure Triage and Fix Marathon
+
+**Event:** Extended multi-hour session supporting E2E test failure fixes across 4-agent coordination.  
+**Role:** Indirect support (no direct E2E work assigned in this session)  
+
+**Context:** Hal coordinated investigation of 15 failing E2E tests. Pemulis fixed Risk reinforcement bug, Steeply fixed spectator/reconnection/backgammon issues, Coordinator fixed snapshot extraction and CPU detection.
+
+**Outcome:** E2E suite 15/40 → 40/40 passing, 292/292 unit tests passing, lint clean.
+
+**Cross-Agent Notes for Future E2E Work:**
+- **`playMoveForCurrentTurn()` pattern:** Reusable for multiplayer E2E where move selection depends on game state (not hardcoded player color)
+- **Fallback extraction chains:** When rendering moves elements between PixiJS/DOM, E2E snapshots need IIFE pattern (try PixiJS → try DOM → default)
+- **CPU opponent via session ID:** Don't add schema-level CPU indicators; use `controllerSessionId === "cpu-opponent"` instead
+- **Backgammon timing:** Stochastic game paths need 180s timeout for E2E tests (not default 30s)
+
+**Relevant to Renderer Work:**
+- Dev sandbox (PR #132 merged) will need renderer updates if state schemas change
+- **Spec updates to monitor:** If future rendering changes move elements between PixiJS/DOM, E2E snapshot extraction may need fallback adjustments
+

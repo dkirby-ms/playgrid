@@ -74,6 +74,12 @@ export interface GameLifecycle<TState extends Schema> {
   onGameStart(state: TState): void;
 
   /**
+   * Called after the turn advances to a new player.
+   * Use for per-turn initialization (e.g. calculating reinforcements).
+   */
+  onTurnStarted?(state: TState, newPlayerId: string): void;
+
+  /**
    * Called when a player disconnects.
    * Handle graceful degradation or pause state.
    */

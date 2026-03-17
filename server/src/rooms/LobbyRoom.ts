@@ -217,7 +217,7 @@ export class LobbyRoom extends Room {
 
     const cpuOpponent = this.shouldEnableCpuOpponent(gameType, payload.cpuOpponent);
     if (payload.cpuOpponent === true && !cpuOpponent) {
-      this.sendError(client, "CPU opponents are currently only available for Checkers.");
+      this.sendError(client, "CPU opponents are not available for this game type.");
       return;
     }
 
@@ -737,7 +737,7 @@ export class LobbyRoom extends Room {
   }
 
   private shouldEnableCpuOpponent(gameType: string, cpuOpponent: unknown) {
-    return cpuOpponent === true && gameType === "checkers";
+    return cpuOpponent === true && (gameType === "checkers" || gameType === "backgammon");
   }
 
   private shouldEnableHeadToHeadMode(gameType: string, headToHeadMode: unknown) {

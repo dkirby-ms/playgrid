@@ -56,14 +56,13 @@ export function rollDice(): [number, number] {
  * Get available moves for the dice that haven't been used yet.
  * Handles doubles (4 moves) and regular rolls (2 moves).
  */
-export function getAvailableDice(dice: number[], usedDice: boolean[]): number[] {
+export function getAvailableDice(dice: number[], usedDice: boolean[], doublesMovesUsed = 0): number[] {
   const [die1, die2] = dice;
   const [used1, used2] = usedDice;
   
   if (die1 === die2) {
-    // Doubles: 4 moves of the same value
-    const usedCount = (used1 ? 1 : 0) + (used2 ? 1 : 0);
-    const remainingCount = 4 - (usedCount * 2);
+    // Doubles: 4 moves of the same value, tracked by doublesMovesUsed counter
+    const remainingCount = Math.max(0, 4 - doublesMovesUsed);
     return Array.from({ length: remainingCount }, () => die1);
   }
   

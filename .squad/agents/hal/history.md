@@ -741,3 +741,329 @@ User provided redesign package at `docs/designs/redesign/` with React/Tailwind r
 ## Learnings
 - **Head-to-Head Mode Lifecycle:** Synthetic players (shared device) require explicit cleanup in *all* departure paths, including reconnection timeouts. The initial implementation missed the timeout branch, leading to orphaned state.
 - **Testing Timers:** Regression tests for reconnection windows must explicitly verify side effects (like synthetic player removal) after the timeout promise rejects.
+
+## Issue #87 Triage: CPU Opponents in Backgammon
+
+### Learning: CPU Opponent Pattern
+
+**File structure:**
+- Game-specific CPU module: `server/src/games/{game}/CpuOpponent.ts`
+- Exports a single `selectCpuMove(state: GameState): Move | null` function
+- Uses game logic utilities (validation, move application) to score candidate moves
+
+**Integration:**
+- No changes to `BaseGameRoom.ts` needed (already generic for CPU turns)
+- `BaseGameRoom.isCpuTurn()` checks if player is `CPU_OPPONENT_SESSION_ID` and game is "checkers"
+- When CPU turn arrives, `executeCpuTurn()` calls `selectCpuMove()` and processes the move via the action handler
+- CPU move strategy in Checkers: Score moves by capture priority (1000 points), king promotion (100), and advancement toward opponent's side
+
+**Backgammon adaptations:**
+- Scoring will differ: prioritize bearing off pieces, avoid/minimize blots (exposed pieces vulnerable to capture)
+- Use existing `backgammonLogic.ts` move validation and application functions
+- Pattern is proven; low risk implementation for Pemulis
+
+### Decision: Route to Pemulis
+
+Per routing.md: "Game systems" → Pemulis. CPU opponent is pure simulation/AI — not rendering (Gately) or testing framework (Steeply).
+
+**Label assigned:** `squad:pemulis`
+
+## 2026-03-16: Issue #87 Completion — PR #125 (Backgammon CPU)
+
+**Status:** Completed by Pemulis  
+**PR:** #125 (draft)
+
+Pemulis successfully implemented CPU opponent for Backgammon following the Checkers pattern from PR #121. Also generalized the BaseGameRoom CPU framework to support multiple games without game-specific gates.
+
+**Key Changes:**
+- `server/src/games/backgammon/CpuOpponent.ts` — Scoring heuristic (bear off > blots > points > advance)
+- `server/src/game/BaseGameRoom.ts` — Widened CPU support gate, split executeCpuTurn into dispatchers
+- 8 new tests, all 286 tests passing
+
+**Ready for:** Code review (Hal), merge decision pending
+
+
+### PR #125 Re-Review — Backgammon CPU No-Valid-Moves Fix (2026-03-16)
+
+**Session:** Re-reviewed PR #125 after Gately's fix for the no-valid-moves forfeit bug
+**Verdict:** APPROVED and merged to dev
+
+**Bug:** `selectCpuAction` returned `null` when CPU had no valid moves after rolling dice, triggering `handleTurnTimeout` which forfeited the game.
+
+**Fix (Gately):**
+- Added `pass` action to BackgammonPlugin — resets dice, ends turn (`endsTurn: true`)
+- CPU returns `{ actionType: "pass" }` instead of `null`
+- Validation rejects pass when valid moves exist or dice not rolled (anti-abuse)
+- 3 new plugin tests + 2 updated CPU tests
+
+**Verification:** All 289 tests pass, build clean, lint clean (0 errors).
+
+## Learnings
+
+- **Null returns from CPU action selectors are dangerous.** When a game has multi-step turns (roll → move), the CPU action selector must always return a valid action type. The `null` path in BaseGameRoom triggers forfeit. Games with no-move situations (backgammon, chess stalemate) need explicit pass/skip actions in the plugin.
+
+---
+
+## 2026-03-16: PR #132 Review — Dev Sandbox Feature
+
+**Status:** APPROVED  
+**Reviewer:** Hal  
+**Branch:** origin/squad/sandbox-dev-tool  
+**Author:** Gately
+
+### Review Summary
+
+Gately implemented the Game Dev Sandbox (Issue #130) — a development-only testing tool for rendering game boards with mock state, no server connection. Sandbox provides live state tweaking via an HTML panel overlay, enabling rapid renderer prototyping and debugging.
+
+### Scope Compliance
+
+Checked against `.squad/decisions/inbox/hal-sandbox-scope.md`:
+
+**✓ Architecture:**
+- SandboxScene mounts renderer with plain JS objects (not Colyseus Schema)
+- Route detection in Application.ts for `/sandbox/{game}` patterns
+- HTML overlay panel (separate from PixiJS) for state controls
+- Zero pollution of existing GameScene, LobbyScene, WaitingRoomScene
+- All sandbox code isolated in `client/src/sandbox/` + new `client/src/scenes/SandboxScene.ts`
+
+**✓ Type Safety:**
+- Renderers already use optional chaining (`state?.board`, `state?.territories?.get()`) — verified in CheckersRenderer, BackgammonRenderer, RiskRenderer
+- Mock state interfaces define all required fields
+- GameRendererContext.room passed as `undefined` — renderers handle gracefully
+- No unsafe casts
+
+**✓ State Mutation:**
+- Mock state is plain JavaScript objects (not Schema instances)
+- Mutations local to browser only; no network calls
+- StatePanel re-renders visuals after mutation via `renderer.onStateChange(state)`
+
+**✓ Memory Leaks:**
+- SandboxStatePanel.destroy() removes DOM element, nulls callback
+- SandboxScene.cleanup() properly nulls renderer, statePanel, currentState
+- Container.removeChild() called before null
+- cleanup() invoked on onExit()
+
+**✓ Build Passes:**
+- `npm run build`: ✓ PASS (778 modules, 2.05s)
+- `npm run lint`: ✓ PASS (0 new errors, pre-existing warnings only)
+- `npm run test`: ✓ PASS (289 passed, 12 todo)
+
+**✓ Renderer Compatibility:**
+- Checkers: Full visual board editor (click to cycle pieces)
+- Backgammon: JSON textarea editor
+- Risk: JSON textarea editor
+- All renderers handle `room: undefined` in context
+
+**✓ Per-Game Controls:**
+- Checkers: Full visual board editor + mustCaptureFrom input
+- Backgammon: JSON editor for points, dice, bar, borne-off
+- Risk: JSON editor for territories, phases
+
+**✓ MVP Scope:**
+- Route detection ✓
+- Mock generators for all 3 games ✓
+- State panel for Checkers ✓
+- State panel UI for Backgammon/Risk (MVP JSON) ✓
+- No persistence / validation (as scoped) ✓
+
+### Code Quality
+
+**Strengths:**
+1. Clean separation of concerns (PixiJS renderer + HTML dev tools)
+2. SandboxScene properly implements Scene interface
+3. Error handling for missing gameType / renderer
+4. No hardcoded dependencies on production game code
+5. Decision doc clear and well-reasoned
+
+**No Issues Found:**
+- No unsafe casts or undefined references
+- No event listener leaks
+- No console spam or debug code
+- No secrets or sensitive data
+- No production code changes beyond route detection
+
+### Verdict
+
+**✅ APPROVED**
+
+This PR implements the sandbox exactly as scoped. The architecture is clean, type-safe, and zero-risk to production. Renderers already support plain JS objects via optional chaining. All validation checks pass.
+
+### Learnings
+
+- **Optional Chaining Adoption:** Playgrid renderers were already designed to handle both Colyseus Schema and plain objects via optional chaining. The sandbox leverages this pattern cleanly without requiring any renderer changes. This is a sign of good forward-thinking design during the renderer architecture phase.
+- **HTML Overlay for Dev Tools:** The decision to use HTML/CSS forms for state controls (not PixiJS UI) is pragmatic. Dev tools don't need to be polished; speed of implementation matters more. Future iterations can add PixiJS-native controls if needed, but for MVP, HTML is the right call.
+- **Scene Isolation:** By treating sandbox as a full Scene (not a modal on top of the game), Gately avoided the complexity of UI layering and state management within GameScene. Clean separation enables easy on/off and no side effects.
+
+---
+
+## 2026-03-16: PR #138 Review — CPU Opponent E2E Tests (Issue #131)
+
+**Status:** ✅ APPROVED  
+**Reviewer:** Hal  
+**Branch:** origin/squad/131-cpu-e2e  
+**Author:** dkirby-ms (Steeply)
+
+### Review Summary
+
+Steeply delivered CPU opponent E2E tests — the final E2E gap issue. Six tests (717 lines) covering Checkers and Backgammon CPU creation, move response, and multi-turn progression. Includes minimal production code changes to enable Backgammon CPU in lobby validation.
+
+### Key Findings
+
+**Test Quality:** 
+- ✓ 3 Checkers tests: creation, move response, multi-turn progression (dynamic move finding)
+- ✓ 3 Backgammon tests: creation, move + roll response, multi-turn with pass action handling
+- ✓ Proper grey-box pattern using `__PLAYGRID_E2E__` harness
+- ✓ 19 uses of `expect.poll()` with generous timeouts (10s for CPU, 3s for moves)
+- ✓ No hardcoded sleeps or race conditions
+
+**Production Code (Critical Review):**
+- Client: `supportsCpuOpponent()` extended from `checkers` to `checkers || backgammon` (1 line)
+- Server: `shouldEnableCpuOpponent()` extended same way (1 line)
+- Error message generalized to support future games
+- Risk assessment: LOW — minimal change, leverages existing BaseGameRoom CPU logic (game-agnostic)
+
+**Backgammon Pass Action:**
+- ✓ Test scenario at line 659: "verify CPU handles all situations (moves and passes)"
+- ✓ Explicit pass action sent when human has no valid moves
+- ✓ Tests that CPU responds after pass, confirming no forfeit
+- ✓ Covers the fix from PR #134
+
+**Build & Validation:**
+- ✓ `npm run build` — PASS (778 modules, 2.12s)
+- ✓ `npm run lint` — PASS (0 new errors)
+- ✓ `npm run test` — PASS (289 tests, all green)
+
+### Learnings
+
+**E2E Test Maturity:** Playgrid E2E suite is now comprehensive across 3 games. CPU tests demonstrate excellent pattern consistency — new test file reads exactly like existing checkers/backgammon specs. Team has settled on clean grey-box approach with proper polling. This is production-quality test infrastructure.
+
+**Production Code at Scale:** When enabling features across games, the pattern is simple: extend one condition from game-specific to multi-game check. The fact that both Checkers and Backgammon CPU just work with the same lobby validation tells us the BaseGameRoom plugin architecture is doing its job correctly — games inherit what they need, no special wiring required.
+
+**Risk of Minimal Changes:** Temptation is to overthink small PRs like this. But 2-line production changes that follow existing patterns and leverage battle-tested infrastructure (BaseGameRoom CPU logic) are actually LOWER risk than larger PRs. The review should confirm: (1) is this a recognized pattern? (2) does this extend it correctly? (3) are all tests green? Yes to all three → ship it.
+
+### Verdict
+
+**APPROVED** — This PR closes Issue #131 with excellent test coverage and safe, minimal production code changes. The E2E suite is now feature-complete for CPU opponents in both Checkers and Backgammon.
+
+---
+
+## Session 2026-03-16: Full Feature Completion & E2E Coverage Sprint
+
+**Role:** Lead reviewer & architect  
+**Key Reviews:** PR #125 (initial + re-review), #132, #133, #134, #135 (initial + re-review), #137, #138  
+**Critical Decisions:** Backgammon pass action, sandbox architecture, E2E strategy for random games  
+
+**Summary:**
+- Triaged Backgammon CPU issue (#87) → assigned to Pemulis
+- Reviewed PR #125, identified critical no-valid-moves bug → required "pass" action
+- Locked out Pemulis, Gately applied fix, re-approved #125 → merged
+- Scoped and reviewed dev sandbox MVP → merged #132
+- Approved E2E coverage expansion (5 issues filed) → Steeply assigned
+- Reviewed Backgammon E2E (#133) → approved & merged
+- Reviewed Risk E2E (#135), found Promise.race flakiness → locked out Steeply, Pemulis fixed, re-approved & merged
+- Reviewed Reconnection (#134), Spectator (#137), CPU opponents (#138) E2E tests → all approved & merged
+
+**Key Achievement:** Led team through 7 PR reviews (2 rejections, both resolved on lockout protocol + re-review). E2E coverage expanded from ~20% to near-complete.
+
+**Directives Captured:**
+1. Backgammon pass action is valid game mechanic, not a workaround
+2. Dev sandbox must stay in sync with real game renderers
+3. E2E strategy for non-deterministic games: action pipeline verification, not deterministic replay
+
+**Output:**
+- Session orchestration log: `.squad/orchestration-log/2026-03-16T22-47-43Z-full-session.md`
+- Session log: `.squad/log/2026-03-16T22-46-00Z-full-session.md`
+- 7 PRs merged, 7 issues closed, 289 tests passing, 0 lint errors
+
+---
+
+## Session: Triage Game Requests #107 & #124 (2026-03-16T22:40:00Z)
+
+**Event:** Triaged two open game feature requests; classified one as blocked, one as ready.
+
+**Issue #107 (Scrabble):**
+- **Status:** Blocked — Needs Clarification
+- **Action:** Added triage comment requesting scope details
+- **Reason:** Submission contains only the word "Scrabble"; no rules, player count, dictionary strategy, or rendering constraints. Word validation is architecturally critical and cannot be assumed.
+- **Next:** Author must provide details before assignment to Pemulis + Gately.
+
+**Issue #124 (Dominos):**
+- **Status:** Ready for Work
+- **Assigned to:** Pemulis (game systems) + Gately (rendering)
+- **Labels:** `squad:pemulis`, `squad:gately`
+- **Complexity:** Large (L) — Full plugin (server, shared, client) following proven Checkers/Backgammon pattern
+- **Estimate:** ~1000–1500 lines (server plugin ~300–400, shared schema ~100–150, client renderer ~400–600, E2E tests ~200–300)
+- **Blocked on:** Infrastructure stability (Checkers + Backgammon merged, reconnection live, E2E pattern proven)
+- **Action:** Added detailed triage comment with execution plan (Phase 1: Pemulis server logic, Phase 2: Gately rendering, Phase 3: Steeply E2E tests)
+
+**Decision Generated:** `.squad/decisions/inbox/hal-triage-new-games.md`
+- Triage summary comparing both issues
+- Execution plan for Dominos plugin (3-phase approach)
+- Policy proposal: Require game requests to include rules summary, player count, complexity indicators, and dependencies
+
+**Cross-Agent Context:**
+- Pemulis + Gately are ready for this work immediately after Wave 4 PM review/merge (likely 2026-03-17+)
+- This follows the Wave 4 pattern: new game plugin work is post-infrastructure-stable work
+- E2E test strategy proven in PR #58 (Checkers tests by Steeply); Dominos tests will reuse that grey-box pattern
+
+
+## Session 2026-03-17: E2E Test Failure Triage and Fix Marathon
+
+**Event:** Extended multi-hour coordinated session to triage 15 failing E2E tests and drive fixes to 40/40 passing.  
+**Role:** Lead Triager & Coordinator — Root cause analysis, assignment delegation, cross-agent sync  
+**Output:** E2E suite 15/40 → 40/40, 292 unit tests passing, lint clean, zero regressions  
+
+**Triaged Issues:**
+1. **E2E Snapshot Extraction (6 specs)** — Phase 4 sidebar redesign broke `playerColorText`/`statusText` selectors → Fallback chain solution → Coordinator
+2. **Risk Reinforcement Bug** — Turn advance before reinforcement calc → `onTurnStarted` lifecycle hook → Pemulis
+3. **CPU Opponent Detection** — Schema-level boolean sync unreliable → Session ID detection pattern → Coordinator
+4. **Spectator Cleanup** — Spectators not deleted from `state.players` on leave → Plugin-level fix → Steeply
+5. **Reconnection Test Logic** — Host=Black assumption broke in multiplayer → `playMoveForCurrentTurn` helper → Steeply
+6. **Risk Error Assertions** — Mismatched server responses → Coordinator alignment
+7. **Backgammon Timeout** — 30s Playwright timeout insufficient for win sim → 180s timeout → Steeply
+
+**Decisions Generated:** `.squad/decisions.md` (merged from inbox)
+- `onTurnStarted` hook as canonical per-turn initialization for all plugins
+- Game request triage gate policy (require scope, player count, complexity indicators)
+- Dominos (#124) triaged as Large (L), ready for Pemulis + Gately after Wave 4
+
+**Architecture Learnings Documented:**
+- Colyseus MapSchema silently drops new boolean fields → Don't add schema-level feature flags; use session ID constants
+- CPU detection pattern: `controllerSessionId === "cpu-opponent"` (not schema)
+- Reconnection test pattern: `playMoveForCurrentTurn()` helper queries state for current turn, not assuming host=Black
+- Fallback extraction chains for E2E snapshots when rendering moves elements between PixiJS/DOM
+
+**Output:** 
+- Session logs: `.squad/log/2026-03-17T12-31-26Z-e2e-fix-marathon.md`
+- Orchestration logs: 4 agent logs in `.squad/orchestration-log/`
+- All 40 E2E tests passing
+- All 292 unit tests passing
+- Lint clean
+- Zero regressions
+- Cross-agent coordination via orchestration logs and decisions.md
+
+
+## 2026-03-17: PR #139 Review — Risk SVG Map (Completed)
+
+**Session:** Single-agent review gate  
+**Outcome:** ✅ APPROVED
+
+**Review Summary:**
+- PR #139 (squad/136-risk-svg-map → dev) passed full review
+- Clean architecture: Map definition format separates geometry from rendering
+- All 42 territories verified, correct adjacency, correct SVG parser
+- Zero issues found
+
+**Decision Logged:**
+- Risk SVG Map Architecture decision merged to `.squad/decisions.md`
+- Key rules: RiskMapDefinition canonical type, SVG path parser support (M/L/H/V/C/S/Q/T/Z), label z-ordering, symmetric adjacency requirement, ConnectionOverrides for custom topology
+
+**Actions:**
+- PR merged (squash) into dev
+- Branch squad/136-risk-svg-map deleted
+- Issue #136 closed
+
+**Output:**
+- Orchestration log: `.squad/orchestration-log/2026-03-17T14-55-20Z-hal.md`
+- Session log: `.squad/log/2026-03-17T14-55-20Z-hal-pr139-review.md`
+- Decisions updated: `.squad/decisions.md` (Risk SVG Map Architecture entry)
