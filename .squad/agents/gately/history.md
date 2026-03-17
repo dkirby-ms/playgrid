@@ -1271,3 +1271,28 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - **Also updated:** labelX/labelY centroids, connectionOverrides waypoints for Alaska–Kamchatka and Brazil–North Africa wrapping connections, map version bumped to 2.
 - **Validation:** `npm run build && npm run lint && npm run test` — all green (0 errors, 294 tests pass).
 - **Committed to:** `dev` branch.
+
+### 2026-03-17: SVG file-based Risk map redesign
+
+- **Problem:** Hand-coded SVG path strings in `classicRiskMap.ts` still looked like blobs. User insight: use an actual SVG file as the source of truth for geography.
+- **Solution:** Architecture redesign — Option C (build-time SVG import via Vite `?raw`):
+  1. Created `risk-map.svg` — 42 territory `<path>` elements with IDs matching territory IDs, geographically accurate shapes using Catmull-Rom → cubic bezier smoothing.
+  2. Created `svgMapLoader.ts` — parses SVG string with DOMParser, extracts path `d` attributes, label positions, and continent groupings. Pulls adjacency data from shared `TERRITORIES` constant.
+  3. Rewrote `classicRiskMap.ts` to import SVG via `?raw` and call `loadMapFromSvg()` at module level. Just 18 lines now vs ~440 before.
+- **Key architecture:** SVG file is source of truth for geometry → parsed at load → fed into existing `drawSvgPath()` → PixiJS pipeline. `RiskRenderer.ts` unchanged (zero changes needed).
+- **Files added:** `client/src/renderers/risk/risk-map.svg`, `client/src/renderers/risk/svgMapLoader.ts`
+- **Files modified:** `client/src/renderers/risk/classicRiskMap.ts` (rewritten), `client/src/renderers/risk/index.ts` (added export)
+- **Map version:** Bumped to 3.
+- **Connection overrides:** Alaska-Kamchatka and Brazil-North Africa waypoints moved into `svgMapLoader.ts`.
+- **Validation:** `npm run build && npm run lint && npm run test` — all green (0 errors, 294 tests pass).
+
+### 2026-03-17: Real SVG Design Asset Integration
+
+- **Replaced synthetic `risk-map.svg`** (52KB generated) with the real Inkscape design asset from `docs/designs/risk.svg` (500KB, 42 territories with geographic paths).
+- **SVG ID normalization in `svgMapLoader.ts`:** Design SVG uses underscores (`east_africa`), game state uses hyphens (`east-africa`). Loader now normalizes via `_` → `-` replacement and applies a typo fix map (`yakursk` → `yakutsk`).
+- **Label centroid computation:** Design SVG has no `data-label-x`/`data-label-y` attributes. Loader now computes bounding box centroids from path `d` data as fallback, supporting M/L/H/V/C/S/Q/T/A commands (both absolute and relative).
+- **ViewBox fallback:** Design SVG has no `viewBox` attribute — uses `width`/`height` instead (749.82 × 519.07). Loader now reads `width`/`height` when `viewBox` is absent.
+- **Connection overrides scaled to viewBox:** Alaska-Kamchatka and Brazil-North Africa waypoints now use `viewBoxWidth`/`viewBoxHeight` proportions instead of hardcoded 1000×600 values.
+- **Continent display names:** Added `formatContinentName()` helper to convert hyphenated IDs to title case when `<g>` elements aren't present.
+- **Key pattern:** Design assets live in `docs/designs/`, are copied to renderer dirs for Vite `?raw` import. The loader is the normalization boundary between design files and game state.
+- **Validation:** `npm run build && npm run lint && npm run test` — all green (0 errors, 294 tests pass).
