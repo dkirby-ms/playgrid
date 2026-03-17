@@ -242,8 +242,6 @@ export function getValidEnds(
   const ends: PlayEnd[] = [];
   if (tileMatchesEnd(tile, openEndA)) ends.push("a");
   if (openEndA !== openEndB && tileMatchesEnd(tile, openEndB)) ends.push("b");
-  // If both ends have the same value, only return "a" to avoid duplicates
-  if (openEndA === openEndB && tileMatchesEnd(tile, openEndA)) ends.push("a");
   return ends;
 }
 

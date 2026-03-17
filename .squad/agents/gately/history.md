@@ -973,3 +973,39 @@ Risk renderer rendering phase can now adopt this pattern for armies/territories.
 - **Unit test fix**: Two win-condition unit tests (`game ends when one player controls all territories`, `eliminated player has zero territories`) now set `state.gamePhase = "playing"` before asserting, since `createStartedGame()` starts in setup phase.
 - **E2E test updates**: Added `completeDraftingPhase()` helper that loops through all 42 territory picks. Updated `completeSetupPhase()` to call drafting first. Updated "creates a Risk game" test to assert `setup-pick` initial state (unowned territories, 0 armiesToPlace). Updated "rejects placing armies on opponent territory" to complete drafting before testing. Updated "players place initial armies" to expect `setup-pick`.
 - **Validation:** `npm run build && npm run lint && npm run test` — all green (0 errors, 299 tests pass).
+
+---
+
+## Session: Build Dominos Client Renderer (Issue #124)
+
+**Branch:** `squad/124-dominos`
+
+### What was done
+
+- Created `client/src/renderers/DominosRenderer.ts` implementing the full `GameRenderer` interface for Dominos.
+- Registered the renderer in `client/src/renderers/index.ts` as `"dominos"`.
+
+### Renderer features
+
+- **Board chain**: Horizontal layout of played tiles with auto-scaling when chain exceeds viewport. Tiles show pip dots and divider lines. Last-played tile is highlighted.
+- **Player hand**: Clickable domino tiles at bottom of screen. Selection glow on chosen tile. Auto-play when only one end is valid; end-choice markers (A/B buttons) when tile fits both ends.
+- **Boneyard**: Clickable area in top-right showing remaining tile count. Clicking triggers draw (if tiles remain) or pass (if empty).
+- **Opponent hands**: Face-down tile count shown in top-left area per opponent.
+- **Sidebar (GameSidebar)**: Three panels — Game Info (turn, board/boneyard counts, open ends, status), Players (scores, hand sizes, turn indicator), Controls (Draw/Pass/Resign buttons).
+- **Game-over overlay**: Shows winner name and final scores.
+- **HUD status**: `getHUDStatus()` returns turn/phase info.
+- **Cleanup**: `destroy()` tears down sidebar, clears all layers, and unsubscribes room events.
+
+### Key files
+
+- `client/src/renderers/DominosRenderer.ts` — the renderer (~600 lines)
+- `client/src/renderers/index.ts` — registry
+- `shared/src/games/dominos/DominosState.ts` — the schema being rendered
+
+### Learnings
+
+- Dominos tiles use vertical orientation in hand (highPips top, lowPips bottom) and horizontal on board (highPips left, lowPips right).
+- The `exposedEnd` field on `BoardTile` tracks which pip value faces outward in the chain.
+- Player actions sent via `room.send("action", { type, ...payload })` — types: `"play"`, `"draw"`, `"pass"`.
+- Board state has `openEndA`/`openEndB` (-1 when empty) for end-placement validation.
+- Pre-existing failing test in server dominos logic (getValidEnds duplicate handling) — not a renderer issue.
