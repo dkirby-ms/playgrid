@@ -474,3 +474,57 @@ Finishing agent should convert .todo() stubs to executable tests using Pemulis/G
 - The `getPlayerMessage` plugin hook is the canonical way to deliver per-client private data; tests should use it to verify hand contents rather than trying to access internal state.
 - Some dominos test scenarios (draw, pass) depend on random tile distribution, so tests that force specific board states (`openEndA = 0`) need conditional assertions when the random hand might match.
 - Pre-existing failures exist in `dominosLogic.test.ts` (11/83 fail) — these are in functions whose signatures were changed by Gately's refactor (`scoreDomino`, `isRoundBlocked`, `resolveBlockedRound`, `removeTileFromHand` now take `playerHands` Map / `RawTile[]` instead of schema types). Not in scope for this task.
+- Risk setup→playing regression tests live in `server/src/__tests__/risk-setup-transition.test.ts` (14 tests). They cover: auto-transition when all armies placed (2/3/6 player), last-player-triggers-transition, setup continues with partial placement, turn-skipping for 0-army players, army count correctness, incremental placement, and post-transition state. All 14 green against Gately's fix (commit f95c73f).
+- The Risk setup deadlock bug was caused by `placeArmy` returning `endsTurn: true` without checking if ALL players were done — the turn advanced to a player with 0 armies who couldn't act. Gately's fix adds an `allDone` check inside `placeArmy` that auto-transitions to `playing`/`reinforce` when every player's `armiesToPlace === 0`.
+
+## 2026-03-17 — Risk Setup Phase Deadlock Fix (Test Coverage)
+
+**Outcome:** SUCCESS — 14 regression tests written, all passing, 446 total tests green.
+
+**Work:**
+- Wrote 14 regression tests for Risk setup → playing phase transition
+- Covered 2/3/6 player variants
+- Tested concurrent placement actions
+- Tested spectator scenarios
+- Verified transition occurs automatically (no explicit endPhase call)
+- All armies must reach 0 before transition
+
+**Cross-Agent Context:**
+- Gately implemented the fix in RiskPlugin.ts (auto-transition on global allDone check)
+- Hal reviewed PR #144, approved, and codified the phase transition pattern as team standard
+
+**Files Created:** server/src/__tests__/risk-setup-transition.test.ts  
+**PR:** #144 (merged to dev, pushed to UAT)  
+**Result:** Bug resolved, pattern established for all future game plugins
+
+## Work Complete — Spinner & 4-Way Dominos Test Coverage (2026-03-17)
+
+### Learnings
+- Dominos spinner logic uses a multi-phase placement model: pre-spinner (arm=""), spinner assignment (arm="spinner"), and post-spinner (arm="a"/"b"/"c"/"d"). Tests must trace through each phase to verify retroactive arm reassignment.
+- C/D arm activation is conditional on BOTH A and B having ≥1 tile post-spinner. A common edge case is only one arm being populated — C/D must stay at -1 until the condition is strictly met.
+- When openEndA === openEndB (e.g., immediately after spinner placement), getValidEnds correctly returns both ["a", "b"] via a special-case branch. This is important to test because the standard dedup logic would otherwise collapse them.
+- The `placeTileOnBoard` function handles the `end === "c" | "d"` path before the A/B path, guarding on `endValue < 0` to reject plays on inactive arms. Test the guard explicitly.
+- Plugin integration tests for C/D plays require setting up `openEndC`/`openEndD`/`spinnerTileId` directly on state before calling the action, since random dealing makes it impractical to reach 4-way state organically.
+- All 24 new tests (20 logic + 4 plugin) added without modifying any existing tests — the new schema fields (`arm`, `isDouble`, `openEndC`, `openEndD`, `spinnerTileId`, `armACount`, `armBCount`) have sensible defaults that don't break prior assertions.
+- Use the `setupActiveFourEnds()` helper pattern for any future test that needs all 4 ends active — places spinner + one tile on each arm in 3 calls.
+
+## 2026-03-17 Session: Dominos Spinner & 4-Way Test Coverage (Orchestrated)
+
+**Status:** Complete ✅  
+**Depends on:** Pemulis (spinner logic)
+
+Added 24 new tests (20 logic + 4 plugin) for Dominos spinner rules and 4-way branching:
+- Spinner detection (4 tests)
+- Arm assignment (3 tests)
+- C/D activation (3 tests)
+- 4-way placement (5 tests)
+- Board tile fields (2 tests)
+- Blocked round with 4 ends (2 tests)
+- Plugin spinner flow (4 tests)
+
+**Decisions merged:**
+- Steeply: Spinner & 4-Way Dominos Test Strategy
+
+**Build/Lint/Test:** ✅ 470/470 tests pass (backward-compatible)
+
+---

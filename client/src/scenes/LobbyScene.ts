@@ -1,6 +1,7 @@
 import type { Room } from "@colyseus/sdk";
 import { Container } from "pixi.js";
 import { LobbyScreen, type LobbyEvent } from "../ui/LobbyScreen";
+import type { ConsoleLog } from "../ui/ConsoleLog";
 import type { Scene } from "./Scene";
 
 export interface LobbySceneEnterData {
@@ -24,6 +25,10 @@ export class LobbyScene implements Scene {
 
   setDisplayName(displayName: string): void {
     this.lobbyScreen.setDisplayName(displayName);
+  }
+
+  setConsoleLog(log: ConsoleLog): void {
+    this.lobbyScreen.setConsoleLog(log);
   }
 
   showNotice(message: string, tone: "info" | "error"): void {

@@ -66,7 +66,7 @@ function injectStyles(): void {
       max-height: calc(100vh - 88px);
       display: flex;
       flex-direction: column;
-      gap: var(--space-md);
+      gap: var(--space-lg);
       overflow-y: auto;
       padding-right: 4px;
       pointer-events: none;
@@ -78,6 +78,7 @@ function injectStyles(): void {
         transform 220ms ease,
         opacity 220ms ease,
         visibility 220ms ease;
+      font-family: var(--font-family);
       scrollbar-width: thin;
       scrollbar-color: var(--glass-border) transparent;
     }
@@ -98,7 +99,7 @@ function injectStyles(): void {
 
     .game-sidebar::-webkit-scrollbar-thumb {
       background: var(--glass-border);
-      border-radius: 999px;
+      border-radius: var(--radius-pill);
     }
 
     .game-sidebar-panel {
@@ -108,7 +109,7 @@ function injectStyles(): void {
       min-height: 0;
       max-height: min(320px, calc(100vh - 140px));
       padding: var(--space-md);
-      box-shadow: 0 18px 36px rgba(0, 0, 0, 0.24);
+      box-shadow: var(--shadow-card);
       pointer-events: auto;
     }
 
@@ -125,7 +126,7 @@ function injectStyles(): void {
       margin: 0;
       color: var(--text-primary);
       font-size: var(--font-lg);
-      font-weight: 500;
+      font-weight: 600;
       line-height: 1.3;
     }
 
@@ -157,7 +158,7 @@ function injectStyles(): void {
 
     .sidebar-panel-content::-webkit-scrollbar-thumb {
       background: var(--glass-border);
-      border-radius: 999px;
+      border-radius: var(--radius-pill);
     }
 
     .sidebar-stat-list,
@@ -176,10 +177,10 @@ function injectStyles(): void {
       align-items: center;
       justify-content: space-between;
       gap: var(--space-sm);
-      padding: 10px 12px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.04);
+      padding: var(--space-xs) var(--space-sm);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-lg);
+      background: var(--bg-card-dark);
     }
 
     .sidebar-player-row,
@@ -190,21 +191,26 @@ function injectStyles(): void {
 
     .sidebar-stat-row--turn-active {
       border-color: var(--sidebar-turn-indicator-border, rgba(34, 197, 94, 0.42));
-      background: linear-gradient(135deg, var(--sidebar-turn-indicator-bg, rgba(245, 158, 11, 0.18)), rgba(255, 255, 255, 0.08));
+      background: linear-gradient(
+        135deg,
+        var(--sidebar-turn-indicator-bg, var(--status-waiting-bg)),
+        var(--bg-card-dark)
+      );
       box-shadow:
-        inset 3px 0 0 var(--sidebar-turn-indicator-accent, #facc15),
+        inset 3px 0 0 var(--sidebar-turn-indicator-accent, var(--pg-amber-400)),
         0 14px 28px var(--sidebar-turn-indicator-shadow, rgba(245, 158, 11, 0.2));
       animation: sidebar-turn-indicator-pulse 1800ms ease-in-out infinite;
     }
 
     .sidebar-stat-row--turn-active .sidebar-stat-label {
-      color: var(--sidebar-turn-indicator-accent, #facc15);
+      color: var(--sidebar-turn-indicator-accent, var(--pg-amber-400));
     }
 
     .sidebar-stat-label,
     .sidebar-player-meta,
     .sidebar-empty {
       color: var(--text-secondary);
+      font-size: var(--font-sm);
     }
 
     .sidebar-stat-value,
@@ -233,18 +239,18 @@ function injectStyles(): void {
       align-items: center;
       justify-content: center;
       min-width: 72px;
-      padding: 4px 10px;
-      border: 1px solid rgba(126, 207, 255, 0.22);
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.04);
+      padding: var(--space-2xs) var(--space-xs);
+      border: 1px solid var(--accent-border);
+      border-radius: var(--radius-pill);
+      background: var(--bg-card-dark);
       color: var(--text-primary);
       font-variant-numeric: tabular-nums;
       line-height: 1;
     }
 
     .sidebar-turn-clock--critical {
-      border-color: rgba(255, 107, 107, 0.32);
-      color: #ff9b9b;
+      border-color: var(--status-danger);
+      color: var(--pg-red-200);
     }
 
     .sidebar-player-copy {
@@ -256,11 +262,11 @@ function injectStyles(): void {
     }
 
     .sidebar-player-meta {
-      font-size: 0.78rem;
+      font-size: var(--font-xs);
     }
 
     .sidebar-history-item {
-      gap: 10px;
+      gap: var(--space-xs);
     }
 
     .sidebar-history-index,
@@ -270,35 +276,36 @@ function injectStyles(): void {
       justify-content: center;
       min-width: 28px;
       height: 28px;
-      padding: 0 8px;
-      border-radius: 999px;
-      background: rgba(126, 207, 255, 0.14);
+      padding: 0 var(--space-xs);
+      border-radius: var(--radius-pill);
+      background: var(--accent-soft);
       color: var(--text-primary);
-      font-size: 0.72rem;
+      font-size: var(--font-xs);
       font-weight: 600;
       line-height: 1;
       flex: 0 0 auto;
     }
 
     .sidebar-note {
-      padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(126, 207, 255, 0.16);
-      background: rgba(126, 207, 255, 0.08);
-      color: var(--text-secondary);
+      padding: var(--space-xs) var(--space-sm);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--notice-info-border);
+      background: var(--notice-info-bg);
+      color: var(--notice-info-text);
+      font-size: var(--font-sm);
     }
 
     @keyframes sidebar-turn-indicator-pulse {
       0%,
       100% {
         box-shadow:
-          inset 3px 0 0 var(--sidebar-turn-indicator-accent, #facc15),
+          inset 3px 0 0 var(--sidebar-turn-indicator-accent, var(--pg-amber-400)),
           0 14px 28px var(--sidebar-turn-indicator-shadow, rgba(245, 158, 11, 0.2));
       }
 
       50% {
         box-shadow:
-          inset 3px 0 0 var(--sidebar-turn-indicator-accent, #facc15),
+          inset 3px 0 0 var(--sidebar-turn-indicator-accent, var(--pg-amber-400)),
           0 16px 32px var(--sidebar-turn-indicator-shadow, rgba(245, 158, 11, 0.28));
       }
     }
@@ -307,39 +314,44 @@ function injectStyles(): void {
       appearance: none;
       width: 100%;
       min-height: 44px;
-      padding: 0 14px;
-      border: 1px solid rgba(126, 207, 255, 0.22);
-      border-radius: 12px;
-      background: linear-gradient(135deg, rgba(126, 207, 255, 0.24), rgba(126, 207, 255, 0.12));
+      padding: 0 var(--space-md);
+      border: 1px solid var(--accent-border);
+      border-radius: var(--radius-lg);
+      background: var(--gradient-button-primary);
       color: var(--text-primary);
       font: inherit;
+      font-size: var(--font-sm);
       font-weight: 600;
       cursor: pointer;
       transition:
         transform 140ms ease,
         border-color 140ms ease,
         opacity 140ms ease,
-        background 140ms ease;
+        box-shadow 140ms ease;
     }
 
     .sidebar-button:not(:disabled):hover {
       transform: translateY(-1px);
-      border-color: rgba(126, 207, 255, 0.42);
+      box-shadow: var(--shadow-hover);
     }
 
     .sidebar-button--secondary {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.12);
+      background: var(--bg-card-dark);
+      border-color: var(--border-default);
+    }
+
+    .sidebar-button--secondary:not(:disabled):hover {
+      border-color: var(--accent-border);
     }
 
     .sidebar-button--danger {
-      background: linear-gradient(135deg, rgba(190, 41, 41, 0.28), rgba(122, 22, 22, 0.2));
-      border-color: rgba(255, 107, 107, 0.3);
-      color: #ffe2e2;
+      background: var(--gradient-button-danger);
+      border-color: var(--status-danger);
+      color: var(--pg-red-200);
     }
 
     .sidebar-button:disabled {
-      opacity: 0.55;
+      opacity: 0.5;
       cursor: not-allowed;
       transform: none;
     }
@@ -353,6 +365,20 @@ function injectStyles(): void {
     @media (max-width: 767px) {
       .game-sidebar {
         display: none;
+      }
+    }
+
+    @media (min-width: 768px) and (max-width: 1024px) {
+      .game-sidebar {
+        width: min(var(--game-sidebar-width, 260px), calc(100vw - 32px));
+      }
+
+      .game-sidebar-panel {
+        padding: var(--space-sm);
+      }
+
+      .sidebar-panel-header h3 {
+        font-size: var(--font-base);
       }
     }
   `;

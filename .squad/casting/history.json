@@ -13,6 +13,13 @@
       "created_at": "2026-03-15T23:33:39Z",
       "agents": ["Mario"],
       "note": "Added UX Consultant — Mario Incandenza, sees things others miss"
+    },
+    {
+      "assignment_id": "ij-003",
+      "universe": "Infinite Jest",
+      "created_at": "2026-03-18T01:03:00Z",
+      "agents": ["Ortho"],
+      "note": "Added Frontend Dev to split DOM UI work from Gately's canvas rendering"
     }
   ]
 }

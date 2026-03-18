@@ -996,3 +996,42 @@ Issue #87 requests CPU-controlled opponents in Backgammon to enable single-playe
 - **Handoff to Gately:** Renderer implementation (DominosRenderer.ts, ~580 lines) with select-then-route interaction pattern and board visualization.
 - **Coordinator fix:** getValidEnds() duplicate bug fixed (was pushing "a" twice).
 - **PR #141:** squad/124-dominos → dev. Ready for review. Build clean, lint clean, all tests green.
+
+### Dominos spinner & 4-way branching (2026-03-18)
+
+- Implemented standard dominos spinner rule: first double played becomes the spinner, enabling 4-way branching (arms A, B, C, D).
+- **Schema changes** (`shared/src/games/dominos/DominosState.ts`):
+  - `BoardTile`: added `arm: string` (tracks which arm: "a"/"b"/"c"/"d"/"spinner"/"") and `isDouble: boolean`.
+  - `DominosState`: added `openEndC`, `openEndD` (perpendicular arms, -1 = inactive), `spinnerTileId` (-1 = no spinner), `armACount`, `armBCount`.
+- **Logic changes** (`server/src/games/dominos/dominosLogic.ts`):
+  - `PlayEnd` type expanded from `"a" | "b"` to `"a" | "b" | "c" | "d"`.
+  - `canPlayTile`, `hasPlayableTile`, `getValidEnds`, `isRoundBlocked` all take optional `openEndC`/`openEndD` params (default -1) for backward compatibility.
+  - `placeTileOnBoard` rewritten with 6 cases: first-tile double (instant spinner), first-tile non-double, pre-spinner linear, double-becomes-spinner mid-chain (retroactive arm assignment), post-spinner A/B play, C/D perpendicular play.
+  - C/D arms activate when both A and B arms have ≥1 tile after the spinner.
+  - `toBoardTile` helper now sets `arm` and `isDouble`.
+  - `getValidEnds` when A===B returns both ["a","b"] (both arms are distinct play targets after spinner).
+- **Plugin changes** (`server/src/games/dominos/DominosPlugin.ts`):
+  - `isPlayPayload` accepts "c" and "d" as valid end values.
+  - All calls to `canPlayTile`, `getValidEnds`, `hasPlayableTile` now pass `state.openEndC`/`state.openEndD`.
+- Updated one test expectation: `getValidEnds` with equal A/B now returns `["a","b"]` instead of `["a"]`.
+- All 446 tests passing, build clean, no new lint errors.
+- **Key design decision:** Spinner C/D arms don't activate immediately — they wait until both the A-side and B-side each have at least one tile played. This is standard tournament dominos rules.
+- **Backward compatibility:** Before the spinner is played, the game still behaves as a 2-end linear chain. Optional params with -1 defaults preserve all existing call sites.
+
+## 2026-03-17 Session: Dominos Spinner Rules (Orchestrated)
+
+**Status:** Complete ✅  
+**Cross-agent dependencies:** Gately, Steeply
+
+Implemented standard dominos spinner rules with 4-way branching:
+- First double becomes spinner (center)
+- Arms C/D activate only after both A/B have ≥1 tile
+- Backward-compatible optional params with -1 defaults
+- Retroactive arm assignment when double becomes spinner mid-chain
+
+**Decisions merged:**
+- Pemulis: Dominos Spinner & 4-Way Branching Logic
+
+**Build/Lint/Test:** ✅ All green (446 tests pass)
+
+---

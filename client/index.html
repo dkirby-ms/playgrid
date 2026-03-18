@@ -5,70 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <title>Playgrid - Online Board Games</title>
+    <link rel="stylesheet" href="/src/ui/design-tokens.css" />
     <style>
       :root {
-        /* === Base Neutrals === */
-        --bg-primary: #0A0A0A;          /* zinc-900 */
-        --bg-dark: #18181B;             /* zinc-800 */
-        --bg-card: #27272A;             /* zinc-700 */
-        --bg-glass: rgba(24, 24, 27, 0.5);  /* zinc-800/50 */
-        --bg-card-dark: rgba(9, 9, 11, 0.5); /* zinc-900/50 */
-        
-        /* === Text Colors === */
-        --text-primary: #FFFFFF;
-        --text-secondary: #A1A1A1;      /* zinc-400 */
-        --text-muted: #71717A;          /* zinc-500 */
-        
-        /* === Border Colors === */
-        --border-default: #18181B;      /* zinc-800 */
-        --border-light: rgba(63, 63, 70, 0.5); /* zinc-700/50 */
-        
-        /* === Accent Colors === */
-        --accent-violet: #A78BFA;       /* violet-400 */
-        --accent-purple: #9333EA;       /* purple-600 */
-        --accent-violet-bg: #7C3AED;    /* violet-600 */
-        
-        /* === Status Colors === */
-        --status-online: #22C55E;       /* green-500 */
-        --status-ingame: #F59E0B;       /* amber-500 */
-        --status-away: #71717A;         /* zinc-500 */
-        --status-danger: rgba(127, 29, 29, 0.5); /* red-900/50 */
-        
-        /* === Player Colors === */
-        --player-red: #DC2626;
-        --player-blue: #2563EB;
-        --player-green: #16A34A;
-        --player-yellow: #CA8A04;
-        --player-purple: #9333EA;
-        --player-orange: #EA580C;
-        
-        /* === Gradients === */
-        --gradient-page: linear-gradient(to bottom right, #0A0A0A, #0A0A0A, #3F1659);
-        --gradient-phase-banner: linear-gradient(to right, rgba(76, 29, 149, 0.5), rgba(88, 28, 146, 0.5));
-        --gradient-button-primary: linear-gradient(to bottom right, #7C3AED, #9333EA);
-        --gradient-button-danger: linear-gradient(to bottom right, #DC2626, #B91C1C);
-        
-        /* === Glass-morphism === */
-        --glass-bg: rgba(24, 24, 27, 0.5);
-        --glass-blur: 4px;
-        --glass-border: rgba(63, 63, 70, 0.5);
-        --glass-radius: 0.75rem;        /* rounded-xl */
-        
-        /* === Spacing === */
-        --space-xs: 0.25rem;
-        --space-sm: 0.5rem;
-        --space-md: 1rem;
-        --space-lg: 1.5rem;
-        --space-xl: 2rem;
-        
-        /* === Typography === */
-        --font-base: 1rem;
-        --font-sm: 0.875rem;
-        --font-xs: 0.75rem;
-        --font-lg: 1.125rem;
-        --font-xl: 1.25rem;
-        --font-2xl: 1.5rem;
-
         --game-sidebar-width: 304px;
         --game-sidebar-gap: 16px;
         --game-sidebar-edge-offset: 16px;
@@ -118,9 +57,9 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #000;
-        color: #f4f6fb;
-        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-family: var(--font-family);
       }
 
       body {
@@ -158,7 +97,7 @@
         display: none;
         z-index: 10;
         overflow-y: auto;
-        background: linear-gradient(to bottom right, #020617, #0f172a, #1e293b);
+        background: var(--gradient-page);
       }
 
       #lobby-overlay.visible {
@@ -169,13 +108,13 @@
         min-height: 100vh;
         display: flex;
         flex-direction: column;
-        background: linear-gradient(to bottom right, #020617, #0f172a, #1e293b);
+        background: var(--gradient-page);
       }
 
       /* Header */
       .lobby-header {
-        border-bottom: 1px solid #1e293b;
-        background: rgba(15, 23, 42, 0.5);
+        border-bottom: 1px solid var(--border-default);
+        background: var(--glass-bg);
         backdrop-filter: blur(var(--glass-blur));
         -webkit-backdrop-filter: blur(var(--glass-blur));
         position: sticky;
@@ -207,8 +146,8 @@
       .lobby-logo {
         width: 40px;
         height: 40px;
-        border-radius: 8px;
-        background: linear-gradient(to bottom right, #2563eb, #1d4ed8);
+        border-radius: var(--radius-md);
+        background: var(--gradient-button-primary);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -218,7 +157,7 @@
       .lobby-logo svg {
         width: 24px;
         height: 24px;
-        color: white;
+        color: var(--text-primary);
       }
 
       .lobby-title-group {
@@ -227,15 +166,15 @@
       }
 
       .lobby-title {
-        font-size: 1.25rem;
-        color: white;
+        font-size: var(--font-xl);
+        color: var(--text-primary);
         font-weight: 600;
         line-height: 1.2;
       }
 
       .lobby-subtitle {
-        font-size: 0.875rem;
-        color: #a1a1aa;
+        font-size: var(--font-sm);
+        color: var(--text-muted);
       }
 
       .lobby-header-right {
@@ -246,9 +185,9 @@
 
       .lobby-header-button {
         padding: 0.5rem;
-        border-radius: 8px;
-        background: #1e293b;
-        color: #94a3b8;
+        border-radius: var(--radius-md);
+        background: var(--bg-card);
+        color: var(--text-muted);
         border: none;
         cursor: pointer;
         transition: all 0.2s;
@@ -258,8 +197,8 @@
       }
 
       .lobby-header-button:hover {
-        background: #334155;
-        color: white;
+        background: var(--pg-slate-700);
+        color: var(--text-primary);
       }
 
       .lobby-header-button svg {
@@ -272,17 +211,17 @@
         align-items: center;
         gap: 0.5rem;
         padding: 0.5rem 1rem;
-        border-radius: 8px;
-        background: #1e293b;
-        color: #94a3b8;
+        border-radius: var(--radius-md);
+        background: var(--bg-card);
+        color: var(--text-muted);
         border: none;
         cursor: pointer;
         transition: all 0.2s;
       }
 
       .lobby-header-user:hover {
-        background: #334155;
-        color: white;
+        background: var(--pg-slate-700);
+        color: var(--text-primary);
       }
 
       .lobby-header-user svg {
@@ -330,7 +269,7 @@
       }
 
       .game-library-title {
-        font-size: 1.5rem;
+        font-size: var(--font-2xl);
         color: var(--text-primary);
         font-weight: 600;
       }
@@ -344,13 +283,13 @@
 
       .create-game-trigger {
         padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
+        border-radius: var(--radius-md);
         background: var(--gradient-button-primary);
-        color: white;
+        color: var(--text-primary);
         border: none;
         cursor: pointer;
         font-weight: 600;
-        font-size: 0.875rem;
+        font-size: var(--font-sm);
         transition: all 0.2s ease;
         display: flex;
         align-items: center;
@@ -379,37 +318,37 @@
         align-items: center;
         gap: 0.5rem;
         padding: 0.5rem 0.875rem;
-        border: 1px solid #334155;
-        border-radius: 999px;
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-pill);
         background: transparent;
-        color: #cbd5e1;
+        color: var(--text-secondary);
         font: inherit;
-        font-size: 0.875rem;
+        font-size: var(--font-sm);
         cursor: pointer;
         transition: all 0.2s;
       }
 
       .lobby-filter-button:hover {
-        background: rgba(59, 130, 246, 0.1);
-        border-color: #3b82f6;
+        background: var(--accent-soft);
+        border-color: var(--accent-primary);
       }
 
       .lobby-filter-button.active {
-        background: rgba(59, 130, 246, 0.2);
-        border-color: #3b82f6;
-        color: white;
+        background: var(--accent-soft);
+        border-color: var(--accent-primary);
+        color: var(--text-primary);
       }
 
       .filter-badge {
         min-width: 20px;
         height: 20px;
         padding: 0 6px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.1);
+        border-radius: var(--radius-pill);
+        background: var(--bg-card-dark);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.75rem;
+        font-size: var(--font-xs);
         font-weight: 600;
       }
 
@@ -437,7 +376,7 @@
         position: relative;
         overflow: hidden;
         border-radius: var(--glass-radius);
-        background: #1e293b;
+        background: var(--bg-card);
         backdrop-filter: blur(var(--glass-blur));
         -webkit-backdrop-filter: blur(var(--glass-blur));
         border: 1px solid var(--border-light);
@@ -449,9 +388,9 @@
 
       .game-tile:hover {
         transform: scale(1.05);
-        box-shadow: 0 20px 40px rgba(59, 130, 246, 0.2);
-        border-color: rgba(59, 130, 246, 0.5);
-        background: #1e293b;
+        box-shadow: var(--shadow-hover);
+        border-color: var(--accent-border);
+        background: var(--bg-card);
         backdrop-filter: blur(var(--glass-blur));
         -webkit-backdrop-filter: blur(var(--glass-blur));
       }
@@ -466,7 +405,7 @@
         content: '';
         position: absolute;
         inset: 0;
-        background: linear-gradient(to top, rgba(10, 10, 18, 0.94) 0%, rgba(10, 10, 18, 0.62) 46%, rgba(10, 10, 18, 0.18) 74%, transparent 100%);
+        background: var(--gradient-tile-overlay);
         z-index: 1;
       }
 
@@ -493,7 +432,7 @@
       }
 
       .game-tile-name {
-        font-size: 1.125rem;
+        font-size: var(--font-lg);
         color: var(--text-primary);
         font-weight: 600;
         margin-bottom: 0.5rem;
@@ -503,7 +442,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        font-size: 0.875rem;
+        font-size: var(--font-sm);
       }
 
       .game-tile-players {
@@ -519,7 +458,7 @@
       }
 
       .game-tile-active {
-        color: #60a5fa;
+        color: var(--accent-highlight);
         font-weight: 500;
       }
 
@@ -534,10 +473,10 @@
       .active-games-panel,
       .online-players-panel {
         border-radius: var(--glass-radius);
-        background: rgba(30, 41, 59, 0.5);
+        background: var(--glass-bg);
         backdrop-filter: blur(var(--glass-blur));
         -webkit-backdrop-filter: blur(var(--glass-blur));
-        border: 1px solid rgba(51, 65, 85, 0.5);
+        border: 1px solid var(--glass-border);
         padding: var(--space-lg);
       }
 
@@ -549,17 +488,17 @@
       }
 
       .panel-title {
-        font-size: 1.125rem;
+        font-size: var(--font-lg);
         color: var(--text-primary);
         font-weight: 600;
       }
 
       .panel-badge {
         padding: 0.25rem 0.625rem;
-        border-radius: 999px;
-        background: #2563eb;
-        color: white;
-        font-size: 0.875rem;
+        border-radius: var(--radius-pill);
+        background: var(--accent-primary);
+        color: var(--text-primary);
+        font-size: var(--font-sm);
         font-weight: 600;
       }
 
@@ -576,20 +515,20 @@
         padding: 2rem 1rem;
         text-align: center;
         color: var(--text-muted);
-        font-size: 0.875rem;
+        font-size: var(--font-sm);
       }
 
       /* Active Game Card */
       .active-game-card {
-        border-radius: 0.5rem;
-        background: rgba(15, 23, 42, 0.5);
+        border-radius: var(--radius-md);
+        background: var(--glass-bg-strong);
         padding: 0.75rem;
-        border: 1px solid rgba(51, 65, 85, 0.5);
+        border: 1px solid var(--border-light);
         transition: all 0.2s;
       }
 
       .active-game-card:hover {
-        border-color: rgba(59, 130, 246, 0.5);
+        border-color: var(--accent-border);
       }
 
       .active-game-info {
@@ -612,7 +551,7 @@
         align-items: center;
         gap: 0.75rem;
         color: var(--text-secondary);
-        font-size: 0.75rem;
+        font-size: var(--font-xs);
       }
 
       .active-game-meta-item {
@@ -628,20 +567,20 @@
 
       .game-status-badge {
         padding: 0.125rem 0.5rem;
-        border-radius: 999px;
-        font-size: 0.75rem;
+        border-radius: var(--radius-pill);
+        font-size: var(--font-xs);
         font-weight: 500;
         white-space: nowrap;
       }
 
       .game-status-badge.waiting {
-        background: rgba(245, 158, 11, 0.2);
-        color: #fbbf24;
+        background: var(--status-waiting-bg);
+        color: var(--status-waiting-text);
       }
 
       .game-status-badge.playing {
-        background: rgba(34, 197, 94, 0.2);
-        color: #4ade80;
+        background: var(--status-playing-bg);
+        color: var(--status-playing-text);
       }
 
       .active-game-footer {
@@ -659,14 +598,14 @@
       .player-avatar {
         width: 24px;
         height: 24px;
-        border-radius: 999px;
-        background: linear-gradient(to bottom right, #3b82f6, #2563eb);
-        border: 2px solid #0f172a;
+        border-radius: var(--radius-pill);
+        background: var(--gradient-button-primary);
+        border: 2px solid var(--bg-dark);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.75rem;
-        color: white;
+        font-size: var(--font-xs);
+        color: var(--text-primary);
         font-weight: 600;
       }
 
@@ -675,18 +614,18 @@
         align-items: center;
         gap: 0.25rem;
         padding: 0.25rem 0.75rem;
-        border-radius: 6px;
-        background: #2563eb;
-        color: white;
+        border-radius: var(--radius-sm);
+        background: var(--accent-primary);
+        color: var(--text-primary);
         border: none;
         cursor: pointer;
-        font-size: 0.75rem;
+        font-size: var(--font-xs);
         font-weight: 600;
         transition: all 0.2s;
       }
 
       .active-game-join-btn:hover {
-        background: #1d4ed8;
+        background: var(--accent-primary-strong);
       }
 
       .active-game-join-btn svg {
@@ -700,14 +639,14 @@
         align-items: center;
         gap: 0.75rem;
         padding: 0.5rem;
-        border-radius: 0.5rem;
-        background: rgba(15, 23, 42, 0.5);
-        border: 1px solid rgba(51, 65, 85, 0.5);
+        border-radius: var(--radius-md);
+        background: var(--glass-bg-strong);
+        border: 1px solid var(--border-light);
         transition: all 0.2s;
       }
 
       .online-player-item:hover {
-        background: #0f172a;
+        background: var(--bg-dark);
       }
 
       .online-player-avatar-wrapper {
@@ -718,12 +657,12 @@
       .online-player-avatar {
         width: 40px;
         height: 40px;
-        border-radius: 999px;
-        background: linear-gradient(to bottom right, #3b82f6, #2563eb);
+        border-radius: var(--radius-pill);
+        background: var(--gradient-button-primary);
         display: flex;
         align-items: center;
         justify-content: center;
-        color: white;
+        color: var(--text-primary);
         font-weight: 600;
       }
 
@@ -733,8 +672,8 @@
         right: -2px;
         width: 12px;
         height: 12px;
-        border-radius: 999px;
-        border: 2px solid #1e293b;
+        border-radius: var(--radius-pill);
+        border: 2px solid var(--bg-card);
       }
 
       .online-player-status-dot.online {
@@ -756,7 +695,7 @@
 
       .online-player-name {
         color: var(--text-primary);
-        font-size: 0.875rem;
+        font-size: var(--font-sm);
         font-weight: 500;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -765,17 +704,17 @@
 
       .online-player-status {
         color: var(--text-secondary);
-        font-size: 0.75rem;
+        font-size: var(--font-xs);
         text-transform: capitalize;
       }
 
       /* Message Log Panel */
       .message-log-panel {
         border-radius: var(--glass-radius);
-        background: rgba(30, 41, 59, 0.5);
+        background: var(--glass-bg);
         backdrop-filter: blur(var(--glass-blur));
         -webkit-backdrop-filter: blur(var(--glass-blur));
-        border: 1px solid rgba(51, 65, 85, 0.5);
+        border: 1px solid var(--glass-border);
         padding: 1rem;
         display: flex;
         flex-direction: column;
@@ -816,9 +755,9 @@
 
       .message-log-entry {
         padding: 0.5rem;
-        border-radius: 6px;
+        border-radius: var(--radius-sm);
         background: var(--bg-card-dark);
-        font-size: 0.875rem;
+        font-size: var(--font-sm);
         line-height: 1.4;
         display: flex;
         gap: 0.5rem;
@@ -836,7 +775,7 @@
       }
 
       .message-log-entry--game_created {
-        border-left-color: var(--accent-violet-bg);
+        border-left-color: var(--accent-primary);
       }
 
       .message-log-entry--game_started {
@@ -844,23 +783,23 @@
       }
 
       .message-log-entry--game_finished {
-        border-left-color: #3b82f6;
+        border-left-color: var(--accent-highlight);
       }
 
       .message-log-entry--player_joined_game {
-        border-left-color: #a855f7;
+        border-left-color: var(--accent-primary);
       }
 
       .message-log-time {
-        color: #71717a;
-        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-size: var(--font-xs);
         font-weight: 500;
         flex-shrink: 0;
         line-height: 1.4;
       }
 
       .message-log-text {
-        color: #d4d4d8;
+        color: var(--text-secondary);
         flex: 1;
       }
 
@@ -873,7 +812,7 @@
         align-items: center;
         justify-content: center;
         padding: 1rem;
-        background: rgba(0, 0, 0, 0.75);
+        background: var(--overlay-bg);
       }
 
       .create-game-modal.visible {
@@ -886,7 +825,7 @@
         border-radius: var(--glass-radius);
         background: var(--bg-dark);
         border: 1px solid var(--border-default);
-        box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
+        box-shadow: var(--shadow-modal);
       }
 
       .create-game-modal-header {
@@ -947,10 +886,10 @@
       .lobby-select {
         width: 100%;
         padding: 0.625rem 0.875rem;
-        border-radius: 0.5rem;
+        border-radius: var(--radius-md);
         border: 1px solid var(--border-light);
-        background: var(--bg-primary);
-        color: white;
+        background: var(--bg-dark);
+        color: var(--text-primary);
         font: inherit;
         transition: all 0.2s;
       }
@@ -958,7 +897,7 @@
       .lobby-input:focus,
       .lobby-select:focus {
         outline: none;
-        border-color: var(--accent-violet-bg);
+        border-color: var(--accent-primary);
       }
 
       .lobby-input:disabled,
@@ -977,11 +916,11 @@
 
       .lobby-button {
         padding: 0.625rem 1rem;
-        border-radius: 0.5rem;
+        border-radius: var(--radius-md);
         border: none;
         font: inherit;
         font-weight: 600;
-        font-size: 0.875rem;
+        font-size: var(--font-sm);
         cursor: pointer;
         transition: all 0.2s ease;
       }
@@ -992,17 +931,17 @@
       }
 
       .lobby-button-secondary {
-        background: var(--bg-dark);
-        color: white;
+        background: var(--bg-card);
+        color: var(--text-primary);
       }
 
       .lobby-button-secondary:hover:not(:disabled) {
-        background: var(--bg-card);
+        background: var(--pg-slate-700);
       }
 
       .lobby-button-primary {
         background: var(--gradient-button-primary);
-        color: white;
+        color: var(--text-primary);
       }
 
       .lobby-button-primary:hover:not(:disabled) {
@@ -1019,11 +958,11 @@
         max-width: 480px;
         width: calc(100% - 2rem);
         padding: 1rem 1.25rem;
-        border-radius: 8px;
+        border-radius: var(--radius-md);
         border: 1px solid transparent;
         z-index: 100;
         display: none;
-        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+        box-shadow: var(--shadow-card);
       }
 
       .lobby-notice.visible {
@@ -1031,15 +970,15 @@
       }
 
       .lobby-notice.info {
-        background: rgba(56, 189, 248, 0.15);
-        border-color: rgba(56, 189, 248, 0.3);
-        color: #bae6fd;
+        background: var(--notice-info-bg);
+        border-color: var(--notice-info-border);
+        color: var(--notice-info-text);
       }
 
       .lobby-notice.error {
-        background: rgba(239, 68, 68, 0.15);
-        border-color: rgba(239, 68, 68, 0.3);
-        color: #fecaca;
+        background: var(--notice-error-bg);
+        border-color: var(--notice-error-border);
+        color: var(--notice-error-text);
       }
 
       /* Waiting Room Overlay (keep existing styles) */
@@ -1226,14 +1165,13 @@
 
       #reconnect-overlay {
         position: fixed;
-        inset: 0;
+        top: var(--space-md);
+        right: var(--space-md);
+        left: auto;
+        bottom: auto;
         display: none;
-        align-items: center;
-        justify-content: center;
-        padding: 24px;
-        background: rgba(10, 10, 26, 0.82);
-        backdrop-filter: blur(12px);
         z-index: 30;
+        pointer-events: auto;
       }
 
       #reconnect-overlay.visible {
@@ -1241,58 +1179,55 @@
       }
 
       .reconnect-panel {
-        width: min(420px, 100%);
         display: flex;
-        flex-direction: column;
         align-items: center;
-        gap: 14px;
-        padding: 32px 28px;
-        border-radius: 20px;
-        border: 1px solid rgba(124, 58, 237, 0.36);
-        background: linear-gradient(180deg, rgba(18, 18, 41, 0.98), rgba(10, 10, 26, 0.98));
-        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.48);
-        text-align: center;
+        gap: 10px;
+        padding: 10px 16px;
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--glass-border);
+        background: var(--glass-bg-strong);
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
+        box-shadow: var(--shadow-card);
+        text-align: left;
+        max-width: 340px;
       }
 
       .reconnect-panel.is-success {
-        border-color: rgba(56, 189, 248, 0.38);
+        border-color: rgba(34, 197, 94, 0.4);
       }
 
       .reconnect-panel.is-error {
-        border-color: rgba(248, 113, 113, 0.38);
+        border-color: rgba(239, 68, 68, 0.4);
       }
 
       .reconnect-badge {
-        padding: 6px 12px;
-        border-radius: 999px;
-        background: rgba(124, 58, 237, 0.16);
-        color: #c4b5fd;
-        font-size: 0.75rem;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
+        display: none;
       }
 
       .reconnect-spinner {
-        width: 44px;
-        height: 44px;
+        width: 18px;
+        height: 18px;
         border-radius: 50%;
-        border: 3px solid rgba(124, 58, 237, 0.18);
-        border-top-color: #7c3aed;
+        border: 2px solid var(--border-light);
+        border-top-color: var(--accent-highlight);
         animation: reconnect-spin 0.85s linear infinite;
+        flex-shrink: 0;
       }
 
       .reconnect-title {
-        color: #e2e8f0;
-        font-size: clamp(1.5rem, 4vw, 2.1rem);
-        font-weight: 700;
-        line-height: 1.2;
+        color: var(--text-primary);
+        font-size: var(--font-sm);
+        font-weight: 600;
+        line-height: 1.3;
+        white-space: nowrap;
       }
 
       .reconnect-subtitle {
-        max-width: 28ch;
-        color: #a1a1aa;
-        line-height: 1.6;
+        color: var(--text-muted);
+        font-size: var(--font-xs);
+        line-height: 1.4;
+        display: none;
       }
 
       @keyframes reconnect-spin {
@@ -1401,13 +1336,11 @@
           display: none;
         }
 
-        #waiting-room-overlay,
-        #reconnect-overlay {
+        #waiting-room-overlay {
           padding: 16px;
         }
 
-        .waiting-room-panel,
-        .reconnect-panel {
+        .waiting-room-panel {
           padding: 18px;
         }
 
@@ -1428,8 +1361,10 @@
     <div id="app">
       <div id="game-container"></div>
       <div id="lobby-overlay"></div>
+      <div id="setup-overlay"></div>
       <div id="waiting-room-overlay"></div>
       <div id="reconnect-overlay"></div>
+      <div id="console-log-container"></div>
     </div>
     <script type="module" src="/src/index.ts"></script>
   </body>

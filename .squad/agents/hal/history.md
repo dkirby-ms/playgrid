@@ -1121,3 +1121,175 @@ Steeply delivered CPU opponent E2E tests — the final E2E gap issue. Six tests 
 
 **Output:**
 - PR review comment posted on #143
+
+## 2026-03-17: Reviewed PR #144 (Risk Setup Fix)
+
+**Status:** Approved
+
+**Analysis:**
+- **Deadlock Resolution:** The global completion check in `placeArmy` correctly handles the transition when all players are done.
+- **Verification:** 14 regression tests passed. Full suite passed.
+- **Limitations:** Disconnected players with remaining armies still block transition (out of scope, pre-existing).
+
+**Learnings:**
+- **Implicit State Transitions:** Relying on individual player actions to trigger global phase changes requires checking global state (all players done), not just local state (current player done).
+- **Testing Global State:** Regression tests for global state transitions must simulate multiple players to be effective.
+
+**Output:**
+- PR review comment posted on #144
+
+## 2026-03-17 — Risk Setup Phase Deadlock PR Review & Pattern Codification
+
+**Outcome:** APPROVED — PR #144 reviewed and merged, phase transition pattern codified as team standard.
+
+**Work:**
+- Reviewed Gately's PR #144 (Risk setup deadlock fix)
+- Approved the fix (global allDone check in placeArmy handler)
+- Codified two team decisions for all game plugins:
+  1. Auto-transition pattern: Action handlers must check global completion and trigger phase transitions
+  2. Global Phase Transitions: Multi-player transitions must be evaluated against all players, independent of current turn
+
+**Cross-Agent Context:**
+- Gately implemented the fix in RiskPlugin.ts
+- Steeply wrote 14 regression tests covering all player count variants
+- Pattern now codified for Risk and all future games with multi-player phases
+
+**Decisions Made:**
+- Game plugins must auto-transition at phase boundaries
+- Global Phase Transitions (team pattern for all plugins)
+
+**PR:** #144 (approved, merged to dev, pushed to UAT)  
+**Result:** Risk setup deadlock resolved, team has shared pattern for phase transitions
+
+## Learnings
+
+### 2026-03-16: Figma Design Export Scoping
+
+**Event:** Received Figma design export at `docs/designs/playgrid-v1/` — 17 React pages, 48 shadcn/ui components, Tailwind CSS, React Router. Covers Lobby, game screens, setup/victory/history screens for Checkers, Backgammon, Risk, Dominos, plus Scrabble and Catan (games that don't exist).
+
+**Key findings:**
+- >60% of the export is throwaway: game board re-implementations (we have PixiJS), mock data (we have Colyseus), unused shadcn/ui primitives, Scrabble/Catan pages
+- Valuable content: visual design system (dark slate palette, glass effects, card layouts), new screen designs (setup, victory, history)
+- Design pages have hardcoded data and React Router navigation — not drop-in code even if we adopted React
+
+**Decision:** Option B — Extract design system into CSS tokens, apply to existing vanilla DOM layer, build new screens in vanilla TS. No React adoption. Rationale: the design export is a visual reference, not reusable code; React adoption should be deliberate, not driven by a Figma export format; stability of working lobby/reconnect/game-over flows matters more than framework change.
+
+**React revisit triggers:** vanilla DOM >8K lines, complex form needs, chat system, or second design iteration.
+
+**Decision written to:** `.squad/decisions/inbox/hal-figma-implementation-scope.md`
+
+---
+
+## 2026-03-18: Design Analysis + Implementation Scope Merge
+
+**Event:** Mario completed design analysis (20.3 KB), identifying 4 missing screen types + 4 major UI gaps. Hal evaluated 3 implementation approaches and decided on Option B.
+
+**Mario's Gap Findings:**
+
+Missing screens (critical):
+- Setup screens (Checkers, Backgammon, Risk) — pre-game config, player ready status
+- Victory screens — post-game stats, highlights, comparison, action buttons
+- History screens — move replay with analytics
+- Risk Cards screen — territory card trade-in
+
+Missing UI elements (high):
+- Player info bars (above/below board) — opponent name + avatar, turn indicator, timer
+- Game header bar — back button, title, action buttons (History, Results, Reset, Resign)
+- Risk phase banner — Deploy/Attack/Fortify indicator with Next Phase button
+- Risk player legend — 6-player color/stats grid below map
+
+Already implemented well:
+- Dark theme + glass panels, 3-column layout, game tiles, online players list, sidebar stats
+- 3D piece rendering (PixiJS), selection rings, Risk SVG map
+
+Design elements we have but design dropped:
+- Activity Feed in lobby sidebar
+
+**Hal's Scope Decision:** Option B (vanilla TS + CSS tokens, no React)
+
+Phase breakdown:
+1. Design System Extraction (P1, small)
+2. Lobby Visual Refresh (P1, medium) — applies design tokens, layout patterns
+3. Game Sidebar Refresh (P2, small)
+4. Setup Screens (P2, medium) — highest priority new UI per Mario's P1 recommendation
+5. Victory Screens (P2, medium)
+6. History Screens (P3, optional small-medium)
+
+**Rationale for Option B:**
+- Design export is ~40% valuable (visual system), ~60% throwaway (game boards in React, mock data, shadcn/ui overload)
+- React adoption would only manage lobby/sidebar chrome (~2.5K lines). Not enough complexity to justify framework.
+- React should be deliberate architectural decision when vanilla DOM hits 8K+ lines or complex forms emerge
+- Stability > polish right now; working reconnection and game-over flows shouldn't be rewritten for visual refresh
+
+**Effort:** 2-3 weeks for all phases. Phases 1-2 are highest-value, lowest-risk and should ship first.
+
+**Cross-team updates:**
+- Gately (client/renderers) needs to know about: new player info bars (all games), game header pattern, setup/victory/history screens coming
+- Steeply (tests) needs to know about: new screen state logic, setup flow changes (tile→setup→game not tile→modal→game)
+
+**User directive captured:** Keep Activity Feed (drops from design), use Setup page flow instead of Create Modal
+
+**Trigger for React revisit:** >8K vanilla DOM lines, complex form validation, chat system, or second design iteration.
+
+
+---
+
+## 2026-03-18 — PR #152 Review: Console Log Panel
+
+**Outcome:** ✅ APPROVED — Clean, well-architected implementation of inline console log panel.
+
+**Context:**
+- PR #152 by Ortho: Replaces modal status popups with persistent inline console log panel (closes #146)
+- Branch: `squad/146-console-log-panel` against `dev`
+- Design system established in PR #151 (glass morphism, design tokens)
+
+**What was reviewed:**
+1. **New ConsoleLog.ts component (383 lines)**:
+   - Collapsible panel at bottom viewport
+   - Timestamped, color-coded entries (info/success/warning/error)
+   - Auto-scroll with manual scroll detection
+   - Unread badge counter when collapsed
+   - Preview of latest message in collapsed header
+   - ARIA attributes for accessibility
+   - Glass morphism + design tokens styling
+   - Style injection pattern matching PlayerInfoBar/SetupScreen
+
+2. **Integration points**:
+   - Application.ts: ConsoleLog instance created at init, logs reconnection events, game-end, connection errors, all `setStatus()` calls
+   - LobbyScreen.ts: `setConsoleLog()` setter, `showNotice()` and `showConnectionError()` log to console, `LOBBY_LOG_EVENT` forwarded
+   - LobbyScene.ts: Pass-through `setConsoleLog()` to LobbyScreen
+   - index.html: ReconnectOverlay reduced from full-screen modal to compact top-right toast, added `#console-log-container` element
+
+3. **Scope verification**:
+   - VictoryScreen.ts: ✅ untouched
+   - SetupScreen.ts: ✅ untouched
+   - Only 5 files changed: index.html, Application.ts, LobbyScene.ts, LobbyScreen.ts, ConsoleLog.ts (new)
+
+**Review findings:**
+
+✅ **Architecture**: Clean API (`log`, `info`, `success`, `warn`, `error`, `toggle`, `expand`, `collapse`, `destroy`), proper lifecycle, type-safe interfaces, memory-managed (MAX_ENTRIES=200, FIFO buffer with DOM cleanup)
+
+✅ **Design system compliance**: Uses design tokens throughout (`--glass-bg-strong`, `--glass-blur`, `--glass-border`, `--bg-card`, `--text-muted`, etc.). Only one hardcoded rgba (L120: `rgba(255, 255, 255, 0.03)` for hover — minor nit, non-blocking)
+
+✅ **Type safety**: No `any` types, proper null checks, optional chaining (`consoleLog?.`) throughout Application.ts
+
+✅ **Memory**: Event listeners cleaned in `destroy()`, buffer limit enforced
+
+✅ **Accessibility**: Proper ARIA (`role="log"`, `aria-live="polite"`, `aria-label="Console log"`, `aria-hidden` on decorative elements)
+
+✅ **Integration quality**: All status paths now log to console, proper optional chaining, no race conditions (ConsoleLog created early in init)
+
+✅ **Validation**: Build passes, 467 tests pass, no new lint errors
+
+**Non-blocking nits:**
+- L120 rgba could be extracted to `--hover-overlay` token for consistency
+- Could add `clear()` method for explicit log cleanup (not needed for this PR)
+
+**Result:** Ortho delivered exactly what #146 asked for. Ready to merge.
+
+**Learnings:**
+- **Style injection pattern**: ConsoleLog, PlayerInfoBar, SetupScreen all use same pattern (check for style ID, inject once). This is now the team standard for self-contained components.
+- **Optional chaining on new instances**: When a new subsystem (ConsoleLog) is integrated late, use optional chaining (`consoleLog?.`) even though it's initialized at app start — defensive pattern for future refactoring.
+- **Design token compliance check**: One-line grep for rgba/hex in new files catches hardcoded colors quickly: `grep -E "(rgba|#[0-9a-fA-F]{3,6})" file.ts`
+
+**PR:** #152 (reviewed, approved via comment — can't formally approve own PR in GitHub)

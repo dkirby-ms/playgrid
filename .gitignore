@@ -7,3 +7,6 @@ playwright-report/
 test-results/
 infra/set-repo-secrets.sh
 docs/designs/redesign/
+docs/designs/playgrid-ux/
+docs/designs/playgrid-v1/
+docs/playgrid-v1.zip

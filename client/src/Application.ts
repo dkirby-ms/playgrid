@@ -22,6 +22,11 @@ import {
 } from "./scenes/GameScene";
 import { LobbyScene, type LobbySceneEnterData } from "./scenes/LobbyScene";
 import {
+  SetupScene,
+  type SetupSceneEnterData,
+  type SetupSceneEvent,
+} from "./scenes/SetupScene";
+import {
   WaitingRoomScene,
   type WaitingRoomSceneEnterData,
   type WaitingRoomSceneEvent,
@@ -29,6 +34,8 @@ import {
 import { SandboxScene } from "./scenes/SandboxScene";
 import { ReconnectOverlay } from "./ui/ReconnectOverlay";
 import { GameOverOverlay } from "./ui/GameOverOverlay";
+import { VictoryScreen, type VictoryScreenEvent, type VictoryPlayerInfo } from "./ui/VictoryScreen";
+import { ConsoleLog } from "./ui/ConsoleLog";
 import { JOIN_GAME, type JoinGamePayload, type LobbyEvent } from "./ui/LobbyScreen";
 import { GAME_LAYOUT_CHANGE_EVENT } from "./ui/gameLayout";
 
@@ -90,6 +97,8 @@ export class PlaygridApp {
   private statusText!: Text;
   private reconnectOverlay!: ReconnectOverlay;
   private gameOverOverlay!: GameOverOverlay;
+  private victoryScreen!: VictoryScreen;
+  private consoleLog!: ConsoleLog;
   private statusHideTimeoutId: number | null = null;
   private reconnectOverlayHideTimeoutId: number | null = null;
   private reconnectReturnTimeoutId: number | null = null;
@@ -99,11 +108,15 @@ export class PlaygridApp {
   private activeGameType: string | null = null;
   private isDisplayNameUpdatePending = false;
   private gameContainer: HTMLElement | null = null;
+  private gameCanvasFrame: HTMLElement | null = null;
   private gameContainerResizeObserver: ResizeObserver | null = null;
   private resizeSyncFrameId: number | null = null;
   private readonly rendererRegistry = rendererRegistry;
   private readonly lobbyScene = new LobbyScene((event) => {
     void this.handleLobbyEvent(event);
+  });
+  private readonly setupScene = new SetupScene((event) => {
+    void this.handleSetupSceneEvent(event);
   });
   private readonly waitingRoomScene = new WaitingRoomScene((event) => {
     void this.handleWaitingRoomEvent(event);
@@ -155,6 +168,8 @@ export class PlaygridApp {
   async init(container: HTMLElement): Promise<void> {
     const gameContainer = this.getGameContainer(container);
     this.gameContainer = gameContainer;
+    const { canvasFrame } = this.createGameLayout(gameContainer);
+    this.gameCanvasFrame = canvasFrame;
 
     this.createVersionFooter();
 
@@ -163,16 +178,17 @@ export class PlaygridApp {
       width: GAME_WIDTH,
       height: GAME_HEIGHT,
       backgroundColor: 0x1a1a2e,
-      resizeTo: gameContainer,
+      resizeTo: canvasFrame,
     });
 
-    gameContainer.appendChild(this.pixiApp.canvas);
+    canvasFrame.appendChild(this.pixiApp.canvas);
 
     this.connectionManager = new ConnectionManager();
     this.setupConnectionListeners();
 
     this.sceneManager = new SceneManager(this.pixiApp.stage);
     this.sceneManager.register(this.lobbyScene);
+    this.sceneManager.register(this.setupScene);
     this.sceneManager.register(this.waitingRoomScene);
     this.sceneManager.register(this.gameScene);
     this.sceneManager.register(this.sandboxScene);
@@ -184,11 +200,14 @@ export class PlaygridApp {
     this.statusText = createStatusText(this.pixiApp);
     this.reconnectOverlay = new ReconnectOverlay();
     this.gameOverOverlay = new GameOverOverlay();
+    this.victoryScreen = new VictoryScreen();
+    this.consoleLog = new ConsoleLog();
+    this.lobbyScene.setConsoleLog(this.consoleLog);
     window.addEventListener("beforeunload", () => this.persistSessionForRefresh());
     window.addEventListener("pagehide", () => this.persistSessionForRefresh());
     window.addEventListener("resize", () => this.scheduleViewportSync());
     window.addEventListener(GAME_LAYOUT_CHANGE_EVENT, () => this.scheduleViewportSync());
-    this.observeGameContainer(gameContainer);
+    this.observeGameContainer(canvasFrame);
     this.layoutStatusText();
 
     this.pixiApp.ticker.add(() => {
@@ -276,6 +295,7 @@ export class PlaygridApp {
     this.gameRoom = null;
     this.activeGameType = null;
     this.waitingRoomScene.hideOverlay();
+    this.setupScene.hideOverlay();
     this.clearReconnectOverlayFeedback();
     this.setStatus("Connecting to lobby…", { persistent: true });
 
@@ -322,6 +342,22 @@ export class PlaygridApp {
       return;
     }
 
+    if (event.type === "setup") {
+      if (!this.lobbyRoom) {
+        this.lobbyScene.showConnectionError("Lobby room is unavailable.");
+        return;
+      }
+
+      const data: SetupSceneEnterData = {
+        room: this.lobbyRoom,
+        mode: "create",
+        gameType: event.gameType,
+      };
+      this.setStatus(`Setting up ${event.gameType} game…`);
+      await this.transitionTo(this.setupScene.name, data);
+      return;
+    }
+
     if (event.type === "waiting") {
       if (!this.lobbyRoom) {
         this.lobbyScene.showConnectionError("Lobby room is unavailable.");
@@ -329,19 +365,31 @@ export class PlaygridApp {
       }
 
       this.syncWaitingRoomJoinUrl(event.gameId);
-      const data: WaitingRoomSceneEnterData = {
+      const data: SetupSceneEnterData = {
         room: this.lobbyRoom,
+        mode: "waiting",
+        gameType: event.gameInfo?.gameType ?? "checkers",
         gameId: event.gameId,
         gameInfo: event.gameInfo,
         isHost: event.isHost,
       };
 
-      this.setStatus(`Waiting room — ${event.gameInfo?.name ?? "Game"}`);
-      await this.transitionTo(this.waitingRoomScene.name, data);
+      this.setStatus(`Setup — ${event.gameInfo?.name ?? "Game"}`);
+      await this.transitionTo(this.setupScene.name, data);
       return;
     }
 
-    await this.joinGame(event.roomId, event.gameType, event.spectator);
+    await this.joinGame(event.roomId, event.gameType);
+  }
+
+  private async handleSetupSceneEvent(event: SetupSceneEvent): Promise<void> {
+    if (event.type === "leave") {
+      this.syncWaitingRoomJoinUrl(null);
+      await this.showLobby({ message: "Returned to the lobby browser.", tone: "info" });
+      return;
+    }
+
+    await this.joinGame(event.roomId, event.gameType);
   }
 
   private async handleWaitingRoomEvent(event: WaitingRoomSceneEvent): Promise<void> {
@@ -400,16 +448,84 @@ export class PlaygridApp {
     this.reconnectOverlay.hide();
 
     const sessionId = this.gameRoom?.sessionId ?? "";
-    this.gameOverOverlay.show(result, sessionId, () => {
-      this.gameOverOverlay.hide();
-      void this.returnToLobby({ message: "Game ended. Back in the lobby.", tone: "info" });
-    });
+    const gameType = this.activeGameType ?? this.gameRoom?.name ?? "checkers";
+    const players = this.extractVictoryPlayers();
+
+    const endMsg = result.type === "win"
+      ? (result.winnerId === sessionId ? "Victory! You won the game." : "Defeat — opponent wins.")
+      : result.type === "draw"
+        ? "Game ended in a draw."
+        : result.type === "forfeit"
+          ? "Game ended by forfeit."
+          : result.type === "timeout"
+            ? "Game ended due to timeout."
+            : "Game over.";
+    this.consoleLog?.log(endMsg, result.winnerId === sessionId ? "success" : "info");
+
+    this.victoryScreen.show(
+      { result, sessionId, gameType, players },
+      (event: VictoryScreenEvent) => {
+        this.victoryScreen.hide();
+        void this.handleVictoryEvent(event);
+      },
+    );
   }
+
+  private async handleVictoryEvent(event: VictoryScreenEvent): Promise<void> {
+    if (event.type === "play_again") {
+      if (!this.lobbyRoom) {
+        await this.connectToLobby();
+      }
+
+      if (this.lobbyRoom) {
+        const data: SetupSceneEnterData = {
+          room: this.lobbyRoom,
+          mode: "create",
+          gameType: event.gameType,
+        };
+        this.setStatus(`Setting up ${event.gameType} game…`);
+        await this.transitionTo(this.setupScene.name, data);
+        return;
+      }
+
+      await this.returnToLobby({ message: "Game ended. Back in the lobby.", tone: "info" });
+      return;
+    }
+
+    await this.returnToLobby({ message: "Game ended. Back in the lobby.", tone: "info" });
+  }
+
+  private extractVictoryPlayers(): VictoryPlayerInfo[] {
+    const state = this.gameRoom?.state as Record<string, unknown> | undefined;
+    const players: VictoryPlayerInfo[] = [];
+
+    if (!state) return players;
+
+    const playerEntries = (
+      state.players as
+        | { entries?: () => Iterable<[string, Record<string, unknown>]> }
+        | undefined
+    )?.entries?.();
+
+    for (const [sessionId, player] of playerEntries ?? []) {
+      if (!player.isSpectator) {
+        players.push({
+          sessionId,
+          displayName: typeof player.displayName === "string" ? player.displayName : "Player",
+          playerIndex: typeof player.playerIndex === "number" ? player.playerIndex : -1,
+        });
+      }
+    }
+
+    return players;
+  }
+
 
   private handleGameRoomDrop(room: ColyseusRoom, code: number): void {
     console.log(`[playgrid] Dropped game room ${this.getRoomLabel(room)} (code: ${code})`);
     this.clearReconnectReturnTimeout();
     this.reconnectOverlay.showReconnecting();
+    this.consoleLog?.warn("Connection dropped — attempting to reconnect…");
     this.setStatus("Reconnecting...", { persistent: true, visibleInGame: true });
   }
 
@@ -418,6 +534,7 @@ export class PlaygridApp {
     this.persistActiveSession(room, gameType);
     this.clearReconnectReturnTimeout();
     this.reconnectOverlay.showReconnected();
+    this.consoleLog?.success("Reconnected to game session.");
     this.setStatus("Reconnected!", { visibleInGame: true });
     this.scheduleReconnectOverlayHide();
   }
@@ -430,6 +547,7 @@ export class PlaygridApp {
       this.clearReconnectOverlayFeedback();
       this.activeGameType = null;
       this.gameRoom = null;
+      this.consoleLog?.info("Left game room.");
       await this.returnToLobby({ message: "Game room closed. Back in the lobby.", tone: "info" });
       return;
     }
@@ -439,6 +557,7 @@ export class PlaygridApp {
     this.activeGameType = null;
     this.gameRoom = null;
     this.reconnectOverlay.showFailure();
+    this.consoleLog?.error("Connection to game lost. Returning to lobby…");
     this.setStatus("Connection lost. Returning to lobby...", {
       tone: "error",
       persistent: true,
@@ -455,6 +574,7 @@ export class PlaygridApp {
     console.log(`[playgrid] Left lobby room (code: ${code})`);
     this.lobbyRoom = null;
     this.waitingRoomScene.hideOverlay();
+    this.setupScene.hideOverlay();
     this.lobbyScene.showConnectionError("Lost connection to the lobby room.");
     this.setStatus("Lobby disconnected.", { tone: "error", persistent: true });
 
@@ -509,6 +629,10 @@ export class PlaygridApp {
     this.statusText.text = message;
     this.statusText.style.fill = tone === "error" ? 0xff7b72 : 0xd1d5db;
     this.layoutStatusText();
+
+    if (message.length > 0) {
+      this.consoleLog?.log(message, tone === "error" ? "error" : "info");
+    }
 
     if (!persistent && message.length > 0) {
       this.statusHideTimeoutId = window.setTimeout(() => {
@@ -825,7 +949,7 @@ export class PlaygridApp {
     this.resizeSyncFrameId = window.requestAnimationFrame(() => {
       this.resizeSyncFrameId = null;
 
-      if (!this.pixiApp || !this.sceneManager || !this.gameContainer) {
+      if (!this.pixiApp || !this.sceneManager || !this.gameCanvasFrame) {
         return;
       }
 
@@ -842,6 +966,34 @@ export class PlaygridApp {
     }
 
     return gameContainer;
+  }
+
+  private createGameLayout(gameContainer: HTMLElement): {
+    container: HTMLDivElement;
+    canvasFrame: HTMLDivElement;
+  } {
+    const layout = document.createElement("div");
+    layout.id = "game-layout";
+    layout.className = "game-layout";
+
+    const topBar = document.createElement("div");
+    topBar.id = "game-info-top";
+    topBar.className = "game-info-slot";
+    topBar.style.display = "none";
+
+    const canvasFrame = document.createElement("div");
+    canvasFrame.id = "game-canvas-frame";
+    canvasFrame.className = "game-canvas-frame";
+
+    const bottomBar = document.createElement("div");
+    bottomBar.id = "game-info-bottom";
+    bottomBar.className = "game-info-slot";
+    bottomBar.style.display = "none";
+
+    layout.append(topBar, canvasFrame, bottomBar);
+    gameContainer.replaceChildren(layout);
+
+    return { container: layout, canvasFrame };
   }
 
   private ensureInitialized(): void {
@@ -880,6 +1032,7 @@ export class PlaygridApp {
       this.lobbyScene.showNotice(message, "error");
     }
 
+    this.consoleLog?.error(`Connection error: ${message}`);
     this.setStatus(`Error: ${message}`, { tone: "error", persistent: true });
   }
 }

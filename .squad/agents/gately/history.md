@@ -1459,3 +1459,177 @@ Implemented generic hidden-hand pattern following boneyard precedent:
 - **Fix:** Added an `allDone` check in `placeArmy`: when `armiesToPlace === 0` during setup, iterate all active players; if everyone is at 0, set `gamePhase = "playing"` and `turnPhase = "reinforce"`.
 - **Lesson:** Any round-robin setup phase that ends per-player must also check the global completion condition. Never rely on a separate action for phase transitions that no player can trigger.
 - **Lesson:** Pre-existing regression test suite (`risk-setup-transition.test.ts`) was written to describe expected behavior and intentionally failed against the buggy code — a good pattern for documenting known bugs before fixes land.
+
+### Lobby visual tokens (2026-03-18)
+- **Lesson:** Centralize slate/blue palette, glass effects, gradients, spacing, and typography in `client/src/ui/design-tokens.css` so UI panels can be restyled without hardcoding colors.
+
+## 2026-03-17 — Risk Setup Phase Deadlock Fix (Completed)
+
+**Outcome:** SUCCESS — Fixed global phase transition bug, PR #144 merged, UAT green.
+
+**Work:** 
+- Added global `allDone` check in `placeArmy` handler
+- Automatically transitions from setup/placing → playing/reinforce when all players have 0 armies
+- Fixes deadlock that occurred when last player finished placing armies but turn wrapped to completed player with no valid moves
+
+**Cross-Agent Context:**
+- Steeply wrote 14 regression tests covering 2/3/6 player variants and edge cases — all passing
+- Hal reviewed and approved PR #144, codified the phase transition pattern as team standard
+
+**Files Modified:** server/src/games/risk/RiskPlugin.ts  
+**Branch:** squad/risk-setup-phase-fix (merged)  
+**PR:** #144 (merged to dev, pushed to UAT)  
+**Result:** 446 tests passing, Risk setup deadlock resolved
+
+---
+
+## 2026-03-16: Dominos Spinner & 4-Way Cross Layout — Session Complete
+
+**From:** dkirby-ms request  
+**Event:** DominosRenderer updated for spinner + 4-way board layout
+
+### Learnings
+
+- **Cross layout architecture:** When a spinner exists, board tiles are separated by `arm` field (`"spinner"`, `"a"`, `"b"`, `"c"`, `"d"`) and rendered as a cross shape. Horizontal arms (A/B) extend left/right; vertical arms (C/D) extend up/down. The entire cross scales uniformly to fit the board area.
+
+- **Tile orientation rule:** On horizontal arms, regular tiles render horizontal and doubles render vertical (crosswise). On vertical arms, regular tiles render vertical and doubles render horizontal. The spinner is always vertical since it's a double on the horizontal chain.
+
+- **End marker positioning:** Marker positions are computed during `redrawBoard` and stored in `endPositions` so `redrawEndMarkers` can read them without duplicating layout math. Only markers for `validEnds` are shown.
+
+- **Selection logic with 4 ends:** `onTileClick` checks all 4 open ends, collects valid ones into `validEnds[]`, auto-plays when exactly one match, shows markers when multiple. The `onEndChoice` / `sendPlay` methods accept `"a" | "b" | "c" | "d"`.
+
+- **Pre-spinner backward compat:** When `spinnerTileId === -1`, `redrawBoardLinear()` renders the original horizontal chain identically to the old code. Cross layout only activates when the spinner tile is set.
+
+- **Shared helper: `drawBoardTile`:** Extracted tile rendering (shadow, body, highlight, divider, pips) into a reusable method that accepts orientation. This replaced the inline drawing in both linear and cross modes.
+
+- **Key file:** `client/src/renderers/DominosRenderer.ts` — now ~1100 lines after cross layout addition.
+
+- **Schema fields consumed:** `BoardTile.arm`, `BoardTile.isDouble`, `DominosState.openEndC`, `DominosState.openEndD`, `DominosState.spinnerTileId` (from `shared/src/games/dominos/DominosState.ts`).
+
+## 2026-03-17 Session: Dominos Cross Layout Rendering (Orchestrated)
+
+**Status:** Complete ✅  
+**Depends on:** Pemulis (spinner state schema)
+
+Implemented cross-shaped board layout for Dominos 4-way spinner arms:
+- Spinner centered, arms A/B horizontal, C/D perpendicular
+- Uniform scaling for consistent tile sizes
+- Stored end positions (avoid duplicate layout math)
+- ValidEnds array for flexible marker display
+- Extracted drawBoardTile helper for reusable rendering
+
+**Decisions merged:**
+- Gately: Dominos Cross Layout Rendering Strategy
+
+**Build/Lint/Test:** ✅ All green (470 tests pass)
+
+---
+
+---
+
+## 2026-03-18: Figma Design v1 Analysis — Game Chrome Patterns
+
+**Event:** Mario analyzed all 17 Figma design pages; Hal approved Option B (vanilla TS + CSS tokens). Design introduces new patterns for game screens across all games.
+
+**Key UI Patterns Gately Will Need to Implement:**
+
+1. **Player Info Bars (P0 — highest impact):**
+   - Above board: Opponent name + avatar circle, "Black Pieces" label, clock timer
+   - Below board: Your name + avatar, "Red Pieces" label, turn badge (green "Your Turn" / gray "Waiting")
+   - All games: Checkers, Backgammon, Risk, Dominos
+
+2. **Game Header Bar (P1):**
+   - Back to Lobby button, game title, action buttons (Move History / Results / Reset / Resign)
+   - Pattern: all game pages share this chrome
+
+3. **Risk-Specific:**
+   - Phase banner: Deploy/Attack/Fortify indicator with Next Phase button
+   - Player legend below map: 6-color grid showing player name, territory count, army count, ready status
+   - Both are new elements not in current Risk renderer
+
+4. **Design System Colors & Effects:**
+   - Palette: `slate-*` with `blue-*` accents (shift from current violet→blue)
+   - Glass effects: `backdrop-blur` + semi-transparent panels
+   - Gradients: stone textures (light/dark), zone backgrounds (emerald for Dominos)
+   - Spacing/Shadows: defined in design tokens (to be extracted by Hal in Phase 1)
+
+5. **Screen Flow Changes (affects game lifecycle):**
+   - New: Tile → Setup page (game config) → Game → Victory screen → Back to Lobby
+   - Old: Tile → Create Modal → Game → GameOverOverlay
+   - Setup screens will be vanilla DOM (not in renderer), but game state transitions need coordination
+
+**Cross-team coordination:**
+- Hal will extract design tokens (Phase 1)
+- Gately will apply tokens and build player info bars using design patterns (Phase 2-3)
+- Steeply will write tests for new state transitions (setup → game)
+
+**Lowest-risk start:** Player info bars + game header are the most visible wins and require only DOM additions, not game logic changes.
+
+---
+
+## 2026-03-18: PlayerInfoBar Component & Game Layout Wrapper — Complete ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass
+
+### Deliverables
+
+**Created:**
+- `client/src/ui/PlayerInfoBar.ts` (286 lines)
+  - Glass morphism design (backdrop blur + semi-transparent)
+  - Displays: player avatar, status badges, turn timer, game-specific role labels
+  - Reactive to Colyseus state changes
+  - Spectator-aware (displays spectator badge)
+
+**Modified:**
+- `client/src/scenes/GameScene.ts` (+235 lines)
+  - Integrated PlayerInfoBar into scene hierarchy
+  - Layout positioning and scaling
+  - Game container wrapper for improved composition
+
+- `client/src/Application.ts` (+34 lines)
+  - Export PlayerInfoBar for cross-scene usage
+
+### Features Implemented
+
+- **Game-specific role labels:** Checkers, Risk, Backgammon, Tablut supported
+- **Status badges:** Turn indicator, spectator badge, disconnected state
+- **Responsive timer:** Turn duration with visual feedback
+- **Glass morphism pattern:** Consistent with design system (blue palette, backdrop blur)
+- **Lifecycle management:** Proper cleanup on scene destroy
+
+### Cross-Agent Notes
+
+- Ortho now owns DOM UI overlays (screens, menus, settings)
+- Clear separation: Gately (PixiJS rendering) + Ortho (DOM/HTML UI) = complete game chrome
+- Game header bar candidate for Ortho's next task
+
+### Files Changed
+
+- `client/src/ui/PlayerInfoBar.ts` → NEW
+- `client/src/scenes/GameScene.ts` → +235 lines
+- `client/src/Application.ts` → +34 lines
+
+---
+
+## 2026-03-18: Ortho — Sidebar + Setup Screens (Cross-Agent Note)
+
+**Ortho completed two phases of DOM UI work:**
+
+### Phase 3: GameSidebar Visual Refresh ✅
+- Replaced all hardcoded `rgba()` in `client/src/ui/GameSidebar.ts` with design tokens
+- Glass morphism pattern now consistent with PlayerInfoBar
+- All existing APIs preserved
+
+### Phase 4: Setup Screens ✅
+- Created per-game setup screens replacing Create Game modal
+- `client/src/ui/SetupScreen.ts` (shared base) + per-game config panels
+- `client/src/scenes/SetupScene.ts` (scene wrapper)
+- Both "create" and "join" flows now route through SetupScene
+- Full-screen experience with two modes: "create" and "waiting"
+
+**Impact on Gately's work:**
+- No changes needed to PixiJS rendering layer
+- SetupScene is standalone screen; game rendering happens when players transition to game room
+- PlayerInfoBar continues to work alongside sidebar and setup screens
+- Gately's GameScene remains the primary rendering surface for in-game content

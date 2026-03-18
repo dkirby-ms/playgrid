@@ -14,10 +14,6 @@
  *   territories they own. Path-based fortification (moving armies through a chain of owned
  *   territories) is not supported in Phase 1.
  * 
- * - **Attack movement is forced**: When a territory is conquered, the attacking armies
- *   automatically move into the captured territory. Manual selection of army count to move
- *   is not supported.
- * 
  * These simplifications were made to ship a playable version quickly while maintaining
  * core Risk gameplay mechanics (combat, reinforcements, continent bonuses, win conditions).
  */
@@ -74,6 +70,10 @@ type TradeCardsPayload = {
   cardCount: number;
 };
 
+type CaptureMovePayload = {
+  count: number;
+};
+
 type EndPhasePayload = Record<string, never>;
 
 function isPickTerritoryPayload(payload: unknown): payload is PickTerritoryPayload {
@@ -117,6 +117,12 @@ function isTradeCardsPayload(payload: unknown): payload is TradeCardsPayload {
   return typeof candidate.cardCount === "number";
 }
 
+function isCaptureMovePayload(payload: unknown): payload is CaptureMovePayload {
+  if (typeof payload !== "object" || payload === null) return false;
+  const candidate = payload as Record<string, unknown>;
+  return typeof candidate.count === "number";
+}
+
 export const riskPlugin: GamePlugin<RiskState> = {
   id: "risk",
   name: "Risk",
@@ -137,6 +143,7 @@ export const riskPlugin: GamePlugin<RiskState> = {
     phases: [
       { id: "reinforce", name: "Reinforce", allowedActions: ["placeArmy", "tradeCards"], optional: false },
       { id: "attack", name: "Attack", allowedActions: ["attack", "endPhase"], optional: true },
+      { id: "capture-move", name: "Capture Move", allowedActions: ["captureMove"], optional: true },
       { id: "fortify", name: "Fortify", allowedActions: ["fortify", "endPhase"], optional: true },
     ],
   },
@@ -331,8 +338,6 @@ export const riskPlugin: GamePlugin<RiskState> = {
       if (result.conquered) {
         const previousOwner = toTerritory.owner;
         toTerritory.owner = client.sessionId;
-        toTerritory.armyCount = attackerDice;
-        fromTerritory.armyCount -= attackerDice;
 
         updatePlayerTerritoryCount(state, client.sessionId);
         updatePlayerTerritoryCount(state, previousOwner);
@@ -345,11 +350,71 @@ export const riskPlugin: GamePlugin<RiskState> = {
           }
         }
 
+        // Transfer cards from eliminated player
+        const eliminatedPlayer = state.riskPlayers.get(previousOwner);
+        if (eliminatedPlayer && eliminatedPlayer.territoriesOwned === 0 && eliminatedPlayer.cardsHeld > 0) {
+          const attacker = state.riskPlayers.get(client.sessionId);
+          if (attacker) {
+            attacker.cardsHeld += eliminatedPlayer.cardsHeld;
+            eliminatedPlayer.cardsHeld = 0;
+          }
+        }
+
         const winnerId = checkWinCondition(state);
         if (winnerId) {
+          // Auto-move armies on game-winning conquest
+          toTerritory.armyCount = attackerDice;
+          fromTerritory.armyCount -= attackerDice;
           return { success: true, endsGame: true };
         }
+
+        // Enter capture-move phase so player can choose how many armies to move
+        const maxMove = fromTerritory.armyCount - 1;
+        if (attackerDice >= maxMove) {
+          // Only one valid choice — auto-move
+          toTerritory.armyCount = maxMove;
+          fromTerritory.armyCount = 1;
+        } else {
+          state.captureFromId = from;
+          state.captureToId = to;
+          state.captureDiceCount = attackerDice;
+          state.turnPhase = "capture-move";
+        }
       }
+
+      return { success: true };
+    },
+    captureMove(state, client, payload): ActionResult {
+      if (!isCaptureMovePayload(payload)) {
+        return { success: false, error: "Invalid payload." };
+      }
+
+      if (state.turnPhase !== "capture-move") {
+        return { success: false, error: "Not in capture-move phase." };
+      }
+
+      const fromTerritory = state.territories.get(state.captureFromId);
+      const toTerritory = state.territories.get(state.captureToId);
+
+      if (!fromTerritory || !toTerritory) {
+        return { success: false, error: "Capture territories not found." };
+      }
+
+      const minMove = state.captureDiceCount;
+      const maxMove = fromTerritory.armyCount - 1;
+      const { count } = payload;
+
+      if (count < minMove || count > maxMove) {
+        return { success: false, error: `Must move between ${minMove} and ${maxMove} armies.` };
+      }
+
+      toTerritory.armyCount = count;
+      fromTerritory.armyCount -= count;
+
+      state.captureFromId = "";
+      state.captureToId = "";
+      state.captureDiceCount = 0;
+      state.turnPhase = "attack";
 
       return { success: true };
     },
@@ -414,6 +479,10 @@ export const riskPlugin: GamePlugin<RiskState> = {
       return { success: true };
     },
     endPhase(state, client, _payload): ActionResult {
+      if (state.turnPhase === "capture-move") {
+        return { success: false, error: "Must move armies into captured territory first." };
+      }
+
       if (state.gamePhase === "setup") {
         const activePlayers = Array.from(state.players.values()).filter((p) => !p.isSpectator);
         const allPlayersReady = activePlayers.every((p) => {
@@ -483,6 +552,10 @@ export const riskPlugin: GamePlugin<RiskState> = {
 
       if (actionType === "attack") {
         return state.turnPhase === "attack" && isAttackPayload(payload);
+      }
+
+      if (actionType === "captureMove") {
+        return state.turnPhase === "capture-move" && isCaptureMovePayload(payload);
       }
 
       if (actionType === "fortify") {

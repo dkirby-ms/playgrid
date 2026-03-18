@@ -1,5 +1,6 @@
 import type { Room } from "@colyseus/sdk";
 import { MessageLog } from "./MessageLog.js";
+import type { ConsoleLog } from "./ConsoleLog";
 
 export const CREATE_GAME = "create_game" as const;
 export const JOIN_GAME = "join_game" as const;
@@ -84,6 +85,7 @@ export interface OnlinePlayersPayload {
 export type LobbyEvent =
   | { type: "join_game"; gameId: string; roomId: string; gameType: string }
   | { type: "waiting"; gameId: string; gameInfo: GameSessionInfo | null; isHost: boolean }
+  | { type: "setup"; gameType: string }
   | { type: "set_display_name"; displayName: string }
   | { type: "error"; message: string };
 
@@ -192,6 +194,7 @@ export class LobbyScreen {
   private readonly onlinePlayersListEl: HTMLElement;
   private readonly onlinePlayersBadgeEl: HTMLElement;
   private messageLog: MessageLog | null = null;
+  private consoleLog: ConsoleLog | null = null;
 
   private room: Room | null = null;
   private boundRoom: Room | null = null;
@@ -468,6 +471,10 @@ export class LobbyScreen {
     this.playerNameInput.value = displayName;
   }
 
+  setConsoleLog(log: ConsoleLog): void {
+    this.consoleLog = log;
+  }
+
   bindToRoom(room: Room): void {
     this.room = room;
     this.subtitleEl.textContent = this.defaultSubtitle;
@@ -537,6 +544,7 @@ export class LobbyScreen {
 
     room.onMessage(LOBBY_LOG_EVENT, (entry: LobbyLogEntry) => {
       this.messageLog?.addMessage(entry);
+      this.consoleLog?.info(entry.message);
     });
   }
 
@@ -571,12 +579,15 @@ export class LobbyScreen {
     if (autoHide) {
       this.noticeTimeout = window.setTimeout(() => this.clearNotice(), 4000);
     }
+
+    this.consoleLog?.log(message, tone === "error" ? "error" : "info");
   }
 
   showConnectionError(message: string): void {
     this.show();
     this.subtitleEl.textContent = "Could not connect to the lobby room. Check that the server is running.";
     this.showNotice(message, "error", false);
+    this.consoleLog?.error(`Connection error: ${message}`);
   }
 
   private handleSaveDisplayName(): void {
@@ -766,9 +777,7 @@ export class LobbyScreen {
 
     tile.append(imageArea, content);
     tile.addEventListener("click", () => {
-      this.gameTypeInput.value = gameType;
-      this.syncGameTypeConstraints();
-      this.openCreateGameModal();
+      this.eventCallback?.({ type: "setup", gameType: gameType });
     });
 
     return tile;

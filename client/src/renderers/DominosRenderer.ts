@@ -120,6 +120,15 @@ type BoardTileSnapshot = {
   highPips: number;
   lowPips: number;
   exposedEnd: number;
+  arm: string;
+  isDouble: boolean;
+};
+
+type EndPositions = {
+  a: { x: number; y: number };
+  b: { x: number; y: number };
+  c: { x: number; y: number };
+  d: { x: number; y: number };
 };
 
 export class DominosRenderer implements GameRenderer {
@@ -160,6 +169,8 @@ export class DominosRenderer implements GameRenderer {
   // Board end-choice markers
   private readonly endMarkerA = new Graphics();
   private readonly endMarkerB = new Graphics();
+  private readonly endMarkerC = new Graphics();
+  private readonly endMarkerD = new Graphics();
 
   // Boneyard area
   private readonly boneyardGraphics = new Graphics();
@@ -187,6 +198,9 @@ export class DominosRenderer implements GameRenderer {
   private boardTiles: BoardTileSnapshot[] = [];
   private openEndA = -1;
   private openEndB = -1;
+  private openEndC = -1;
+  private openEndD = -1;
+  private spinnerTileId = -1;
   private boneyardCount = 0;
   private lastPlayedTileId = -1;
   private playerStates = new Map<string, { handCount: number; score: number; passed: boolean }>();
@@ -198,6 +212,13 @@ export class DominosRenderer implements GameRenderer {
   // Interaction
   private selectedTileId: number | null = null;
   private choosingEnd = false;
+  private validEnds: ("a" | "b" | "c" | "d")[] = [];
+  private endPositions: EndPositions = {
+    a: { x: 0, y: 0 },
+    b: { x: 0, y: 0 },
+    c: { x: 0, y: 0 },
+    d: { x: 0, y: 0 },
+  };
   private width = DEFAULT_WIDTH;
   private height = DEFAULT_HEIGHT;
 
@@ -214,6 +235,12 @@ export class DominosRenderer implements GameRenderer {
     this.endMarkerB.eventMode = "static";
     this.endMarkerB.cursor = "pointer";
     this.endMarkerB.on("pointertap", () => this.onEndChoice("b"));
+    this.endMarkerC.eventMode = "static";
+    this.endMarkerC.cursor = "pointer";
+    this.endMarkerC.on("pointertap", () => this.onEndChoice("c"));
+    this.endMarkerD.eventMode = "static";
+    this.endMarkerD.cursor = "pointer";
+    this.endMarkerD.on("pointertap", () => this.onEndChoice("d"));
 
     this.boneyardGraphics.eventMode = "static";
     this.boneyardGraphics.cursor = "pointer";
@@ -227,6 +254,8 @@ export class DominosRenderer implements GameRenderer {
       this.boardLayer,
       this.endMarkerA,
       this.endMarkerB,
+      this.endMarkerC,
+      this.endMarkerD,
       this.boneyardGraphics,
       this.boneyardLabel,
       this.boneyardCountText,
@@ -315,6 +344,7 @@ export class DominosRenderer implements GameRenderer {
     this.sidebar = null;
     this.boardLayer.removeChildren();
     this.handLayer.removeChildren();
+    this.validEnds = [];
     this.container.destroy({ children: true });
   }
 
@@ -356,8 +386,11 @@ export class DominosRenderer implements GameRenderer {
     this.currentTurn = typeof s?.currentTurn === "string" ? s.currentTurn : "";
     this.openEndA = typeof s?.openEndA === "number" ? s.openEndA : -1;
     this.openEndB = typeof s?.openEndB === "number" ? s.openEndB : -1;
+    this.openEndC = typeof s?.openEndC === "number" ? s.openEndC : -1;
+    this.openEndD = typeof s?.openEndD === "number" ? s.openEndD : -1;
     this.boneyardCount = typeof s?.boneyardCount === "number" ? s.boneyardCount : 0;
     this.lastPlayedTileId = typeof s?.lastPlayedTileId === "number" ? s.lastPlayedTileId : -1;
+    this.spinnerTileId = typeof s?.spinnerTileId === "number" ? s.spinnerTileId : -1;
 
     this.boardTiles = [];
     if (s?.board) {
@@ -367,6 +400,8 @@ export class DominosRenderer implements GameRenderer {
           highPips: tile.highPips,
           lowPips: tile.lowPips,
           exposedEnd: tile.exposedEnd,
+          arm: typeof tile.arm === "string" ? tile.arm : "",
+          isDouble: typeof tile.isDouble === "boolean" ? tile.isDouble : false,
         });
       });
     }
@@ -420,12 +455,14 @@ export class DominosRenderer implements GameRenderer {
       // Deselect
       this.selectedTileId = null;
       this.choosingEnd = false;
+      this.validEnds = [];
       this.redrawAll();
       return;
     }
 
     this.selectedTileId = tileId;
     this.choosingEnd = false;
+    this.validEnds = [];
 
     const tile = this.getMyHand().find((t) => t.id === tileId);
     if (!tile) {
@@ -438,23 +475,33 @@ export class DominosRenderer implements GameRenderer {
       return;
     }
 
-    const canA = this.canPlayOnEnd(tile, this.openEndA);
-    const canB = this.canPlayOnEnd(tile, this.openEndB);
+    const ends: ("a" | "b" | "c" | "d")[] = [];
+    if (this.canPlayOnEnd(tile, this.openEndA)) ends.push("a");
+    if (this.canPlayOnEnd(tile, this.openEndB)) ends.push("b");
+    if (this.openEndC >= 0 && this.canPlayOnEnd(tile, this.openEndC)) ends.push("c");
+    if (this.openEndD >= 0 && this.canPlayOnEnd(tile, this.openEndD)) ends.push("d");
 
-    if (canA && canB && this.openEndA !== this.openEndB) {
-      // Both ends valid → let player choose
-      this.choosingEnd = true;
-      this.redrawAll();
-    } else if (canA) {
-      this.sendPlay(tileId, "a");
-    } else if (canB) {
-      this.sendPlay(tileId, "b");
+    if (ends.length === 0) {
+      // Tile can't be played — leave selected for feedback
+      return;
     }
-    // else tile can't be played — leave it selected for visual feedback then deselect
+
+    if (ends.length === 1) {
+      this.sendPlay(tileId, ends[0]);
+      return;
+    }
+
+    // Multiple valid ends — let player choose
+    this.validEnds = ends;
+    this.choosingEnd = true;
+    this.redrawAll();
   }
 
-  private onEndChoice(end: "a" | "b"): void {
+  private onEndChoice(end: "a" | "b" | "c" | "d"): void {
     if (this.selectedTileId === null || !this.choosingEnd) {
+      return;
+    }
+    if (!this.validEnds.includes(end)) {
       return;
     }
     this.sendPlay(this.selectedTileId, end);
@@ -478,9 +525,10 @@ export class DominosRenderer implements GameRenderer {
     return tile.highPips === endPips || tile.lowPips === endPips;
   }
 
-  private sendPlay(tileId: number, end: "a" | "b"): void {
+  private sendPlay(tileId: number, end: "a" | "b" | "c" | "d"): void {
     this.selectedTileId = null;
     this.choosingEnd = false;
+    this.validEnds = [];
     this.room?.send("play", { tileId, end });
     this.redrawAll();
   }
@@ -488,6 +536,7 @@ export class DominosRenderer implements GameRenderer {
   private sendAction(type: "draw" | "pass"): void {
     this.selectedTileId = null;
     this.choosingEnd = false;
+    this.validEnds = [];
     this.room?.send(type, {});
     this.redrawAll();
   }
@@ -555,12 +604,20 @@ export class DominosRenderer implements GameRenderer {
       return;
     }
 
+    if (this.spinnerTileId === -1) {
+      this.redrawBoardLinear();
+    } else {
+      this.redrawBoardCross();
+    }
+  }
+
+  /** Pre-spinner horizontal chain (original layout) */
+  private redrawBoardLinear(): void {
     const availableWidth = this.width - VIEW_PADDING * 2;
     const availableHeight = this.height - TOP_HUD_SPACE - BOTTOM_HUD_SPACE;
     const tileStride = BOARD_TILE_W + BOARD_TILE_GAP;
     const totalChainWidth = this.boardTiles.length * tileStride - BOARD_TILE_GAP;
 
-    // Scale to fit if chain is wider than available area
     const scale = totalChainWidth > availableWidth ? availableWidth / totalChainWidth : 1;
     const startX = this.width / 2 - (totalChainWidth * scale) / 2;
     const centerY = TOP_HUD_SPACE + availableHeight / 2;
@@ -572,29 +629,228 @@ export class DominosRenderer implements GameRenderer {
       const y = centerY - (BOARD_TILE_H * scale) / 2;
       const w = BOARD_TILE_W * scale;
       const h = BOARD_TILE_H * scale;
-      const r = Math.max(2, TILE_RADIUS * scale * 0.5);
-
-      // Shadow
-      g.roundRect(x + 2, y + 2, w, h, r).fill({ color: TILE_SHADOW_COLOR, alpha: TILE_SHADOW_ALPHA });
-
-      // Tile body
-      g.roundRect(x, y, w, h, r).fill(TILE_BG).stroke({ color: TILE_BORDER, width: 1 });
-
-      // Highlight last played
-      if (bt.id === this.lastPlayedTileId) {
-        g.roundRect(x, y, w, h, r).stroke({ color: TILE_SELECTED_BORDER, width: 2 });
-      }
-
-      // Divider line
-      g.moveTo(x + w / 2, y + 1).lineTo(x + w / 2, y + h - 1).stroke({ color: TILE_DIVIDER_COLOR, width: 1 });
-
-      // Draw pips in left half (highPips) and right half (lowPips)
-      const halfW = w / 2;
-      this.drawPipsHorizontal(g, bt.highPips, x, y, halfW, h, scale);
-      this.drawPipsHorizontal(g, bt.lowPips, x + halfW, y, halfW, h, scale);
-
+      this.drawBoardTile(g, bt, x, y, w, h, "horizontal", scale);
       g.eventMode = "none";
       this.boardLayer.addChild(g);
+    }
+
+    // Store end positions for markers
+    const endY = centerY;
+    this.endPositions.a = { x: startX - 8, y: endY };
+    this.endPositions.b = { x: startX + totalChainWidth * scale + 8, y: endY };
+    this.endPositions.c = { x: this.width / 2, y: centerY };
+    this.endPositions.d = { x: this.width / 2, y: centerY };
+  }
+
+  /** Post-spinner cross layout with 4-way branching */
+  private redrawBoardCross(): void {
+    const spinner = this.boardTiles.find((t) => t.arm === "spinner");
+    const armATiles = this.boardTiles.filter((t) => t.arm === "a");
+    const armBTiles = this.boardTiles.filter((t) => t.arm === "b");
+    const armCTiles = this.boardTiles.filter((t) => t.arm === "c");
+    const armDTiles = this.boardTiles.filter((t) => t.arm === "d");
+
+    if (!spinner) {
+      this.redrawBoardLinear();
+      return;
+    }
+
+    const availableWidth = this.width - VIEW_PADDING * 2;
+    const availableHeight = this.height - TOP_HUD_SPACE - BOTTOM_HUD_SPACE;
+
+    // Spinner is a double on the horizontal chain → rendered vertically (crosswise)
+    const spinnerW = BOARD_TILE_H;
+    const spinnerH = BOARD_TILE_W;
+
+    const armAExtent = this.getHorizontalArmExtent(armATiles);
+    const armBExtent = this.getHorizontalArmExtent(armBTiles);
+    const armCExtent = this.getVerticalArmExtent(armCTiles);
+    const armDExtent = this.getVerticalArmExtent(armDTiles);
+
+    const leftPad = armAExtent > 0 ? BOARD_TILE_GAP : 0;
+    const rightPad = armBExtent > 0 ? BOARD_TILE_GAP : 0;
+    const topPad = armCExtent > 0 ? BOARD_TILE_GAP : 0;
+    const bottomPad = armDExtent > 0 ? BOARD_TILE_GAP : 0;
+
+    const totalW = armAExtent + leftPad + spinnerW + rightPad + armBExtent;
+    const totalH = armCExtent + topPad + spinnerH + bottomPad + armDExtent;
+
+    const scaleX = totalW > availableWidth ? availableWidth / totalW : 1;
+    const scaleY = totalH > availableHeight ? availableHeight / totalH : 1;
+    const scale = Math.min(scaleX, scaleY, 1);
+
+    // Position cross centered in available area
+    const crossLeft = (this.width - totalW * scale) / 2;
+    const crossTop = TOP_HUD_SPACE + (availableHeight - totalH * scale) / 2;
+    const spinnerCX = crossLeft + (armAExtent + leftPad) * scale + (spinnerW * scale) / 2;
+    const spinnerCY = crossTop + (armCExtent + topPad) * scale + (spinnerH * scale) / 2;
+
+    // Draw spinner
+    const sX = spinnerCX - (spinnerW * scale) / 2;
+    const sY = spinnerCY - (spinnerH * scale) / 2;
+    const spinnerG = new Graphics();
+    this.drawBoardTile(spinnerG, spinner, sX, sY, spinnerW * scale, spinnerH * scale, "vertical", scale);
+    spinnerG.eventMode = "none";
+    this.boardLayer.addChild(spinnerG);
+
+    // Arm A — horizontal, extending LEFT from spinner
+    let cursorX = sX - BOARD_TILE_GAP * scale;
+    for (let i = 0; i < armATiles.length; i++) {
+      const bt = armATiles[i];
+      const tw = this.getHArmTileW(bt) * scale;
+      const th = this.getHArmTileH(bt) * scale;
+      cursorX -= tw;
+      const tY = spinnerCY - th / 2;
+      const g = new Graphics();
+      this.drawBoardTile(g, bt, cursorX, tY, tw, th, bt.isDouble ? "vertical" : "horizontal", scale);
+      g.eventMode = "none";
+      this.boardLayer.addChild(g);
+      cursorX -= BOARD_TILE_GAP * scale;
+    }
+    const armAEndX = armATiles.length > 0 ? cursorX + BOARD_TILE_GAP * scale : sX;
+
+    // Arm B — horizontal, extending RIGHT from spinner
+    cursorX = sX + spinnerW * scale + BOARD_TILE_GAP * scale;
+    for (let i = 0; i < armBTiles.length; i++) {
+      const bt = armBTiles[i];
+      const tw = this.getHArmTileW(bt) * scale;
+      const th = this.getHArmTileH(bt) * scale;
+      const tY = spinnerCY - th / 2;
+      const g = new Graphics();
+      this.drawBoardTile(g, bt, cursorX, tY, tw, th, bt.isDouble ? "vertical" : "horizontal", scale);
+      g.eventMode = "none";
+      this.boardLayer.addChild(g);
+      cursorX += tw + BOARD_TILE_GAP * scale;
+    }
+    const armBEndX = armBTiles.length > 0 ? cursorX - BOARD_TILE_GAP * scale : sX + spinnerW * scale;
+
+    // Arm C — vertical, extending UP from spinner
+    let cursorY = sY - BOARD_TILE_GAP * scale;
+    for (let i = 0; i < armCTiles.length; i++) {
+      const bt = armCTiles[i];
+      const tw = this.getVArmTileW(bt) * scale;
+      const th = this.getVArmTileH(bt) * scale;
+      cursorY -= th;
+      const tX = spinnerCX - tw / 2;
+      const g = new Graphics();
+      this.drawBoardTile(g, bt, tX, cursorY, tw, th, bt.isDouble ? "horizontal" : "vertical", scale);
+      g.eventMode = "none";
+      this.boardLayer.addChild(g);
+      cursorY -= BOARD_TILE_GAP * scale;
+    }
+    const armCEndY = armCTiles.length > 0 ? cursorY + BOARD_TILE_GAP * scale : sY;
+
+    // Arm D — vertical, extending DOWN from spinner
+    cursorY = sY + spinnerH * scale + BOARD_TILE_GAP * scale;
+    for (let i = 0; i < armDTiles.length; i++) {
+      const bt = armDTiles[i];
+      const tw = this.getVArmTileW(bt) * scale;
+      const th = this.getVArmTileH(bt) * scale;
+      const tX = spinnerCX - tw / 2;
+      const g = new Graphics();
+      this.drawBoardTile(g, bt, tX, cursorY, tw, th, bt.isDouble ? "horizontal" : "vertical", scale);
+      g.eventMode = "none";
+      this.boardLayer.addChild(g);
+      cursorY += th + BOARD_TILE_GAP * scale;
+    }
+    const armDEndY = armDTiles.length > 0 ? cursorY - BOARD_TILE_GAP * scale : sY + spinnerH * scale;
+
+    // Store end positions for markers
+    this.endPositions.a = { x: armAEndX - 8, y: spinnerCY };
+    this.endPositions.b = { x: armBEndX + 8, y: spinnerCY };
+    this.endPositions.c = { x: spinnerCX, y: armCEndY - 8 };
+    this.endPositions.d = { x: spinnerCX, y: armDEndY + 8 };
+  }
+
+  // ── Arm dimension helpers ──────────────────────────────────────────────────
+
+  private getHArmTileW(tile: BoardTileSnapshot): number {
+    return tile.isDouble ? BOARD_TILE_H : BOARD_TILE_W;
+  }
+
+  private getHArmTileH(tile: BoardTileSnapshot): number {
+    return tile.isDouble ? BOARD_TILE_W : BOARD_TILE_H;
+  }
+
+  private getVArmTileW(tile: BoardTileSnapshot): number {
+    return tile.isDouble ? BOARD_TILE_W : BOARD_TILE_H;
+  }
+
+  private getVArmTileH(tile: BoardTileSnapshot): number {
+    return tile.isDouble ? BOARD_TILE_H : BOARD_TILE_W;
+  }
+
+  private getHorizontalArmExtent(tiles: BoardTileSnapshot[]): number {
+    if (tiles.length === 0) return 0;
+    let total = 0;
+    for (const t of tiles) {
+      total += this.getHArmTileW(t) + BOARD_TILE_GAP;
+    }
+    return total - BOARD_TILE_GAP;
+  }
+
+  private getVerticalArmExtent(tiles: BoardTileSnapshot[]): number {
+    if (tiles.length === 0) return 0;
+    let total = 0;
+    for (const t of tiles) {
+      total += this.getVArmTileH(t) + BOARD_TILE_GAP;
+    }
+    return total - BOARD_TILE_GAP;
+  }
+
+  // ── Board tile drawing ─────────────────────────────────────────────────────
+
+  private drawBoardTile(
+    g: Graphics,
+    tile: BoardTileSnapshot,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    orientation: "horizontal" | "vertical",
+    scale: number,
+  ): void {
+    const r = Math.max(2, TILE_RADIUS * scale * 0.5);
+
+    // Shadow
+    g.roundRect(x + 2, y + 2, w, h, r).fill({ color: TILE_SHADOW_COLOR, alpha: TILE_SHADOW_ALPHA });
+
+    // Tile body
+    g.roundRect(x, y, w, h, r).fill(TILE_BG).stroke({ color: TILE_BORDER, width: 1 });
+
+    // Highlight last played
+    if (tile.id === this.lastPlayedTileId) {
+      g.roundRect(x, y, w, h, r).stroke({ color: TILE_SELECTED_BORDER, width: 2 });
+    }
+
+    if (orientation === "horizontal") {
+      // Vertical divider
+      g.moveTo(x + w / 2, y + 1).lineTo(x + w / 2, y + h - 1).stroke({ color: TILE_DIVIDER_COLOR, width: 1 });
+      const halfW = w / 2;
+      this.drawPipsHorizontal(g, tile.highPips, x, y, halfW, h, scale);
+      this.drawPipsHorizontal(g, tile.lowPips, x + halfW, y, halfW, h, scale);
+    } else {
+      // Horizontal divider
+      g.moveTo(x + 1, y + h / 2).lineTo(x + w - 1, y + h / 2).stroke({ color: TILE_DIVIDER_COLOR, width: 1 });
+      const halfH = h / 2;
+      this.drawBoardPipsVertical(g, tile.highPips, x, y, w, halfH, scale);
+      this.drawBoardPipsVertical(g, tile.lowPips, x, y + halfH, w, halfH, scale);
+    }
+  }
+
+  private drawBoardPipsVertical(
+    g: Graphics,
+    pips: number,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    scale: number,
+  ): void {
+    const layout = PIP_LAYOUTS[pips] ?? [];
+    const pr = Math.max(1.5, PIP_RADIUS * scale * 0.7);
+    for (const [px, py] of layout) {
+      g.circle(x + w * px, y + h * py, pr).fill(TILE_PIP_COLOR);
     }
   }
 
@@ -621,51 +877,72 @@ export class DominosRenderer implements GameRenderer {
   private redrawEndMarkers(): void {
     this.endMarkerA.clear();
     this.endMarkerB.clear();
+    this.endMarkerC.clear();
+    this.endMarkerD.clear();
+    this.endMarkerA.removeChildren();
+    this.endMarkerB.removeChildren();
+    this.endMarkerC.removeChildren();
+    this.endMarkerD.removeChildren();
     this.endMarkerA.visible = false;
     this.endMarkerB.visible = false;
+    this.endMarkerC.visible = false;
+    this.endMarkerD.visible = false;
 
     if (!this.choosingEnd || this.boardTiles.length === 0) {
       return;
     }
 
-    const availableWidth = this.width - VIEW_PADDING * 2;
-    const tileStride = BOARD_TILE_W + BOARD_TILE_GAP;
-    const totalChainWidth = this.boardTiles.length * tileStride - BOARD_TILE_GAP;
-    const scale = totalChainWidth > availableWidth ? availableWidth / totalChainWidth : 1;
-    const startX = this.width / 2 - (totalChainWidth * scale) / 2;
-    const availableHeight = this.height - TOP_HUD_SPACE - BOTTOM_HUD_SPACE;
-    const centerY = TOP_HUD_SPACE + availableHeight / 2;
     const markerSize = 32;
 
-    // End A marker — left of chain
-    const aX = startX - markerSize - 8;
-    const aY = centerY - markerSize / 2;
-    this.endMarkerA.roundRect(aX, aY, markerSize, markerSize, 6)
-      .fill({ color: END_MARKER_COLOR, alpha: END_MARKER_ACTIVE_ALPHA })
-      .stroke({ color: WHITE, width: 2 });
-    const labelA = new Text({
-      text: "A",
-      style: { fontFamily: "sans-serif", fontSize: END_LABEL_FONT_SIZE, fontWeight: "700", fill: WHITE },
-    });
-    labelA.anchor.set(0.5);
-    labelA.position.set(aX + markerSize / 2, aY + markerSize / 2);
-    this.endMarkerA.addChild(labelA);
-    this.endMarkerA.visible = true;
+    const drawMarker = (marker: Graphics, label: string, pos: { x: number; y: number }, anchor: "left" | "right" | "top" | "bottom") => {
+      let mX: number;
+      let mY: number;
 
-    // End B marker — right of chain
-    const bX = startX + totalChainWidth * scale + 8;
-    const bY = centerY - markerSize / 2;
-    this.endMarkerB.roundRect(bX, bY, markerSize, markerSize, 6)
-      .fill({ color: END_MARKER_COLOR, alpha: END_MARKER_ACTIVE_ALPHA })
-      .stroke({ color: WHITE, width: 2 });
-    const labelB = new Text({
-      text: "B",
-      style: { fontFamily: "sans-serif", fontSize: END_LABEL_FONT_SIZE, fontWeight: "700", fill: WHITE },
-    });
-    labelB.anchor.set(0.5);
-    labelB.position.set(bX + markerSize / 2, bY + markerSize / 2);
-    this.endMarkerB.addChild(labelB);
-    this.endMarkerB.visible = true;
+      switch (anchor) {
+        case "left":
+          mX = pos.x - markerSize;
+          mY = pos.y - markerSize / 2;
+          break;
+        case "right":
+          mX = pos.x;
+          mY = pos.y - markerSize / 2;
+          break;
+        case "top":
+          mX = pos.x - markerSize / 2;
+          mY = pos.y - markerSize;
+          break;
+        case "bottom":
+          mX = pos.x - markerSize / 2;
+          mY = pos.y;
+          break;
+      }
+
+      marker.roundRect(mX, mY, markerSize, markerSize, 6)
+        .fill({ color: END_MARKER_COLOR, alpha: END_MARKER_ACTIVE_ALPHA })
+        .stroke({ color: WHITE, width: 2 });
+
+      const text = new Text({
+        text: label,
+        style: { fontFamily: "sans-serif", fontSize: END_LABEL_FONT_SIZE, fontWeight: "700", fill: WHITE },
+      });
+      text.anchor.set(0.5);
+      text.position.set(mX + markerSize / 2, mY + markerSize / 2);
+      marker.addChild(text);
+      marker.visible = true;
+    };
+
+    if (this.validEnds.includes("a")) {
+      drawMarker(this.endMarkerA, "← A", this.endPositions.a, "left");
+    }
+    if (this.validEnds.includes("b")) {
+      drawMarker(this.endMarkerB, "B →", this.endPositions.b, "right");
+    }
+    if (this.validEnds.includes("c")) {
+      drawMarker(this.endMarkerC, "↑ C", this.endPositions.c, "top");
+    }
+    if (this.validEnds.includes("d")) {
+      drawMarker(this.endMarkerD, "D ↓", this.endPositions.d, "bottom");
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -859,7 +1136,7 @@ export class DominosRenderer implements GameRenderer {
         </div>
         <div class="sidebar-stat-row">
           <span class="sidebar-stat-label">Open ends</span>
-          <span class="sidebar-stat-value">${this.openEndA === -1 ? "—" : `${this.openEndA} | ${this.openEndB}`}</span>
+          <span class="sidebar-stat-value">${this.getOpenEndsLabel()}</span>
         </div>
       </div>`,
     );
@@ -893,8 +1170,9 @@ export class DominosRenderer implements GameRenderer {
       "how-to-play",
       `<ul class="sidebar-stat-list" style="list-style:none;padding:0;margin:0;">
         <li class="sidebar-stat-row" style="gap:0.5rem"><span style="color:#a78bfa">•</span><span class="sidebar-stat-label" style="flex:1">Match numbers on the ends of the domino chain</span></li>
-        <li class="sidebar-stat-row" style="gap:0.5rem"><span style="color:#a78bfa">•</span><span class="sidebar-stat-label" style="flex:1">Click a domino to select it</span></li>
-        <li class="sidebar-stat-row" style="gap:0.5rem"><span style="color:#a78bfa">•</span><span class="sidebar-stat-label" style="flex:1">Click A or B markers to play on either end</span></li>
+        <li class="sidebar-stat-row" style="gap:0.5rem"><span style="color:#a78bfa">•</span><span class="sidebar-stat-label" style="flex:1">The first double played is the <b>spinner</b></span></li>
+        <li class="sidebar-stat-row" style="gap:0.5rem"><span style="color:#a78bfa">•</span><span class="sidebar-stat-label" style="flex:1">After the spinner, play in up to 4 directions</span></li>
+        <li class="sidebar-stat-row" style="gap:0.5rem"><span style="color:#a78bfa">•</span><span class="sidebar-stat-label" style="flex:1">Click a domino, then click A/B/C/D to choose an end</span></li>
         <li class="sidebar-stat-row" style="gap:0.5rem"><span style="color:#a78bfa">•</span><span class="sidebar-stat-label" style="flex:1">Draw from boneyard or pass if you can't play</span></li>
         <li class="sidebar-stat-row" style="gap:0.5rem"><span style="color:#a78bfa">•</span><span class="sidebar-stat-label" style="flex:1">First to play all tiles wins!</span></li>
       </ul>`,
@@ -991,5 +1269,13 @@ export class DominosRenderer implements GameRenderer {
 
   private getMyHand(): HandTile[] {
     return this.myHand;
+  }
+
+  private getOpenEndsLabel(): string {
+    if (this.openEndA === -1) return "—";
+    let label = `A:${this.openEndA} | B:${this.openEndB}`;
+    if (this.openEndC >= 0) label += ` | C:${this.openEndC}`;
+    if (this.openEndD >= 0) label += ` | D:${this.openEndD}`;
+    return label;
   }
 }

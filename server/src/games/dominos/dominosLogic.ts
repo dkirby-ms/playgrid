@@ -65,15 +65,20 @@ export function tileMatchesEnd(tile: RawTile, endValue: number): boolean {
 
 /**
  * Check whether a tile can be played anywhere on the current board.
+ * C/D ends are optional and default to -1 (inactive).
  */
 export function canPlayTile(
   tile: RawTile,
   openEndA: number,
   openEndB: number,
+  openEndC: number = -1,
+  openEndD: number = -1,
 ): boolean {
   if (openEndA === -1) return true; // empty board, anything goes
   if (tileMatchesEnd(tile, openEndA)) return true;
   if (openEndA !== openEndB && tileMatchesEnd(tile, openEndB)) return true;
+  if (openEndC >= 0 && tileMatchesEnd(tile, openEndC)) return true;
+  if (openEndD >= 0 && tileMatchesEnd(tile, openEndD)) return true;
   return false;
 }
 
@@ -84,13 +89,15 @@ export function hasPlayableTile(
   hand: RawTile[],
   openEndA: number,
   openEndB: number,
+  openEndC: number = -1,
+  openEndD: number = -1,
 ): boolean {
-  return hand.some((tile) => canPlayTile(tile, openEndA, openEndB));
+  return hand.some((tile) => canPlayTile(tile, openEndA, openEndB, openEndC, openEndD));
 }
 
 // ── Play resolution ──────────────────────────────────────────────────
 
-export type PlayEnd = "a" | "b";
+export type PlayEnd = "a" | "b" | "c" | "d";
 
 export interface PlayResult {
   /** The new exposed end value after this tile is placed */
@@ -169,17 +176,19 @@ export function toSchemaTile(raw: RawTile): DominoTile {
   return tile;
 }
 
-function toBoardTile(raw: RawTile, exposedEnd: number): BoardTile {
+function toBoardTile(raw: RawTile, exposedEnd: number, arm: string = "", tileIsDouble?: boolean): BoardTile {
   const bt = new BoardTile();
   bt.id = raw.id;
   bt.highPips = raw.highPips;
   bt.lowPips = raw.lowPips;
   bt.exposedEnd = exposedEnd;
+  bt.arm = arm;
+  bt.isDouble = tileIsDouble ?? (raw.highPips === raw.lowPips);
   return bt;
 }
 
 /**
- * Place a tile on the board, updating open ends.
+ * Place a tile on the board, updating open ends and spinner tracking.
  * Returns true on success.
  */
 export function placeTileOnBoard(
@@ -187,16 +196,47 @@ export function placeTileOnBoard(
   raw: RawTile,
   end: PlayEnd,
 ): boolean {
-  // First tile on an empty board
+  const tileIsDouble = raw.highPips === raw.lowPips;
+
+  // ── First tile on an empty board ──
   if (state.openEndA === -1) {
-    state.openEndA = raw.lowPips;
-    state.openEndB = raw.highPips;
-    state.board.push(toBoardTile(raw, -1));
+    if (tileIsDouble) {
+      // First tile is a double → immediate spinner
+      state.openEndA = raw.highPips;
+      state.openEndB = raw.highPips;
+      state.spinnerTileId = raw.id;
+      // C/D activate once both A and B arms have ≥1 tile
+      state.board.push(toBoardTile(raw, -1, "spinner"));
+    } else {
+      // First tile is not a double → pre-spinner linear
+      state.openEndA = raw.lowPips;
+      state.openEndB = raw.highPips;
+      state.board.push(toBoardTile(raw, -1, ""));
+    }
     state.lastPlayedTileId = raw.id;
     state.lastPlayedEnd = "";
     return true;
   }
 
+  // ── Playing on end C or D (perpendicular spinner arms) ──
+  if (end === "c" || end === "d") {
+    const endValue = end === "c" ? state.openEndC : state.openEndD;
+    if (endValue < 0 || !tileMatchesEnd(raw, endValue)) return false;
+
+    const result = resolvePlay(raw, endValue);
+    if (end === "c") {
+      state.openEndC = result.newEndValue;
+    } else {
+      state.openEndD = result.newEndValue;
+    }
+
+    state.board.push(toBoardTile(raw, result.newEndValue, end));
+    state.lastPlayedTileId = raw.id;
+    state.lastPlayedEnd = end;
+    return true;
+  }
+
+  // ── Playing on end A or B ──
   const endValue = end === "a" ? state.openEndA : state.openEndB;
   if (!tileMatchesEnd(raw, endValue)) return false;
 
@@ -208,10 +248,70 @@ export function placeTileOnBoard(
     state.openEndB = result.newEndValue;
   }
 
-  state.board.push(toBoardTile(raw, result.newEndValue));
+  // Determine if this double becomes the spinner
+  const becomesSpinner = tileIsDouble && state.spinnerTileId === -1;
+
+  if (state.spinnerTileId === -1 && !becomesSpinner) {
+    // Pre-spinner linear play
+    state.board.push(toBoardTile(raw, result.newEndValue, ""));
+  } else if (becomesSpinner) {
+    // This double becomes the spinner mid-chain
+    const spinnerBt = toBoardTile(raw, result.newEndValue, "spinner");
+    state.board.push(spinnerBt);
+    state.spinnerTileId = raw.id;
+
+    // Retroactively assign arms to existing tiles
+    const spinnerIdx = state.board.length - 1;
+    let armACount = 0;
+    let armBCount = 0;
+    for (let i = 0; i < state.board.length; i++) {
+      if (i < spinnerIdx) {
+        state.board[i].arm = "a";
+        armACount++;
+      } else if (i > spinnerIdx) {
+        state.board[i].arm = "b";
+        armBCount++;
+      }
+    }
+    state.armACount = armACount;
+    state.armBCount = armBCount;
+
+    // Activate C/D if both arms already have tiles
+    if (armACount >= 1 && armBCount >= 1 && state.openEndC === -1) {
+      state.openEndC = raw.highPips;
+      state.openEndD = raw.highPips;
+    }
+  } else {
+    // Post-spinner play on arm A or B
+    state.board.push(toBoardTile(raw, result.newEndValue, end));
+    if (end === "a") {
+      state.armACount++;
+    } else {
+      state.armBCount++;
+    }
+
+    // Activate C/D once both arms have ≥1 tile
+    if (state.armACount >= 1 && state.armBCount >= 1 && state.openEndC === -1) {
+      // Find the spinner's pip value
+      const spinnerBt = findBoardTileById(state, state.spinnerTileId);
+      if (spinnerBt) {
+        state.openEndC = spinnerBt.highPips;
+        state.openEndD = spinnerBt.highPips;
+      }
+    }
+  }
+
   state.lastPlayedTileId = raw.id;
   state.lastPlayedEnd = end;
   return true;
+}
+
+/** Find a BoardTile in state.board by tile id. */
+function findBoardTileById(state: DominosState, tileId: number): BoardTile | undefined {
+  for (let i = 0; i < state.board.length; i++) {
+    if (state.board[i].id === tileId) return state.board[i];
+  }
+  return undefined;
 }
 
 /**
@@ -234,12 +334,22 @@ export function getValidEnds(
   tile: RawTile,
   openEndA: number,
   openEndB: number,
+  openEndC: number = -1,
+  openEndD: number = -1,
 ): PlayEnd[] {
   if (openEndA === -1) return ["a"]; // empty board
 
   const ends: PlayEnd[] = [];
   if (tileMatchesEnd(tile, openEndA)) ends.push("a");
-  if (openEndA !== openEndB && tileMatchesEnd(tile, openEndB)) ends.push("b");
+  if (tileMatchesEnd(tile, openEndB) && (openEndA !== openEndB || !ends.includes("a"))) {
+    ends.push("b");
+  }
+  // When A and B have the same value, both are valid distinct play targets
+  if (openEndA === openEndB && tileMatchesEnd(tile, openEndA) && !ends.includes("b")) {
+    ends.push("b");
+  }
+  if (openEndC >= 0 && tileMatchesEnd(tile, openEndC)) ends.push("c");
+  if (openEndD >= 0 && tileMatchesEnd(tile, openEndD)) ends.push("d");
   return ends;
 }
 
@@ -255,7 +365,7 @@ export function isRoundBlocked(
 
   for (const sessionId of state.playerStates.keys()) {
     const hand = playerHands.get(sessionId) ?? [];
-    if (hasPlayableTile(hand, state.openEndA, state.openEndB)) return false;
+    if (hasPlayableTile(hand, state.openEndA, state.openEndB, state.openEndC, state.openEndD)) return false;
   }
 
   return true;
