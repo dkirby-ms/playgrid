@@ -428,6 +428,9 @@ Implemented generic hidden-hand pattern following boneyard precedent:
 - **Lesson:** Any round-robin setup phase that ends per-player must also check the global completion condition. Never rely on a separate action for phase transitions that no player can trigger.
 - **Lesson:** Pre-existing regression test suite (`risk-setup-transition.test.ts`) was written to describe expected behavior and intentionally failed against the buggy code — a good pattern for documenting known bugs before fixes land.
 
+### Lobby visual tokens (2026-03-18)
+- **Lesson:** Centralize slate/blue palette, glass effects, gradients, spacing, and typography in `client/src/ui/design-tokens.css` so UI panels can be restyled without hardcoding colors.
+
 ## 2026-03-17 — Risk Setup Phase Deadlock Fix (Completed)
 
 **Outcome:** SUCCESS — Fixed global phase transition bug, PR #144 merged, UAT green.
@@ -489,3 +492,112 @@ Implemented cross-shaped board layout for Dominos 4-way spinner arms:
 **Build/Lint/Test:** ✅ All green (470 tests pass)
 
 ---
+
+---
+
+## 2026-03-18: Figma Design v1 Analysis — Game Chrome Patterns
+
+**Event:** Mario analyzed all 17 Figma design pages; Hal approved Option B (vanilla TS + CSS tokens). Design introduces new patterns for game screens across all games.
+
+**Key UI Patterns Gately Will Need to Implement:**
+
+1. **Player Info Bars (P0 — highest impact):**
+   - Above board: Opponent name + avatar circle, "Black Pieces" label, clock timer
+   - Below board: Your name + avatar, "Red Pieces" label, turn badge (green "Your Turn" / gray "Waiting")
+   - All games: Checkers, Backgammon, Risk, Dominos
+
+2. **Game Header Bar (P1):**
+   - Back to Lobby button, game title, action buttons (Move History / Results / Reset / Resign)
+   - Pattern: all game pages share this chrome
+
+3. **Risk-Specific:**
+   - Phase banner: Deploy/Attack/Fortify indicator with Next Phase button
+   - Player legend below map: 6-color grid showing player name, territory count, army count, ready status
+   - Both are new elements not in current Risk renderer
+
+4. **Design System Colors & Effects:**
+   - Palette: `slate-*` with `blue-*` accents (shift from current violet→blue)
+   - Glass effects: `backdrop-blur` + semi-transparent panels
+   - Gradients: stone textures (light/dark), zone backgrounds (emerald for Dominos)
+   - Spacing/Shadows: defined in design tokens (to be extracted by Hal in Phase 1)
+
+5. **Screen Flow Changes (affects game lifecycle):**
+   - New: Tile → Setup page (game config) → Game → Victory screen → Back to Lobby
+   - Old: Tile → Create Modal → Game → GameOverOverlay
+   - Setup screens will be vanilla DOM (not in renderer), but game state transitions need coordination
+
+**Cross-team coordination:**
+- Hal will extract design tokens (Phase 1)
+- Gately will apply tokens and build player info bars using design patterns (Phase 2-3)
+- Steeply will write tests for new state transitions (setup → game)
+
+**Lowest-risk start:** Player info bars + game header are the most visible wins and require only DOM additions, not game logic changes.
+
+---
+
+## 2026-03-18: PlayerInfoBar Component & Game Layout Wrapper — Complete ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass
+
+### Deliverables
+
+**Created:**
+- `client/src/ui/PlayerInfoBar.ts` (286 lines)
+  - Glass morphism design (backdrop blur + semi-transparent)
+  - Displays: player avatar, status badges, turn timer, game-specific role labels
+  - Reactive to Colyseus state changes
+  - Spectator-aware (displays spectator badge)
+
+**Modified:**
+- `client/src/scenes/GameScene.ts` (+235 lines)
+  - Integrated PlayerInfoBar into scene hierarchy
+  - Layout positioning and scaling
+  - Game container wrapper for improved composition
+
+- `client/src/Application.ts` (+34 lines)
+  - Export PlayerInfoBar for cross-scene usage
+
+### Features Implemented
+
+- **Game-specific role labels:** Checkers, Risk, Backgammon, Tablut supported
+- **Status badges:** Turn indicator, spectator badge, disconnected state
+- **Responsive timer:** Turn duration with visual feedback
+- **Glass morphism pattern:** Consistent with design system (blue palette, backdrop blur)
+- **Lifecycle management:** Proper cleanup on scene destroy
+
+### Cross-Agent Notes
+
+- Ortho now owns DOM UI overlays (screens, menus, settings)
+- Clear separation: Gately (PixiJS rendering) + Ortho (DOM/HTML UI) = complete game chrome
+- Game header bar candidate for Ortho's next task
+
+### Files Changed
+
+- `client/src/ui/PlayerInfoBar.ts` → NEW
+- `client/src/scenes/GameScene.ts` → +235 lines
+- `client/src/Application.ts` → +34 lines
+
+---
+
+## 2026-03-18: Ortho — Sidebar + Setup Screens (Cross-Agent Note)
+
+**Ortho completed two phases of DOM UI work:**
+
+### Phase 3: GameSidebar Visual Refresh ✅
+- Replaced all hardcoded `rgba()` in `client/src/ui/GameSidebar.ts` with design tokens
+- Glass morphism pattern now consistent with PlayerInfoBar
+- All existing APIs preserved
+
+### Phase 4: Setup Screens ✅
+- Created per-game setup screens replacing Create Game modal
+- `client/src/ui/SetupScreen.ts` (shared base) + per-game config panels
+- `client/src/scenes/SetupScene.ts` (scene wrapper)
+- Both "create" and "join" flows now route through SetupScene
+- Full-screen experience with two modes: "create" and "waiting"
+
+**Impact on Gately's work:**
+- No changes needed to PixiJS rendering layer
+- SetupScene is standalone screen; game rendering happens when players transition to game room
+- PlayerInfoBar continues to work alongside sidebar and setup screens
+- Gately's GameScene remains the primary rendering surface for in-game content

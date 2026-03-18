@@ -1101,3 +1101,74 @@ Steeply delivered CPU opponent E2E tests — the final E2E gap issue. Six tests 
 
 **PR:** #144 (approved, merged to dev, pushed to UAT)  
 **Result:** Risk setup deadlock resolved, team has shared pattern for phase transitions
+
+## Learnings
+
+### 2026-03-16: Figma Design Export Scoping
+
+**Event:** Received Figma design export at `docs/designs/playgrid-v1/` — 17 React pages, 48 shadcn/ui components, Tailwind CSS, React Router. Covers Lobby, game screens, setup/victory/history screens for Checkers, Backgammon, Risk, Dominos, plus Scrabble and Catan (games that don't exist).
+
+**Key findings:**
+- >60% of the export is throwaway: game board re-implementations (we have PixiJS), mock data (we have Colyseus), unused shadcn/ui primitives, Scrabble/Catan pages
+- Valuable content: visual design system (dark slate palette, glass effects, card layouts), new screen designs (setup, victory, history)
+- Design pages have hardcoded data and React Router navigation — not drop-in code even if we adopted React
+
+**Decision:** Option B — Extract design system into CSS tokens, apply to existing vanilla DOM layer, build new screens in vanilla TS. No React adoption. Rationale: the design export is a visual reference, not reusable code; React adoption should be deliberate, not driven by a Figma export format; stability of working lobby/reconnect/game-over flows matters more than framework change.
+
+**React revisit triggers:** vanilla DOM >8K lines, complex form needs, chat system, or second design iteration.
+
+**Decision written to:** `.squad/decisions/inbox/hal-figma-implementation-scope.md`
+
+---
+
+## 2026-03-18: Design Analysis + Implementation Scope Merge
+
+**Event:** Mario completed design analysis (20.3 KB), identifying 4 missing screen types + 4 major UI gaps. Hal evaluated 3 implementation approaches and decided on Option B.
+
+**Mario's Gap Findings:**
+
+Missing screens (critical):
+- Setup screens (Checkers, Backgammon, Risk) — pre-game config, player ready status
+- Victory screens — post-game stats, highlights, comparison, action buttons
+- History screens — move replay with analytics
+- Risk Cards screen — territory card trade-in
+
+Missing UI elements (high):
+- Player info bars (above/below board) — opponent name + avatar, turn indicator, timer
+- Game header bar — back button, title, action buttons (History, Results, Reset, Resign)
+- Risk phase banner — Deploy/Attack/Fortify indicator with Next Phase button
+- Risk player legend — 6-player color/stats grid below map
+
+Already implemented well:
+- Dark theme + glass panels, 3-column layout, game tiles, online players list, sidebar stats
+- 3D piece rendering (PixiJS), selection rings, Risk SVG map
+
+Design elements we have but design dropped:
+- Activity Feed in lobby sidebar
+
+**Hal's Scope Decision:** Option B (vanilla TS + CSS tokens, no React)
+
+Phase breakdown:
+1. Design System Extraction (P1, small)
+2. Lobby Visual Refresh (P1, medium) — applies design tokens, layout patterns
+3. Game Sidebar Refresh (P2, small)
+4. Setup Screens (P2, medium) — highest priority new UI per Mario's P1 recommendation
+5. Victory Screens (P2, medium)
+6. History Screens (P3, optional small-medium)
+
+**Rationale for Option B:**
+- Design export is ~40% valuable (visual system), ~60% throwaway (game boards in React, mock data, shadcn/ui overload)
+- React adoption would only manage lobby/sidebar chrome (~2.5K lines). Not enough complexity to justify framework.
+- React should be deliberate architectural decision when vanilla DOM hits 8K+ lines or complex forms emerge
+- Stability > polish right now; working reconnection and game-over flows shouldn't be rewritten for visual refresh
+
+**Effort:** 2-3 weeks for all phases. Phases 1-2 are highest-value, lowest-risk and should ship first.
+
+**Cross-team updates:**
+- Gately (client/renderers) needs to know about: new player info bars (all games), game header pattern, setup/victory/history screens coming
+- Steeply (tests) needs to know about: new screen state logic, setup flow changes (tile→setup→game not tile→modal→game)
+
+**User directive captured:** Keep Activity Feed (drops from design), use Setup page flow instead of Create Modal
+
+**Trigger for React revisit:** >8K vanilla DOM lines, complex form validation, chat system, or second design iteration.
+

@@ -131,3 +131,57 @@
 - Design-first workflow now canonical for all future games
 - Clear prioritization prevents scope creep
 
+---
+
+## Learnings
+
+### 2026-03-17: Comprehensive Figma v1 Design Analysis
+
+**Scope:** Full page-by-page + component-by-component comparison of `docs/designs/playgrid-v1/` (17 pages, 5 components) against live client.
+
+**Key Findings:**
+1. **Biggest gap is missing screens, not visual polish:** Design has 12 screens we lack entirely — Setup, History, and Victory for Checkers, Backgammon, and Risk; plus RiskCards.
+2. **Player info bars are the highest-impact missing UI element:** Every game design has opponent info above the board and player info (with turn indicator) below. We have neither.
+3. **Game header bar pattern:** All game pages share a consistent header with Back to Lobby button, game title, and action buttons (History, Results, Reset, Resign). We only have a Leave button in HUD.
+4. **Setup screen flow differs from ours:** Design navigates from game tile → dedicated Setup page (configure rules, see players, ready up). We go tile → Create Modal → WaitingRoom. Different user flow.
+5. **Activity Feed absent in new design:** Our current MessageLog panel in the lobby sidebar does not appear in the Figma design. Team decision needed on whether to keep it.
+6. **Color palette confirmed:** Design uses `slate-*` (not `zinc-*`) with `blue-*` accents consistently. Confirms violet → blue shift.
+7. **Scrabble and Catan designs complete:** Full game + setup page designs exist for both future games. Ready as implementation specs when needed.
+8. **Risk has unique UI needs:** Phase banner (Deploy/Attack/Fortify), player legend below map, and a Cards management screen are all designed but not implemented.
+9. **Dominos uses emerald felt background:** `from-emerald-800 to-emerald-900` board, plus DOM-based domino tile rendering with CSS pip positioning.
+
+**Deliverable:** `.squad/decisions/inbox/mario-figma-design-analysis.md` — full comparison document with gap matrix, priority recommendations (P0-P3), and implementation roadmap.
+
+**Priority Roadmap:**
+- P0: Player info bars (all games)
+- P1: Game header bar + Setup screens (Checkers, Backgammon, Risk)
+- P2: Victory + History screens, Risk Cards
+- P3: Game-specific enhancements (Risk phase banner, Dominos felt, palette alignment)
+- Future: Scrabble + Catan implementation
+
+
+---
+
+## 2026-03-18: Figma Design Analysis Handed Off
+
+**Event:** Mario's comprehensive design analysis complete. Hal reviewed the gaps and evaluated implementation approaches.
+
+**Hal's Decision:** Option B (Extract Design System, Stay Vanilla TS) approved. Key rationale:
+- Design export is visual reference, not drop-in code (>60% throwaway content)
+- React adoption is separate architectural decision, not side effect of Figma export
+- Real value is design system (colors, gradients, spacing, typography) → CSS tokens
+- Stability of current working flows (reconnect, game-over) matters more than framework change
+
+**Phases (2-3 weeks total):**
+1. Extract design tokens → CSS
+2. Lobby visual refresh
+3. Game sidebar refresh
+4. Setup screens (new vanilla TS)
+5. Victory screens
+
+**React revisit triggers:** vanilla DOM >8K lines, complex form needs, chat system, or second design iteration
+
+**User preference:** Keep Activity Feed (design dropped it), use Setup page flow instead of Create Modal
+
+**Impact for Mario:** Gap analysis now drives prioritized implementation plan. P0-P3 roadmap translates to phase sequence.
+

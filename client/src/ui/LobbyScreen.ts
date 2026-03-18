@@ -84,6 +84,7 @@ export interface OnlinePlayersPayload {
 export type LobbyEvent =
   | { type: "join_game"; gameId: string; roomId: string; gameType: string }
   | { type: "waiting"; gameId: string; gameInfo: GameSessionInfo | null; isHost: boolean }
+  | { type: "setup"; gameType: string }
   | { type: "set_display_name"; displayName: string }
   | { type: "error"; message: string };
 
@@ -766,9 +767,7 @@ export class LobbyScreen {
 
     tile.append(imageArea, content);
     tile.addEventListener("click", () => {
-      this.gameTypeInput.value = gameType;
-      this.syncGameTypeConstraints();
-      this.openCreateGameModal();
+      this.eventCallback?.({ type: "setup", gameType: gameType });
     });
 
     return tile;
