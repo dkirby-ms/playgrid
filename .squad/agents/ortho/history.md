@@ -234,3 +234,39 @@
 
 - **Thumbnail asset pattern:** Game tiles stored in `client/public/game-thumbnails/`. File extension must match `GAME_TILE_ARTWORK` path in config.
 - **Defensive image loading:** Always add `onerror` fallback on `<img>` elements in game lists to prevent cascading UX breakage if a single image fails.
+
+---
+
+## 2025-01-16: P3 — Lobby Tile Hover Enhancements — Complete ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ⚠️ 3 errors in docs/designs (unrelated) | **Test:** ✅ Pass (467 tests)
+
+### Enhancements Made
+
+**Game Tile Hover Effects (Figma Alignment):**
+- Updated `--shadow-hover` token: `rgba(59, 130, 246, 0.25)` → `rgba(59, 130, 246, 0.2)` to match Figma's `shadow-blue-500/20`
+- Updated `--gradient-tile-overlay` to use pure black gradient (`rgba(0,0,0,*)`) instead of slate-950, matching Figma's `from-black/90 via-black/50 to-transparent`
+- Updated game tile transition: `0.2s` → `0.3s` to match Figma spec (300ms)
+- Verified existing hover implementation: ✅ `scale(1.05)` + blue shadow, ✅ image `scale(1.1)`, ✅ gradient overlay, ✅ active games count badge
+
+**Sidebar Components Verification:**
+- ✅ **Active Games List** — Already fully implemented in `LobbyScreen.ts` (lines 724-816). Shows game cards with name, type, player count, status badges (Waiting/Playing), join buttons for joinable games. Renders in `#active-games-list` container within `.active-games-panel` in sidebar.
+- ✅ **Online Players List** — Already fully implemented in `LobbyScreen.ts` (lines 817-850). Shows player avatars with status dots (online/in-game), names, and status text. Renders in `.online-players-panel` with count badge. Updates on `ONLINE_PLAYERS` message from lobby room.
+- ✅ **3-Column Layout** — Grid already configured: game library (2 cols) + sidebar (1 col) on desktop, stacks on mobile.
+
+**Files Modified:**
+- `client/src/ui/design-tokens.css` — Refined `--shadow-hover` and `--gradient-tile-overlay` tokens
+- `client/index.html` — Updated game tile transition timing (0.2s → 0.3s)
+
+**Architecture Notes:**
+- Sidebar components kept inline within `LobbyScreen.ts` following existing vanilla TS monolithic pattern
+- No separate component files created (`ActiveGamesList.ts`, `OnlinePlayersList.ts`) — would break existing architecture
+- All rendering uses `renderActiveGamesList()` and `renderOnlinePlayers()` private methods
+- Data flow: Lobby room messages → LobbyScreen state → render methods → sidebar panels
+
+**Key Learnings:**
+- Design token adjustments are critical for exact Figma matching — even small opacity differences (0.25 vs 0.2) matter for visual polish
+- The lobby sidebar architecture was already complete with glass-morphism panels, proper data wiring, and interactive elements (join buttons, status badges)
+- Transition timing consistency across hover effects (300ms standard) creates smoother, more cohesive UX
+

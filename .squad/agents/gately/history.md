@@ -675,3 +675,51 @@ The rule: if ZINC/VIOLET was used because it's "dark/neutral UI theme color" →
 - **Pemulis**: No game logic changes, purely visual token swaps
 - **Steeply**: All tests pass; no new test coverage needed (visual-only change)
 
+
+---
+
+## 2026-03-16: P7 — Game-Specific Visual Fixes
+
+**Task:** Two targeted rendering improvements to match Figma design spec.
+
+### Task 1: Risk Phase Banner Enhancement ✅
+
+**Problem:** Phase information was split across two lines with small text. Figma spec called for more prominent combined display.
+
+**Implementation:**
+- Combined player turn and phase into single line: "[Player]'s Turn - [PHASE] Phase"
+- Added pulsing animation to turn indicator dot (2-second cycle, 1.0-1.15 scale)
+- Updated text hierarchy: larger primary text (18px bold), smaller secondary text (14px)
+- Improved spacing: moved text positions for better visual balance
+- Phase-specific detail: "Armies to deploy: X" shown below main text during reinforce phase
+
+**Technical approach:**
+- Created `getCombinedTurnPhaseText()` helper to generate unified status text
+- Added `updateTurnIndicatorPulse()` method called from `update()` loop
+- Modified text styles for better hierarchy (statusText: 18px/700, phaseText: 14px/500)
+- Updated layout positions for improved visual alignment
+
+**Files modified:**
+- `client/src/renderers/RiskRenderer.ts`
+
+### Task 2: Dominos Emerald Felt Background ✅
+
+**Status:** Already implemented correctly in prior session.
+
+**Current state:**
+- Board background uses emerald gradient (EMERALD_900 outer, EMERALD_800 inner)
+- Colors already defined in DesignTokens.ts (0x065F46, 0x064E3B)
+- Gradient creates felt texture effect per Figma spec
+
+**No changes needed.**
+
+### Validation:
+```bash
+npm run build  # ✅ Passed
+npm run lint   # ✅ No errors in changed files
+npm run test   # ✅ 467 tests passed
+```
+
+**Cross-agent coordination:** No other agents involved. Standalone renderer improvements.
+
+**Status:** P7 complete. Risk phase banner now matches Figma prominence. Dominos background already correct.

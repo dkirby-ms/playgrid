@@ -1,58 +1,56 @@
 # Squad Status: Current Phase
 
-**Last Updated:** 2026-03-16T22:47:43Z  
-**Phase:** 3 — Feature Completion & Testing Sprint (Active)
+**Last Updated:** 2026-03-18T19:06Z  
+**Phase:** Figma Design Reconciliation (Active) — P0-P3, P7 Complete. Next: P4-P6
 
-## Phase 3: Feature Completion & E2E Coverage Sprint (In Progress)
+## Current Work: Figma Design Reconciliation
 
-**Status:** Major milestone complete. All E2E coverage gaps filled.
+**Status:** 5 of 8 priority items complete (P0-P3, P7 finished; P4-P6 deferred)
 
-### Session 2026-03-16 Summary
+**Completed Phases:**
+- ✅ **P0** — Player Info Bars verification + pulse animation
+- ✅ **P1** — Game Header Bar component (navigation chrome)
+- ✅ **P2** — Canvas color palette alignment (ZINC→SLATE, VIOLET→BLUE)
+- ✅ **P3** — Lobby tile hover effects refinement
+- ✅ **P7** — Risk phase banner improvement + pulse animation
 
-| Focus | Count | Status |
-|-------|-------|--------|
-| Backgammon CPU opponents | Issue #87 | ✅ Closed (PR #125) |
-| Dev Sandbox MVP | Feature | ✅ Shipped (PR #132) |
-| E2E Coverage Gaps | 5 issues | ✅ All closed (#126-129, #131) |
-| PRs Merged | 7 total | ✅ #125, #132-135, #137-138 |
-| Blockers Resolved | 2 | ✅ Both via lockout protocol |
-| Build Status | 289 tests | ✅ All passing, 0 lint errors |
+**Deferred Phases:**
+- ⏳ **P4** — Setup screens (12-16h)
+- ⏳ **P5** — Victory screens (14-18h)
+- ⏳ **P6** — History screens (12-16h)
+
+### Session 2026-03-18 Summary
+
+| Focus | Agents | Status |
+|-------|--------|--------|
+| Player Info Bars | Ortho | ✅ P0 complete (prev session) |
+| Game Header | Ortho | ✅ P1 complete (prev session) |
+| Color Palette | Gately | ✅ P2 complete (prev session) |
+| Lobby Tiles | Ortho | ✅ P3 complete |
+| Risk Phase Banner | Gately | ✅ P7 complete |
+| Build Status | Team | ✅ All passing, 0 lint errors |
 
 ### Deliverables Completed
 
-✅ **Backgammon CPU Opponents**
-- CPU player logic implemented
-- Multi-action turn sequences supported
-- Move scoring heuristics (bear-off priority, blot avoidance)
-- 7 unit tests, E2E coverage via PR #133
+✅ **Game Chrome Pattern**
+- DOM + PixiJS separation established
+- Consistent GameScene lifecycle
+- Design token integration across all components
+- All 4 games inherit chrome automatically
 
-✅ **Dev Sandbox MVP**
-- Mock state builder for all 3 games
-- HTML overlay controls (JSON editors, visual Checkers board)
-- Route detection (/sandbox/{game})
-- No server connection required — enables renderer testing workflow
+✅ **Visual Design Alignment**
+- Player bars with status badges and pulse animation
+- Game header with navigation + title + actions
+- Color palette migrated to Figma spec
+- Lobby tiles with refined hover effects
+- Risk phase banner with prominent display
 
-✅ **E2E Coverage Expansion**
-- Backgammon E2E: Action pipeline verification (adapts to random dice)
-- Risk E2E: 5-move deterministic full-game replay
-- Reconnection E2E: 30s timeout window, state recovery
-- Spectator E2E: Join behavior, read-only sync, transition to player
-- CPU Opponent E2E: Human vs CPU across all 3 games
-
-**Overall E2E Progress:** ~20% → near-complete (only new games remain uncovered)
-
-### Critical Decisions Captured
-
-1. **Backgammon Pass Action** — Valid game mechanic when no moves exist
-2. **Dev Sandbox Directive** — Mock state must stay in sync with real renderers
-3. **E2E Strategy for Random Games** — Action pipeline verification, not deterministic replay
-4. **Lockout Protocol** — Applied twice, both successfully resolved
-
-### Issues Remaining (Untriaged)
-
-- **#107** — Scrabble (new game request)
-- **#124** — Dominos (new game request)
+✅ **Component Quality**
+- GameHeader: 234 lines, production-ready
+- PlayerInfoBar: Enhanced with animations
+- LobbyScreen: Polished interactions
+- RiskRenderer: Enhanced phase feedback
 
 ---
 
-**Team:** Ready for next sprint. Phase 3 milestone achieved — all targeted E2E coverage complete, sandbox shipped, CPU opponents functional. Two new game requests pending triage.
+**Team:** P0-P3, P7 complete (5 of 8 items). Ready for P4 (setup screens) next sprint. Design token system proven robust for rapid visual updates.

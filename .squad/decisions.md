@@ -4461,3 +4461,50 @@ Implemented DOM UI chrome components around the PixiJS canvas: header bar (navig
 - client/src/ui/PlayerInfoBar.ts
 - client/src/Application.ts
 - client/src/screens/GameScene.ts
+
+---
+
+### Ortho: Lobby Tile Hover Effects Refined (P3)
+
+**Status:** Implemented  
+**Date:** 2026-03-18  
+
+Refined hover effects on lobby game tiles: shadow opacity increased, gradient overlay improved, transition timing optimized for smooth visual feedback.
+
+**Changes:**
+- Shadow opacity: Enhanced for better depth perception on hover
+- Gradient overlay: Adjusted overlay intensity and color blend for improved visibility
+- Transition timing: Smoothed 200ms timing for consistent interaction feel across all tiles
+
+**Impact:**
+- Lobby tiles now provide clear visual feedback on user interaction
+- Consistent hover state across all 4 game tiles
+- Improves perceived responsiveness of the interface
+
+**Files Modified:**
+- client/src/screens/LobbyScreen.ts
+
+---
+
+### Gately: Risk Phase Banner Improved (P7)
+
+**Status:** Implemented  
+**Date:** 2026-03-18  
+
+Enhanced Risk-specific game UI: Phase banner now prominently displayed with pulse animation. Provides clear real-time feedback on current game phase (Deploy, Attack, Fortify).
+
+**Changes:**
+- Phase banner styling: Elevated prominence with glass-morphism background
+- Pulse animation: Matches "Your Turn" badge pattern for visual consistency
+- Phase transitions: Smooth animation on phase changes
+
+**Note:** Dominos emerald felt styling already implemented in previous session.
+
+**Impact:**
+- Players immediately see current game phase without searching the UI
+- Pulse animation draws attention during critical phase moments
+- Consistent animation language across all game UI
+
+**Files Modified:**
+- client/src/renderers/RiskRenderer.ts
+
