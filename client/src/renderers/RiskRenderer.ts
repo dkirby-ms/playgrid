@@ -10,7 +10,7 @@ import type {
   RendererInputEvent,
 } from "./GameRenderer";
 import {
-  ACCENT_VIOLET,
+  ACCENT_BLUE,
   BG_CARD,
   BG_CARD_SURFACE,
   BG_CARD_SURFACE_ALPHA,
@@ -81,7 +81,7 @@ export class RiskRenderer implements GameRenderer {
     text: "",
     style: {
       fontFamily: "sans-serif",
-      fontSize: 24,
+      fontSize: 18,
       fontWeight: "700",
       fill: TEXT_PRIMARY,
       align: "left",
@@ -97,8 +97,8 @@ export class RiskRenderer implements GameRenderer {
     text: "",
     style: {
       fontFamily: "sans-serif",
-      fontSize: 16,
-      fontWeight: "600",
+      fontSize: 14,
+      fontWeight: "500",
       fill: TEXT_SECONDARY,
       align: "left",
       dropShadow: {
@@ -169,6 +169,8 @@ export class RiskRenderer implements GameRenderer {
   private readonly territoryDefMap = new Map<string, TerritoryDef>();
   private isEndPhaseButtonHovered = false;
   private isTradeCardsButtonHovered = false;
+
+  private turnIndicatorPulseTime = 0;
 
   constructor() {
     this.territoryLayer.sortableChildren = true;
@@ -258,7 +260,11 @@ export class RiskRenderer implements GameRenderer {
     this.updateSidebar();
   }
 
-  update(_deltaTime: number): void {}
+  update(deltaTime: number): void {
+    // Animate turn indicator pulse
+    this.turnIndicatorPulseTime += deltaTime;
+    this.updateTurnIndicatorPulse();
+  }
 
   resize(width: number, height: number): void {
     this.width = width;
@@ -277,14 +283,14 @@ export class RiskRenderer implements GameRenderer {
   }
 
   getHUDStatus(_state: unknown): GameRendererHUDStatus {
-    const { text, color } = this.getStatusLabel();
-    const detail = this.getPhaseLabel();
+    const { turnText } = this.getCombinedTurnPhaseText();
+    const currentTurnColors = this.state?.currentTurn ? this.getPlayerColorSetForSessionId(this.state.currentTurn) : null;
 
     return {
       label: "Risk",
-      text,
-      detail: detail.length > 0 ? detail : undefined,
-      accentColor: toCssHexColor(color),
+      text: turnText,
+      detail: undefined,
+      accentColor: toCssHexColor(currentTurnColors?.text ?? TEXT_PRIMARY),
     };
   }
 
@@ -350,11 +356,11 @@ export class RiskRenderer implements GameRenderer {
     this.phaseBanner
       .roundRect(phaseBannerX, phaseBannerY, phaseBannerWidth, PHASE_BANNER_HEIGHT, 18)
       .fill(createPhaseBannerGradient())
-      .stroke({ color: ACCENT_VIOLET, width: 1.5, alpha: 0.35 });
+      .stroke({ color: ACCENT_BLUE, width: 1.5, alpha: 0.35 });
 
-    this.turnIndicator.position.set(phaseBannerX + 26, phaseBannerY + (PHASE_BANNER_HEIGHT / 2));
-    this.statusText.position.set(phaseBannerX + 46, phaseBannerY + 26);
-    this.phaseText.position.set(phaseBannerX + 46, phaseBannerY + 48);
+    this.turnIndicator.position.set(phaseBannerX + 22, phaseBannerY + (PHASE_BANNER_HEIGHT / 2));
+    this.statusText.position.set(phaseBannerX + 46, phaseBannerY + 30);
+    this.phaseText.position.set(phaseBannerX + 46, phaseBannerY + 50);
 
     const bottomY = this.mapOffsetY + scaledMapHeight + 20;
     this.endPhaseButton.position.set(
@@ -446,12 +452,12 @@ export class RiskRenderer implements GameRenderer {
 
       if (isValidTarget) {
         drawSvgPath(graphic, def.path, this.pathOffsetX, this.pathOffsetY, this.mapScale);
-        graphic.fill({ color: isAttackTarget ? RED_600 : ACCENT_VIOLET, alpha: isAttackTarget ? 0.28 : 0.22 });
+        graphic.fill({ color: isAttackTarget ? RED_600 : ACCENT_BLUE, alpha: isAttackTarget ? 0.28 : 0.22 });
       }
 
       if (isSelected) {
         drawSvgPath(graphic, def.path, this.pathOffsetX, this.pathOffsetY, this.mapScale);
-        graphic.stroke({ color: ACCENT_VIOLET, width: Math.max(2.5, this.mapScale * 3), alpha: 0.95 });
+        graphic.stroke({ color: ACCENT_BLUE, width: Math.max(2.5, this.mapScale * 3), alpha: 0.95 });
       }
 
       if (isAttackSource) {
@@ -531,7 +537,7 @@ export class RiskRenderer implements GameRenderer {
         const touchesSelection = this.selectedTerritory === def.id || this.selectedTerritory === adjacentId;
         const touchesValidTarget = this.validTargets.has(def.id) || this.validTargets.has(adjacentId);
         const isAttackLine = this.state?.turnPhase === "attack" && touchesSelection && touchesValidTarget;
-        const lineColor = isAttackLine ? RED_700 : touchesSelection ? ACCENT_VIOLET : BORDER_LIGHT;
+        const lineColor = isAttackLine ? RED_700 : touchesSelection ? ACCENT_BLUE : BORDER_LIGHT;
         const lineAlpha = isAttackLine ? 0.4 : touchesSelection ? 0.28 : 0.12;
         const lineWidth = isAttackLine ? Math.max(2, this.mapScale * 2.4) : Math.max(1, this.mapScale * 1.2);
 
@@ -565,27 +571,25 @@ export class RiskRenderer implements GameRenderer {
   }
 
   private updateHUD(): void {
-    const { text: statusLabel, color: statusColor } = this.getStatusLabel();
-    const phaseLabel = this.getPhaseLabel();
     const armiesToPlace = this.getArmiesToPlace();
     const currentTurnColors = this.state?.currentTurn ? this.getPlayerColorSetForSessionId(this.state.currentTurn) : null;
     const bottomY = this.mapOffsetY + (this.mapDef.viewBoxHeight * this.mapScale) + 20;
 
-    this.statusText.text = statusLabel;
-    this.statusText.style.fill = statusColor;
+    // Combined status line: "[Player]'s Turn - [PHASE] Phase"
+    const { turnText, phaseText } = this.getCombinedTurnPhaseText();
+    this.statusText.text = turnText;
+    this.statusText.style.fill = currentTurnColors?.text ?? TEXT_PRIMARY;
 
-    this.phaseText.text = phaseLabel;
-    this.phaseText.style.fill = phaseLabel.length > 0 ? TEXT_SECONDARY : TEXT_MUTED;
+    this.phaseText.text = phaseText;
+    this.phaseText.style.fill = phaseText.length > 0 ? TEXT_SECONDARY : TEXT_MUTED;
 
+    // Turn indicator dot (will pulse via updateTurnIndicatorPulse)
     this.turnIndicator.clear();
     this.turnIndicator
       .circle(0, 0, 7)
       .fill({ color: currentTurnColors?.bg ?? STATUS_INGAME, alpha: 1 });
-    this.turnIndicator
-      .circle(0, 0, 11)
-      .stroke({ color: currentTurnColors?.text ?? TEXT_SECONDARY, width: 2, alpha: 0.4 });
 
-    this.armiesToPlaceText.text = armiesToPlace > 0 ? `Armies to place: ${armiesToPlace}` : "";
+    this.armiesToPlaceText.text = armiesToPlace > 0 ? `Armies to deploy: ${armiesToPlace}` : "";
     this.armiesToPlaceText.visible = armiesToPlace > 0;
     this.armiesToPlacePill.visible = armiesToPlace > 0;
 
@@ -597,7 +601,7 @@ export class RiskRenderer implements GameRenderer {
       this.armiesToPlacePill
         .roundRect(this.mapOffsetX, bottomY, pillWidth, pillHeight, 16)
         .fill({ color: BG_GLASS, alpha: BG_GLASS_ALPHA + 0.18 })
-        .stroke({ color: ACCENT_VIOLET, width: 1.2, alpha: 0.44 });
+        .stroke({ color: ACCENT_BLUE, width: 1.2, alpha: 0.44 });
       this.armiesToPlaceText.position.set(this.mapOffsetX + pillPaddingX, bottomY + (pillHeight / 2));
     } else {
       this.armiesToPlacePill.clear();
@@ -661,7 +665,7 @@ export class RiskRenderer implements GameRenderer {
 
     graphic
       .fill(createPrimaryButtonGradient())
-      .stroke({ color: ACCENT_VIOLET, width: 1.4, alpha: hovered ? 0.72 : 0.5 });
+      .stroke({ color: ACCENT_BLUE, width: 1.4, alpha: hovered ? 0.72 : 0.5 });
 
     if (hovered) {
       graphic
@@ -684,7 +688,7 @@ export class RiskRenderer implements GameRenderer {
     graphic.roundRect(-width / 2, -height / 2, width, height, HUD_BUTTON_RADIUS);
     graphic
       .fill({ color: enabled ? BG_GLASS : BG_CARD, alpha: enabled ? BG_GLASS_ALPHA + 0.22 : 0.7 })
-      .stroke({ color: enabled ? ACCENT_VIOLET : BORDER_LIGHT, width: 1.2, alpha: hovered ? 0.64 : 0.4 });
+      .stroke({ color: enabled ? ACCENT_BLUE : BORDER_LIGHT, width: 1.2, alpha: hovered ? 0.64 : 0.4 });
 
     if (enabled && hovered) {
       graphic
@@ -1090,6 +1094,53 @@ export class RiskRenderer implements GameRenderer {
     };
 
     return phaseLabels[turnPhase] ?? turnPhase;
+  }
+
+  private getCombinedTurnPhaseText(): { turnText: string; phaseText: string } {
+    if (!this.state) {
+      return { turnText: "Waiting for game", phaseText: "" };
+    }
+
+    const sessionId = this.room?.sessionId;
+    const currentTurn = this.state.currentTurn;
+    if (!sessionId || !currentTurn) {
+      return { turnText: "Waiting for players", phaseText: "" };
+    }
+
+    const playerName = this.getDisplayName(currentTurn);
+    const turnPhase = this.state.turnPhase;
+    const phaseMap: Record<string, string> = {
+      "setup-pick": "SETUP",
+      "setup-place": "SETUP",
+      reinforce: "REINFORCE",
+      attack: "ATTACK",
+      "capture-move": "ATTACK",
+      fortify: "FORTIFY",
+    };
+
+    const phaseUpper = phaseMap[turnPhase ?? ""] ?? (turnPhase ?? "").toUpperCase();
+    const turnText = `${playerName}'s Turn - ${phaseUpper} Phase`;
+
+    // Show armies to deploy count if in reinforce phase
+    const armiesToPlace = this.getArmiesToPlace();
+    const phaseText = turnPhase === "reinforce" && armiesToPlace > 0 
+      ? `Armies to deploy: ${armiesToPlace}` 
+      : "";
+
+    return { turnText, phaseText };
+  }
+
+  private updateTurnIndicatorPulse(): void {
+    if (!this.state?.currentTurn) {
+      return;
+    }
+
+    // Pulse animation: scale from 1.0 to 1.15 and back (2 second cycle)
+    const pulseSpeed = 2000; // milliseconds per full cycle
+    const t = (this.turnIndicatorPulseTime % pulseSpeed) / pulseSpeed;
+    const scale = 1 + 0.15 * Math.sin(t * Math.PI * 2);
+    
+    this.turnIndicator.scale.set(scale);
   }
 
   private getArmiesToPlace(): number {

@@ -17,7 +17,7 @@ import {
 } from "../games/checkers/checkersClientLogic";
 import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
 import {
-  ACCENT_VIOLET,
+  ACCENT_BLUE,
   AMBER_500,
   BG_PRIMARY,
   BLACK as TOKEN_BLACK,
@@ -67,7 +67,7 @@ const DARK_SQUARE_ALT_COLOR = BOARD_DARK_SQUARE.via;
 const DARK_SQUARE_SHADOW_COLOR = CHECKERS_GRID_SHADOW;
 const KING_MARKER_COLOR = KING_MARKER;
 const PIECE_DROP_SHADOW_COLOR = TOKEN_BLACK;
-const VALID_TARGET_COLOR = ACCENT_VIOLET;
+const VALID_TARGET_COLOR = ACCENT_BLUE;
 const VALID_TARGET_ALPHA = 0.35;
 const BOARD_FRAME_WIDTH = 24;
 const HUD_TEXT_COLOR = TEXT_PRIMARY;

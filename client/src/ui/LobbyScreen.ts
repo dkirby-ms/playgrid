@@ -760,6 +760,10 @@ export class LobbyScreen {
     imageInner.alt = "";
     imageInner.loading = "lazy";
     imageInner.decoding = "async";
+    imageInner.onerror = () => {
+      imageInner.onerror = null;
+      imageInner.src = GAME_TILE_ARTWORK.default;
+    };
 
     imageArea.append(imageInner);
 

@@ -147,6 +147,18 @@ function injectStyles(): void {
       background: var(--status-playing-bg);
       color: var(--status-playing-text);
       border-color: rgba(34, 197, 94, 0.35);
+      animation: status-pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes status-pulse {
+      0%, 100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+      }
+      50% {
+        opacity: 0.85;
+        box-shadow: 0 0 8px 2px rgba(34, 197, 94, 0.3);
+      }
     }
 
     .player-info-bar__status--waiting {
