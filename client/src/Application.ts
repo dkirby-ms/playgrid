@@ -976,6 +976,11 @@ export class PlaygridApp {
     layout.id = "game-layout";
     layout.className = "game-layout";
 
+    const header = document.createElement("div");
+    header.id = "game-header";
+    header.className = "game-header-slot";
+    header.style.display = "none";
+
     const topBar = document.createElement("div");
     topBar.id = "game-info-top";
     topBar.className = "game-info-slot";
@@ -990,7 +995,7 @@ export class PlaygridApp {
     bottomBar.className = "game-info-slot";
     bottomBar.style.display = "none";
 
-    layout.append(topBar, canvasFrame, bottomBar);
+    layout.append(header, topBar, canvasFrame, bottomBar);
     gameContainer.replaceChildren(layout);
 
     return { container: layout, canvasFrame };

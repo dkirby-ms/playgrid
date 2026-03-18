@@ -213,6 +213,8 @@ describe("checkersPlugin", () => {
         },
         metadata: {
           winnerColor: BLACK,
+          "player-1": { pieces: 1, kings: 0 },
+          "player-2": { pieces: 0, kings: 0 },
         },
       });
     });

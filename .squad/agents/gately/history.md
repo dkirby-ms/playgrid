@@ -1633,3 +1633,125 @@ Implemented cross-shaped board layout for Dominos 4-way spinner arms:
 - SetupScene is standalone screen; game rendering happens when players transition to game room
 - PlayerInfoBar continues to work alongside sidebar and setup screens
 - Gately's GameScene remains the primary rendering surface for in-game content
+
+---
+
+## 2026-03-18: Canvas Color Palette Migration (VIOLET+ZINC → BLUE+SLATE)
+
+### Overview
+
+Migrated PixiJS canvas rendering tokens from violet+zinc palette to blue+slate palette to match the CSS design system tokens that were previously updated. This ensures visual consistency between DOM UI and canvas-rendered game elements.
+
+### Changes Made
+
+**1. Updated `client/src/renderers/DesignTokens.ts`:**
+
+- Added complete BLUE scale: BLUE_200, BLUE_400, BLUE_500, BLUE_600, BLUE_700
+- Added complete SLATE scale: SLATE_500, SLATE_600, SLATE_800, SLATE_950 (others already existed)
+- Renamed semantic tokens:
+  - `ACCENT_VIOLET` → `ACCENT_BLUE` (BLUE_400)
+  - `ACCENT_VIOLET_SHADOW` → `ACCENT_BLUE_SHADOW` (BLUE_500)
+  - `ACCENT_VIOLET_SHADOW_ALPHA` → `ACCENT_BLUE_SHADOW_ALPHA`
+- Updated gradient backgrounds:
+  - `PAGE_BG_TO`: VIOLET_950 → SLATE_800
+  - `PHASE_BANNER_FROM`: VIOLET_900 → SLATE_700
+  - `BUTTON_PRIMARY_FROM`: VIOLET_600 → BLUE_600
+- Updated status colors:
+  - `STATUS_AWAY`: ZINC_500 → SLATE_500
+- Updated game-specific tokens:
+  - `CHECKERS_GRID_SHADOW`: ZINC_950 → SLATE_950
+- **Kept old tokens as deprecated aliases** for backward compatibility with JSDoc `@deprecated` comments
+
+**2. Updated all game renderers:**
+
+- **CheckersRenderer.ts**: ACCENT_VIOLET → ACCENT_BLUE (valid target highlights, selection rings)
+- **BackgammonRenderer.ts**: ACCENT_VIOLET → ACCENT_BLUE (point highlights, piece selection rings)
+- **RiskRenderer.ts**: ACCENT_VIOLET → ACCENT_BLUE (territory selection, borders, phase highlights, UI buttons)
+- **DominosRenderer.ts**: 
+  - ACCENT_VIOLET → ACCENT_BLUE (tile selection, end markers)
+  - VIOLET_400 → BLUE_400 (tile glow)
+  - ZINC_700 → SLATE_700 (tile borders, dividers, face-down borders)
+  - ZINC_800 → SLATE_800 (face-down tile backgrounds)
+
+### Key Mapping Decisions
+
+**UI Theme Colors → Changed:**
+- Any ZINC used for backgrounds, borders, dividers → Swapped to SLATE
+- Any VIOLET accent used for selection, highlights → Swapped to BLUE
+
+**Game Piece Colors → Preserved:**
+- Checkers "black pieces" using ZINC_600/800/900 → **KEPT AS-IS**
+- These represent actual piece colors (not theme), so ZINC is appropriate
+- WHITE pieces already used SLATE for shading (no change needed)
+
+### Heuristic Applied
+
+The rule: if ZINC/VIOLET was used because it's "dark/neutral UI theme color" → swap to SLATE/BLUE. If it was used because it's "the color of a game object itself" → keep it.
+
+### Validation
+
+✅ Build passed: `npm run build`  
+✅ Lint passed: `npm run lint` (pre-existing warnings unrelated to changes)  
+✅ Tests passed: `npm run test` (467 passed)
+
+### Renderer Notes
+
+- All selection/highlight interactions now use blue accent (BLUE_400)
+- All UI backgrounds/borders now use slate neutrals
+- No visual regression in game piece rendering
+- Deprecated tokens left in place to avoid breaking any external references
+
+### Cross-Agent Impact
+
+- **Ortho**: DOM UI already uses blue+slate via CSS design tokens — now fully aligned
+- **Pemulis**: No game logic changes, purely visual token swaps
+- **Steeply**: All tests pass; no new test coverage needed (visual-only change)
+
+
+---
+
+## 2026-03-16: P7 — Game-Specific Visual Fixes
+
+**Task:** Two targeted rendering improvements to match Figma design spec.
+
+### Task 1: Risk Phase Banner Enhancement ✅
+
+**Problem:** Phase information was split across two lines with small text. Figma spec called for more prominent combined display.
+
+**Implementation:**
+- Combined player turn and phase into single line: "[Player]'s Turn - [PHASE] Phase"
+- Added pulsing animation to turn indicator dot (2-second cycle, 1.0-1.15 scale)
+- Updated text hierarchy: larger primary text (18px bold), smaller secondary text (14px)
+- Improved spacing: moved text positions for better visual balance
+- Phase-specific detail: "Armies to deploy: X" shown below main text during reinforce phase
+
+**Technical approach:**
+- Created `getCombinedTurnPhaseText()` helper to generate unified status text
+- Added `updateTurnIndicatorPulse()` method called from `update()` loop
+- Modified text styles for better hierarchy (statusText: 18px/700, phaseText: 14px/500)
+- Updated layout positions for improved visual alignment
+
+**Files modified:**
+- `client/src/renderers/RiskRenderer.ts`
+
+### Task 2: Dominos Emerald Felt Background ✅
+
+**Status:** Already implemented correctly in prior session.
+
+**Current state:**
+- Board background uses emerald gradient (EMERALD_900 outer, EMERALD_800 inner)
+- Colors already defined in DesignTokens.ts (0x065F46, 0x064E3B)
+- Gradient creates felt texture effect per Figma spec
+
+**No changes needed.**
+
+### Validation:
+```bash
+npm run build  # ✅ Passed
+npm run lint   # ✅ No errors in changed files
+npm run test   # ✅ 467 tests passed
+```
+
+**Cross-agent coordination:** No other agents involved. Standalone renderer improvements.
+
+**Status:** P7 complete. Risk phase banner now matches Figma prominence. Dominos background already correct.

@@ -133,8 +133,6 @@
 
 ---
 
-## Learnings
-
 ### 2026-03-17: Comprehensive Figma v1 Design Analysis
 
 **Scope:** Full page-by-page + component-by-component comparison of `docs/designs/playgrid-v1/` (17 pages, 5 components) against live client.
@@ -158,6 +156,83 @@
 - P2: Victory + History screens, Risk Cards
 - P3: Game-specific enhancements (Risk phase banner, Dominos felt, palette alignment)
 - Future: Scrabble + Catan implementation
+
+---
+
+## 2026-03-18: Exhaustive Figma v1 Design Audit — Comprehensive Gap Analysis
+
+**Session:** Deep audit comparing Figma design export (17 pages) to live implementation across all major components.
+
+**Scope:** Examined all design pages (Lobby, CheckersGame/Setup/Victory/History, BackgammonGame/Setup/Victory/History, RiskGame/Setup/Victory/Cards, DominosGame, CatanGame, ScrabbleGame + setup pages), compared to live implementations (LobbyScreen, GameScene, SetupScene, VictoryScreen, all renderers).
+
+**Critical Gaps Identified:**
+
+1. **12 Entire Screens Missing:**
+   - Setup: CheckersSetup, BackgammonSetup, RiskSetup (all exist as design but no vanilla TS implementation)
+   - Victory: Enhanced versions with stats, highlights, animations (basic version exists but incomplete)
+   - History: CheckersHistory, BackgammonHistory, RiskHistory (zero implementation)
+   - Game-specific: RiskCards, CatanGame, CatanSetup, ScrabbleGame, ScrabbleSetup
+
+2. **Player Info Bars Unimplemented:**
+   - `PlayerInfoBar.ts` component exists but not integrated into game layouts
+   - No opponent bar above board (design calls for this on all games)
+   - Player bar below board exists but styling incomplete, no animations
+   - Missing: pulse animation on turn indicator, timer display, status badge
+
+3. **Game Header Bar Missing:**
+   - Design specifies consistent header on all game pages: [Back | Title | History/Results/Resign buttons]
+   - Live implementation: Only Leave button in HUD (top-right, absolute positioned)
+   - No back-to-lobby navigation visible in-game
+
+4. **Color Palette Divergence:**
+   - Live uses: zinc-900/via, violet-400 accent
+   - Design uses: slate-950/via, blue-600 accent
+   - This is pervasive across all screens (not just one game)
+
+5. **Lobby Sidebars Not Implemented:**
+   - `ActiveGamesList.tsx` and `OnlinePlayersList.tsx` components designed but absent from live LobbyScreen
+   - Current: MessageLog sidebar (not in new design)
+   - Missing: Game browser, player discovery UI
+
+6. **New Games Completely Absent:**
+   - Catan: Full game design exists; zero renderer implementation
+   - Scrabble: Full game design exists; zero renderer implementation
+   - These are not edge cases—they're in the design spec
+
+7. **Risk-Specific Gaps:**
+   - Phase banner (DEPLOY/ATTACK/FORTIFY) designed but not rendered prominently
+   - Cards interface (RiskCards.tsx) completely missing
+   - Phase indicator buried in sidebar text
+
+8. **Dominos Visual Mismatch:**
+   - Design: Emerald felt background (`from-emerald-800 to-emerald-900`), DOM-based domino tiles with CSS pips
+   - Live: Dark canvas background, PixiJS-rendered dominos (no pips, no felt aesthetic)
+
+**Alignment Percentages by Screen:**
+- CheckersGame: ~80% (board great, surrounding UI missing)
+- Checkers Setup/Victory/History: 0-50% (setup nonexistent, victory/history partial)
+- BackgammonGame: ~75%
+- Backgammon Setup/Victory/History: 0-50%
+- RiskGame: ~70% (map good, header/phase banner missing)
+- Risk Setup/Victory/Cards: 0-50%
+- DominosGame: ~55% (logic works, visual style off)
+- Catan/Scrabble: 0% (no implementation)
+- Lobby: ~60% (tiles present, sidebars missing, colors off)
+
+**P0-P6 Priority Roadmap Created:**
+1. **P0: Player info bars** — Blocking awareness of turn state (4-6h)
+2. **P1: Game header bar** — Navigation + context (6-8h)
+3. **P2: Setup screens** — Dedicated UX (12-16h)
+4. **P3: Victory + History** — Post-game experience (14-18h)
+5. **P4: Color palette** — Slate/blue consistency (4-6h)
+6. **P5: New games** — Scrabble, Catan (20-30h each)
+7. **P6: Polish** — Hover effects, animations, Dominos felt (12-16h)
+
+**Key Insight:** The gap is not cosmetic. It's **functional flows and entire screens** users expect. Without P0-P1, players don't know whose turn it is or how to navigate. Without P2-P3, onboarding and post-game are incomplete.
+
+**Deliverable:** `.squad/decisions/inbox/mario-figma-design-audit-v2.md` — Comprehensive audit with screen-by-screen comparison, detailed gap analysis, severity assessment, and prioritized roadmap.
+
+**Recommendation:** Use this audit as implementation spec. P0+P1 should ship first (enables all games to be playable with context). P2-P3 in next phase. New games (P5) after existing games have complete UI.
 
 
 ---

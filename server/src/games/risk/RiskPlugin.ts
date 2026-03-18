@@ -520,6 +520,22 @@ export const riskPlugin: GamePlugin<RiskState> = {
       if (!winnerId) return null;
 
       const activePlayers = Array.from(state.players.values()).filter((p) => !p.isSpectator);
+
+      const playerStats: Record<string, unknown> = {};
+      for (const player of activePlayers) {
+        const riskPlayer = state.riskPlayers.get(player.sessionId);
+        let armies = 0;
+        for (const territory of state.territories.values()) {
+          if (territory.owner === player.sessionId) {
+            armies += territory.armyCount;
+          }
+        }
+        playerStats[player.sessionId] = {
+          territories: riskPlayer?.territoriesOwned ?? 0,
+          armies,
+        };
+      }
+
       return {
         type: "win",
         winnerId,
@@ -528,6 +544,7 @@ export const riskPlugin: GamePlugin<RiskState> = {
         ),
         metadata: {
           territoriesOwned: state.riskPlayers.get(winnerId)?.territoriesOwned ?? 0,
+          ...playerStats,
         },
       };
     },

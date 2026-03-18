@@ -7,24 +7,24 @@ import type {
 import { Container, Graphics, Text } from "pixi.js";
 import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
 import {
-  ACCENT_VIOLET,
+  ACCENT_BLUE,
   AMBER_500,
   BG_CARD,
   BG_PRIMARY,
   BLACK as TOKEN_BLACK,
+  BLUE_400,
   BORDER_LIGHT,
   BORDER_LIGHT_ALPHA,
   EMERALD_800,
   EMERALD_900,
+  SLATE_700,
+  SLATE_800,
   STATUS_ONLINE,
   TEXT_PRIMARY,
   TEXT_SECONDARY,
   TEXT_SUBTLE,
-  VIOLET_400,
   WHITE,
   YELLOW_400,
-  ZINC_700,
-  ZINC_800,
 } from "./DesignTokens";
 import type {
   GameRenderer,
@@ -49,23 +49,23 @@ const TILE_HALF = TILE_HEIGHT / 2;
 const TILE_RADIUS = 6;
 const PIP_RADIUS = 3.5;
 const TILE_BG = WHITE;
-const TILE_BORDER = ZINC_700;
+const TILE_BORDER = SLATE_700;
 const TILE_PIP_COLOR = TOKEN_BLACK;
 const TILE_SHADOW_COLOR = TOKEN_BLACK;
 const TILE_SHADOW_ALPHA = 0.25;
-const TILE_DIVIDER_COLOR = ZINC_700;
-const TILE_SELECTED_BORDER = ACCENT_VIOLET;
-const TILE_SELECTED_GLOW = VIOLET_400;
+const TILE_DIVIDER_COLOR = SLATE_700;
+const TILE_SELECTED_BORDER = ACCENT_BLUE;
+const TILE_SELECTED_GLOW = BLUE_400;
 const TILE_SELECTED_GLOW_ALPHA = 0.35;
-const TILE_FACEDOWN_BG = ZINC_800;
-const TILE_FACEDOWN_BORDER = ZINC_700;
+const TILE_FACEDOWN_BG = SLATE_800;
+const TILE_FACEDOWN_BORDER = SLATE_700;
 
 // Board-chain tile sizing (horizontal orientation)
 const BOARD_TILE_W = 56;
 const BOARD_TILE_H = 28;
 const BOARD_TILE_GAP = 4;
 
-const END_MARKER_COLOR = ACCENT_VIOLET;
+const END_MARKER_COLOR = ACCENT_BLUE;
 const END_MARKER_ACTIVE_ALPHA = 0.85;
 const END_LABEL_FONT_SIZE = 14;
 

@@ -473,13 +473,22 @@ export class BaseGameRoom extends Room {
     this.state.phase = "ended";
     this.state.currentTurn = "";
 
+    // Enrich metadata with duration and move count
+    const durationSeconds = this.gameStartTime
+      ? Math.floor((Date.now() - this.gameStartTime) / 1000)
+      : 0;
+    result.metadata = {
+      ...result.metadata,
+      durationSeconds,
+      totalMoves: this.state.turnNumber ?? 0,
+    };
+
     this.plugin.lifecycle.onGameEnd?.(this.state, result);
     this.broadcast(GAME_ENDED_MESSAGE, result);
 
     if (this.gameId && this.gameStartTime) {
       try {
         const pool = getPool();
-        const durationSeconds = Math.floor((Date.now() - this.gameStartTime) / 1000);
         await gameRepository.endGame(pool, {
           gameId: this.gameId,
           outcome: result as unknown as Record<string, unknown>,

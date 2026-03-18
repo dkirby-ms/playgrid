@@ -4,6 +4,7 @@ import { RendererRegistry, type GameRenderer } from "../renderers";
 import type { Scene } from "./Scene";
 import { HUD, type HUDEvent } from "../ui/HUD";
 import { PlayerInfoBar, type PlayerInfoBarData, type PlayerInfoStatusTone } from "../ui/PlayerInfoBar";
+import { GameHeader, type GameHeaderEvent } from "../ui/GameHeader";
 
 export interface GameSceneEnterData {
   room: Room;
@@ -31,6 +32,7 @@ export class GameScene implements Scene {
   private renderer: GameRenderer | null = null;
   private stateChangeHandler: ((state: unknown) => void) | null = null;
   private hud: HUD | null = null;
+  private gameHeader: GameHeader | null = null;
   private playerInfoBars: { opponent: PlayerInfoBar; player: PlayerInfoBar } | null = null;
   private width = 0;
   private height = 0;
@@ -87,6 +89,7 @@ export class GameScene implements Scene {
       },
     });
     this.container.addChild(this.renderer.container);
+    this.initGameHeader();
     this.initPlayerInfoBars();
 
     this.stateChangeHandler = (state) => {
@@ -139,6 +142,7 @@ export class GameScene implements Scene {
     this.gameType = "";
     this.hud?.setSidebarActive(false);
     this.hud?.hide();
+    this.destroyGameHeader();
     this.destroyPlayerInfoBars();
     this.hideMessage();
 
@@ -176,6 +180,59 @@ export class GameScene implements Scene {
       gameTimer: turnTimeRemaining,
       showTimer: turnTimeRemaining > 0,
     });
+  }
+
+  private initGameHeader(): void {
+    const headerMount = document.getElementById("game-header");
+
+    if (!headerMount) {
+      return;
+    }
+
+    this.gameHeader = new GameHeader(headerMount);
+    this.gameHeader.onEvent((event) => this.handleGameHeaderEvent(event));
+    
+    const gameTitle = this.formatGameTitle(this.gameType);
+    this.gameHeader.show({ gameTitle });
+
+    // Hide the HUD Leave button since we now have the header
+    if (this.hud) {
+      const leaveButton = document.querySelector("#hud-overlay .lobby-button-ghost") as HTMLElement;
+      if (leaveButton) {
+        leaveButton.style.display = "none";
+      }
+    }
+  }
+
+  private destroyGameHeader(): void {
+    if (!this.gameHeader) {
+      return;
+    }
+
+    this.gameHeader.destroy();
+    this.gameHeader = null;
+
+    // Restore the HUD Leave button
+    if (this.hud) {
+      const leaveButton = document.querySelector("#hud-overlay .lobby-button-ghost") as HTMLElement;
+      if (leaveButton) {
+        leaveButton.style.display = "";
+      }
+    }
+  }
+
+  private formatGameTitle(gameType: string): string {
+    if (!gameType) {
+      return "Game";
+    }
+    
+    return gameType.charAt(0).toUpperCase() + gameType.slice(1);
+  }
+
+  private handleGameHeaderEvent(event: GameHeaderEvent): void {
+    if (event.type === "back_to_lobby" || event.type === "resign") {
+      void this.onEventCallback({ type: "leave_game" });
+    }
   }
 
   private initPlayerInfoBars(): void {

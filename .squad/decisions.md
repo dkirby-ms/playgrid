@@ -4314,3 +4314,274 @@ Game tile clicks in the lobby now navigate to a full-screen Setup screen instead
 - Renderers: No changes; Setup screens are pure DOM
 - Gately (PixiJS): No changes; SetupScene is standalone screen
 - E2E tests: May need updates to navigate through SetupScreen (WaitingRoom preserved for compat)
+
+---
+
+### Ortho: Console Log Panel replaces modal status popups (#146)
+
+**Status:** Approved  
+**Date:** 2026-03-18  
+**PR:** #152  
+**Branch:** `squad/146-console-log-panel`
+
+**Decision:** Status messages now route to a persistent inline ConsoleLog panel instead of only showing as transient PixiJS text or modal overlays. ReconnectOverlay reduced from full-screen modal to compact top-right toast.
+
+**Key points:**
+- `ConsoleLog` is a singleton created in `Application.init()` and passed to LobbyScreen via `setConsoleLog()`
+- `setStatus()` dual-writes to both PixiJS statusText and ConsoleLog
+- VictoryScreen and GameOverOverlay are NOT removed — game-end events log to console AND still trigger VictoryScreen
+- ReconnectOverlay still exists but is now a small toast indicator, not a full-screen blocker
+
+**Cross-impact:**
+- Any new status messages added anywhere should also route to `consoleLog`
+- Components that need console logging should receive the ConsoleLog instance via setter (same pattern as LobbyScreen)
+- The `#console-log-container` div is in index.html at the bottom of `#app`
+
+---
+
+## Session: Figma Design Audit & P0/P1 Kickoff (2026-03-18)
+
+### Copilot: UI Implementation Reference Directive
+
+**Status:** Approved  
+**Date:** 2026-03-18  
+
+When implementing or fixing UI, always reference the Figma design exports in `docs/designs/playgrid-v1/` (React/shadcn components). Don't make up assets — use the design source of truth.
+
+**Rationale:**
+- Design exports provide React source code and component specifications
+- Unsplash URLs are pre-selected in design; use them rather than hand-creating or finding alternates
+- Maintains visual consistency and reduces rework
+
+**Impact:** All agents working on client UI should reference Figma first, especially for images and component styling.
+
+---
+
+### Mario: Comprehensive Figma v1 Design Audit — Exhaustive Gap Analysis
+
+**Status:** Complete  
+**Date:** 2026-03-18  
+
+Full comparison of Figma design export (`docs/designs/playgrid-v1/src/app/`) against live implementation (`client/src/`). Examined 17 design pages, 6 custom components, and corresponding live screen implementations.
+
+**Findings:**
+- Live implementation: **40-50% alignment** with Figma v1
+- **12 entire screen types missing** (Setup/Victory/History for 3 games; Catan, Scrabble, Risk Cards)
+- **Player info bars:** Designed but not integrated; critical for UX (players don't know whose turn it is)
+- **Game header bar:** Absent; no back button, history access, or resign visible
+- **Missing component implementations:** ActiveGamesList, OnlinePlayersList (designed, not coded)
+- **Visual divergence:** Color palette shift (live: zinc+violet; design: slate+blue)
+- **Well-aligned:** Core game boards (Checkers 85%, Backgammon 80%, Risk 75%)
+
+**Priority Recommendations:**
+1. **P0: Player Info Bars** (4-6h) — Complete integration with game renderers
+2. **P1: Game Header Bar** (6-8h) — Consistent pattern across all games (Back/Title/Actions)
+3. **P2: Dedicated Setup Screens** (12-16h) — Full-page flows with configuration panels
+4. **P3: Victory & History Screens** (14-18h) — Post-game stats and move replay
+5. **P4: Color Palette Migration** (4-6h) — Shift from zinc+violet to slate+blue
+6. **P5: New Games** (20-30h each) — Catan and Scrabble renderers
+7. **P6: Visual Polish** (12-16h) — Hover effects, animations, gradients
+
+**Key Insight:** Missing screens are not cosmetic polish—they are functional flows users expect (Setup, Victory, History). Gaps are not about polish; they're about completeness.
+
+---
+
+### Ortho: Always Source UI Assets from Figma Design Exports
+
+**Status:** Approved  
+**Date:** 2026-03-18  
+
+Before implementing or fixing any UI element, always check the Figma design exports first. For image assets, use the URLs/references specified in the design rather than hand-making replacements. Design pipeline: **Figma → React export → PixiJS/DOM implementation**.
+
+**Context:** Dominos lobby thumbnail was previously fixed by hand-creating SVG instead of referencing Figma export which already specifies Unsplash URLs for all game tiles.
+
+**Impact:**
+- All agents working on client UI must reference `docs/designs/playgrid-v1/` before making visual changes
+- Game thumbnails and assets sourced from Figma specifications, not hand-created
+- Reduces rework and ensures design fidelity
+
+
+---
+
+### Ortho: Game Chrome Architecture — Player Info Bars + Game Header
+
+**Status:** Implemented  
+**Date:** 2026-03-18  
+
+Implemented DOM UI chrome components around the PixiJS canvas: header bar (navigation + title + actions) and player info bars (opponent above, player below).
+
+**Layout Structure:**
+- `#game-header` — Back to Lobby, game title, Resign action
+- `#game-info-top` — Opponent player info
+- `#game-canvas-frame` — PixiJS canvas (flex: 1)
+- `#game-info-bottom` — Local player info "(You)"
+
+**Component Pattern:**
+- GameScene creates/destroys on enter/exit
+- Components manage visibility via `mount.style.display`
+- Components inject styles (once per page load)
+- All use design tokens exclusively
+
+**Player Info Bars Features:**
+- Status badges: "Your Turn" (pulse animation + active tone), "Waiting..." (waiting tone), "Game over" (neutral)
+- Auto-hide when no player data
+- Show avatar, name, role label, status, optional timer
+
+**GameHeader Features:**
+- Left: "Back to Lobby" button
+- Center: Game title (capitalized)
+- Right: "Resign" button
+- Both actions trigger `leave_game` event (resign refinable later)
+- Hides HUD's Leave button (no duplicate controls)
+
+**Styling:**
+- Glass-morphism backgrounds: `var(--glass-bg)`, `var(--glass-bg-strong)`
+- Backdrop filter: `var(--glass-blur)`
+- Borders: `var(--glass-border)`, `var(--border-light)`
+- Shadow: `var(--shadow-card)`
+- Typography: `var(--text-primary)`, `var(--text-secondary)`, `var(--text-muted)`
+- Status tokens: `var(--status-playing-*)`, `var(--status-waiting-*)`
+
+**Impact:**
+- GameHeader.ts: New component (234 lines)
+- PlayerInfoBar.ts: Pulse animation added
+- Application.ts: `#game-header` mount point
+- GameScene.ts: Integrated lifecycle
+- All 4 games inherit this chrome automatically
+
+**Rationale:**
+- Separates navigation/chrome (DOM) from rendering (PixiJS)
+- Consistent component lifecycle
+- Design token ensures visual consistency
+- Player bars provide at-a-glance game state
+- Clear exit path and game context
+
+**Files Modified:**
+- client/src/ui/GameHeader.ts
+- client/src/ui/PlayerInfoBar.ts
+- client/src/Application.ts
+- client/src/screens/GameScene.ts
+
+---
+
+### Ortho: Lobby Tile Hover Effects Refined (P3)
+
+**Status:** Implemented  
+**Date:** 2026-03-18  
+
+Refined hover effects on lobby game tiles: shadow opacity increased, gradient overlay improved, transition timing optimized for smooth visual feedback.
+
+**Changes:**
+- Shadow opacity: Enhanced for better depth perception on hover
+- Gradient overlay: Adjusted overlay intensity and color blend for improved visibility
+- Transition timing: Smoothed 200ms timing for consistent interaction feel across all tiles
+
+**Impact:**
+- Lobby tiles now provide clear visual feedback on user interaction
+- Consistent hover state across all 4 game tiles
+- Improves perceived responsiveness of the interface
+
+**Files Modified:**
+- client/src/screens/LobbyScreen.ts
+
+---
+
+### Gately: Risk Phase Banner Improved (P7)
+
+**Status:** Implemented  
+**Date:** 2026-03-18  
+
+Enhanced Risk-specific game UI: Phase banner now prominently displayed with pulse animation. Provides clear real-time feedback on current game phase (Deploy, Attack, Fortify).
+
+**Changes:**
+- Phase banner styling: Elevated prominence with glass-morphism background
+- Pulse animation: Matches "Your Turn" badge pattern for visual consistency
+- Phase transitions: Smooth animation on phase changes
+
+**Note:** Dominos emerald felt styling already implemented in previous session.
+
+**Impact:**
+- Players immediately see current game phase without searching the UI
+- Pulse animation draws attention during critical phase moments
+- Consistent animation language across all game UI
+
+**Files Modified:**
+- client/src/renderers/RiskRenderer.ts
+
+
+---
+
+### Hal: Move History Architecture for Turn-Based Games
+
+**Status:** Proposed  
+**Date:** 2025-01-XX  
+**Decision Lead:** Hal  
+
+Generic move history system for turn-based games (Checkers, Backgammon, Dominos, and future games).
+
+**Key Decisions:**
+- **Server-side storage only**: In-memory `MoveEntry[]` array in `BaseGameRoom`. Zero schema changes, zero bandwidth overhead during play.
+- **Delivery at game end**: History attached to `GameResult.metadata` via existing `GAME_ENDED_MESSAGE`.
+- **Plugin-based formatting**: Optional `formatMoveHistory()` hook in `GamePlugin` interface for game-specific summaries. Falls back to raw `actionType`.
+- **Client overlay component**: New `HistoryScreen` overlay (not a scene), following `VictoryScreen` pattern. Game-specific formatters in `HistoryFormatters` map.
+
+**MoveEntry Interface:**
+```typescript
+{
+  moveNumber: number;
+  playerId: string;
+  playerName: string;
+  playerIndex: number;
+  timestamp: number;
+  actionType: string;
+  summary: string;
+  metadata?: Record<string, unknown>;
+}
+```
+
+**Implementation phases:**
+1. Core infrastructure (MoveEntry type, BaseGameRoom recording, delivery) — 2-3 hours
+2. Checkers game + HistoryScreen UI — 2 hours
+3. Backgammon & Dominos formatters — 1-2 hours each
+4. Polish (scroll, expandable details, stats sidebar) — 1 hour
+
+**Scope boundaries (out of scope):**
+- No move replay or interactive playback
+- No undo functionality
+- No persistence to database
+- No real-time live history during play
+- No PGN/notation export
+- No move analysis/evaluation
+
+**Trade-offs:**
+- ✅ Simple, zero overhead, extensible
+- ⚠️ No persistence (acceptable for MVP), no live updates, memory grows with game length
+
+**Rationale:**
+- Eliminates state bloat during gameplay (rejects schema syncing)
+- Reuses existing message protocol and delivery mechanism
+- Extensible via plugin system for future games
+- Follows established patterns (VictoryScreen overlay, GamePlugin hooks)
+
+**Files to Create:**
+- `shared/src/MoveEntry.ts`
+- `client/src/ui/HistoryScreen.ts`
+- `client/src/ui/historyFormatters.ts`
+
+**Files to Modify:**
+- `shared/src/gamePlugin.ts` — Add `formatMoveHistory?()` to interface
+- `server/src/game/BaseGameRoom.ts` — Add `moveHistory[]`, `recordMove()`, delivery in `endGame()`
+- `server/src/games/{checkers,backgammon,dominos}/Plugin.ts` — Implement `formatMoveHistory()`
+- `client/src/ui/VictoryScreen.ts` — Add "View History" button
+
+**Validation Plan:**
+- Checkers 2P: Verify all move types (normal, capture, king) captured and displayed
+- Backgammon: Verify dice rolls and multi-moves per turn
+- Dominos 4P: Verify play/draw/pass actions and turn order
+- Long game stress test (Risk 100+ moves): Memory usage and JSON serialization performance
+
+**Open Questions Resolved:**
+- Risk phased turns: Each action gets separate entry (simpler than turn grouping)
+- CPU moves: Included in history (they're real moves)
+- Spectator visibility: Yes, everyone sees game result
+

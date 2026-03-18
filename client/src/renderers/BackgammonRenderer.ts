@@ -8,7 +8,7 @@ import {
 import { Container, Graphics, Text } from "pixi.js";
 import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
 import {
-  ACCENT_VIOLET,
+  ACCENT_BLUE,
   BACKGAMMON_OVERLAY_ALPHA,
   BACKGAMMON_TARGET_MARKER_ALPHA,
   BACKGAMMON_USED_DIE_ALPHA,
@@ -729,7 +729,7 @@ export class BackgammonRenderer implements GameRenderer {
       fill: createBackgammonCenterStripGradient(),
       alpha: isSelected ? 0.32 : isHovered ? 0.24 : isActionable ? 0.14 : 0.06,
     }).stroke({
-      color: isSelected ? ACCENT_VIOLET : BORDER_LIGHT,
+      color: isSelected ? ACCENT_BLUE : BORDER_LIGHT,
       width: isSelected ? Math.max(2, this.pointWidth * 0.06) : Math.max(1, this.pointWidth * 0.025),
       alpha: isSelected ? 0.75 : 0.28,
     });
@@ -967,13 +967,13 @@ export class BackgammonRenderer implements GameRenderer {
     if (isSelected || isHovered) {
       graphics.circle(centerX, lastY, radius * 1.14)
         .stroke({
-          color: ACCENT_VIOLET,
+          color: ACCENT_BLUE,
           width: Math.max(2, outlineWidth * 1.4),
           alpha: isSelected ? PIECE_SELECTION_RING_ALPHA : PIECE_HOVER_RING_ALPHA,
         });
       if (isSelected) {
         graphics.circle(centerX, lastY, radius * 1.26)
-          .stroke({ color: ACCENT_VIOLET, width: Math.max(3, outlineWidth * 1.8), alpha: 0.24 });
+          .stroke({ color: ACCENT_BLUE, width: Math.max(3, outlineWidth * 1.8), alpha: 0.24 });
       }
     }
 

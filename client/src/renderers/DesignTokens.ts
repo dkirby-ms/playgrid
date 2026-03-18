@@ -71,7 +71,9 @@ export const RED_700 = 0xB91C1C;
 export const RED_900 = 0x7F1D1D;
 export const RED_900_ALPHA = 0.5;
 
+export const BLUE_200 = 0xBFDBFE;
 export const BLUE_400 = 0x60A5FA;
+export const BLUE_500 = 0x3B82F6;
 export const BLUE_600 = 0x2563EB;
 export const BLUE_700 = 0x1D4ED8;
 
@@ -118,15 +120,19 @@ export const EMERALD_900 = 0x064E3B;
 export const SLATE_100 = 0xF1F5F9;
 export const SLATE_300 = 0xCBD5E1;
 export const SLATE_400 = 0x94A3B8;
+export const SLATE_500 = 0x64748B;
+export const SLATE_600 = 0x475569;
 export const SLATE_700 = 0x334155;
+export const SLATE_800 = 0x1E293B;
 export const SLATE_900 = 0x0F172A;
+export const SLATE_950 = 0x020617;
 
 // === Gradient Backgrounds ===
 export const PAGE_BG_FROM = BG_PRIMARY;
 export const PAGE_BG_VIA = BG_PRIMARY;
-export const PAGE_BG_TO = VIOLET_950;
+export const PAGE_BG_TO = SLATE_800;
 
-export const PHASE_BANNER_FROM = VIOLET_900;
+export const PHASE_BANNER_FROM = SLATE_700;
 export const PHASE_BANNER_TO = PURPLE_900;
 export const PHASE_BANNER_ALPHA = 0.5;
 
@@ -134,7 +140,7 @@ export const BOARD_FRAME_GRADIENT_FROM = 0x292423;
 export const BOARD_FRAME_GRADIENT_VIA = 0x3F3836;
 export const BOARD_FRAME_GRADIENT_TO = 0x292423;
 
-export const BUTTON_PRIMARY_FROM = VIOLET_600;
+export const BUTTON_PRIMARY_FROM = BLUE_600;
 export const BUTTON_PRIMARY_TO = PURPLE_600;
 export const BUTTON_DANGER_FROM = RED_600;
 export const BUTTON_DANGER_TO = RED_700;
@@ -142,13 +148,21 @@ export const BUTTON_DANGER_TO = RED_700;
 // === Accent & Status ===
 export const STATUS_ONLINE = GREEN_500;
 export const STATUS_INGAME = AMBER_500;
-export const STATUS_AWAY = ZINC_500;
+export const STATUS_AWAY = SLATE_500;
 export const STATUS_DESTRUCTIVE = RED_900;
 export const STATUS_DESTRUCTIVE_ALPHA = 0.5;
-export const ACCENT_VIOLET = VIOLET_400;
+export const ACCENT_BLUE = BLUE_400;
 export const ACCENT_PURPLE = PURPLE_600;
-export const ACCENT_VIOLET_SHADOW = VIOLET_500;
-export const ACCENT_VIOLET_SHADOW_ALPHA = 0.2;
+export const ACCENT_BLUE_SHADOW = BLUE_500;
+export const ACCENT_BLUE_SHADOW_ALPHA = 0.2;
+
+// Deprecated: Use ACCENT_BLUE instead
+/** @deprecated Use ACCENT_BLUE instead */
+export const ACCENT_VIOLET = ACCENT_BLUE;
+/** @deprecated Use ACCENT_BLUE_SHADOW instead */
+export const ACCENT_VIOLET_SHADOW = ACCENT_BLUE_SHADOW;
+/** @deprecated Use ACCENT_BLUE_SHADOW_ALPHA instead */
+export const ACCENT_VIOLET_SHADOW_ALPHA = ACCENT_BLUE_SHADOW_ALPHA;
 
 // === Player Colors ===
 export const PLAYER_RED_BG = RED_600;
@@ -218,9 +232,9 @@ export const BOARD_DARK_SQUARE = {
   to: CHECKERS_DARK_SQUARE_TO,
 } as const;
 
-export const CHECKERS_GRID_SHADOW = ZINC_950;
+export const CHECKERS_GRID_SHADOW = SLATE_950;
 export const CHECKERS_GRID_SHADOW_ALPHA = 0.3;
-export const CHECKERS_SELECTION_RING = ACCENT_VIOLET;
+export const CHECKERS_SELECTION_RING = ACCENT_BLUE;
 export const CHECKERS_SELECTION_OFFSET = CHECKERS_DARK_SQUARE_TO;
 
 export const PIECE_RED_GLOW = RED_500;

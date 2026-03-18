@@ -1,8 +1,11 @@
 import {
   BLACK,
+  BLACK_KING,
   CheckersState,
+  EMPTY,
   PlayerInfo,
   RED,
+  RED_KING,
   type ActionResult,
   type GamePlugin,
   type GameResult,
@@ -63,11 +66,37 @@ function getCurrentPlayerColor(state: CheckersState): CheckersColor | null {
   return getPlayerColor(currentPlayer.playerIndex);
 }
 
+function countPlayerPieces(state: CheckersState, color: CheckersColor) {
+  let pieces = 0;
+  let kings = 0;
+  const kingValue = color === BLACK ? BLACK_KING : RED_KING;
+  for (let i = 0; i < state.board.length; i++) {
+    const cell = state.board[i];
+    if (cell === EMPTY) continue;
+    if (cell === color) pieces++;
+    else if (cell === kingValue) kings++;
+  }
+  return { pieces: pieces + kings, kings };
+}
+
 function buildGameResult(state: CheckersState, winnerColor: CheckersColor): GameResult | null {
   const players = Array.from(state.players.values()).filter((player) => !player.isSpectator);
   const winner = players.find((player) => getPlayerColor(player.playerIndex) === winnerColor);
   if (!winner) {
     return null;
+  }
+
+  const loser = players.find((player) => player.sessionId !== winner.sessionId);
+  const winnerStats = countPlayerPieces(state, winnerColor);
+  const loserColor = winnerColor === BLACK ? RED : BLACK;
+  const loserStats = countPlayerPieces(state, loserColor);
+
+  const metadata: Record<string, unknown> = {
+    winnerColor,
+    [winner.sessionId]: { pieces: winnerStats.pieces, kings: winnerStats.kings },
+  };
+  if (loser) {
+    metadata[loser.sessionId] = { pieces: loserStats.pieces, kings: loserStats.kings };
   }
 
   return {
@@ -76,9 +105,7 @@ function buildGameResult(state: CheckersState, winnerColor: CheckersColor): Game
     scores: Object.fromEntries(
       players.map((player) => [player.sessionId, player.sessionId === winner.sessionId ? 1 : 0]),
     ),
-    metadata: {
-      winnerColor,
-    },
+    metadata,
   };
 }
 
