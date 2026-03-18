@@ -137,3 +137,30 @@
 - **ConsoleLog pattern:** Follows same `injectStyles()` pattern as PlayerInfoBar/SetupScreen. Uses `#console-log-container` in index.html. Exposes `log()`, `info()`, `success()`, `warn()`, `error()` methods. Pass instance via `setConsoleLog()` to components that need it.
 - **ReconnectOverlay reduced:** Changed from full-screen centered modal to compact top-right toast indicator using design tokens. Still functional for reconnection states, but no longer blocks gameplay.
 - **Status message routing:** `setStatus()` in Application.ts now dual-writes to both PixiJS statusText and ConsoleLog. This means all status messages are persisted in scrollable history.
+- **Dominos thumbnail fix:** `dominos.jpg` was missing from `client/public/game-thumbnails/`. Created `dominos.svg` (1200×900 SVG with domino tiles on dark background) and updated `GAME_TILE_ARTWORK` path in `LobbyScreen.ts` from `.jpg` to `.svg`. Added `onerror` fallback on game tile `<img>` elements to gracefully degrade to checkers thumbnail if any image fails to load.
+- **Game thumbnail assets:** Located at `client/public/game-thumbnails/`. Checkers, backgammon, risk use JPEG (1200×900). Dominos uses SVG. Path mapping in `GAME_TILE_ARTWORK` constant in `LobbyScreen.ts` (line ~153).
+
+---
+
+## 2026-03-18: Dominos Lobby Thumbnail Fix — Complete ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Requested by:** dkirby-ms
+
+### What was fixed
+
+**Problem:** Dominos game tile in lobby displayed broken image (thumbnail missing).
+
+**Solution:**
+- Created `dominos.svg` thumbnail at `client/public/game-thumbnails/dominos.svg`
+- Updated `GAME_TILE_ARTWORK` constant in game configuration to reference `.svg` instead of `.jpg`
+- Added `onerror` fallback handler on all game tile `<img>` elements to gracefully degrade to fallback image
+
+**Files Modified:**
+- `client/public/game-thumbnails/dominos.svg` (created)
+- Game tile image component (added onerror fallback)
+
+### Learnings
+
+- **Thumbnail asset pattern:** Game tiles stored in `client/public/game-thumbnails/`. File extension must match `GAME_TILE_ARTWORK` path in config.
+- **Defensive image loading:** Always add `onerror` fallback on `<img>` elements in game lists to prevent cascading UX breakage if a single image fails.
