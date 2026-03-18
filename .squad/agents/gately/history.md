@@ -428,6 +428,9 @@ Implemented generic hidden-hand pattern following boneyard precedent:
 - **Lesson:** Any round-robin setup phase that ends per-player must also check the global completion condition. Never rely on a separate action for phase transitions that no player can trigger.
 - **Lesson:** Pre-existing regression test suite (`risk-setup-transition.test.ts`) was written to describe expected behavior and intentionally failed against the buggy code — a good pattern for documenting known bugs before fixes land.
 
+### Lobby visual tokens (2026-03-18)
+- **Lesson:** Centralize slate/blue palette, glass effects, gradients, spacing, and typography in `client/src/ui/design-tokens.css` so UI panels can be restyled without hardcoding colors.
+
 ## 2026-03-17 — Risk Setup Phase Deadlock Fix (Completed)
 
 **Outcome:** SUCCESS — Fixed global phase transition bug, PR #144 merged, UAT green.
@@ -530,3 +533,47 @@ Implemented cross-shaped board layout for Dominos 4-way spinner arms:
 
 **Lowest-risk start:** Player info bars + game header are the most visible wins and require only DOM additions, not game logic changes.
 
+---
+
+## 2026-03-18: PlayerInfoBar Component & Game Layout Wrapper — Complete ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass
+
+### Deliverables
+
+**Created:**
+- `client/src/ui/PlayerInfoBar.ts` (286 lines)
+  - Glass morphism design (backdrop blur + semi-transparent)
+  - Displays: player avatar, status badges, turn timer, game-specific role labels
+  - Reactive to Colyseus state changes
+  - Spectator-aware (displays spectator badge)
+
+**Modified:**
+- `client/src/scenes/GameScene.ts` (+235 lines)
+  - Integrated PlayerInfoBar into scene hierarchy
+  - Layout positioning and scaling
+  - Game container wrapper for improved composition
+
+- `client/src/Application.ts` (+34 lines)
+  - Export PlayerInfoBar for cross-scene usage
+
+### Features Implemented
+
+- **Game-specific role labels:** Checkers, Risk, Backgammon, Tablut supported
+- **Status badges:** Turn indicator, spectator badge, disconnected state
+- **Responsive timer:** Turn duration with visual feedback
+- **Glass morphism pattern:** Consistent with design system (blue palette, backdrop blur)
+- **Lifecycle management:** Proper cleanup on scene destroy
+
+### Cross-Agent Notes
+
+- Ortho now owns DOM UI overlays (screens, menus, settings)
+- Clear separation: Gately (PixiJS rendering) + Ortho (DOM/HTML UI) = complete game chrome
+- Game header bar candidate for Ortho's next task
+
+### Files Changed
+
+- `client/src/ui/PlayerInfoBar.ts` → NEW
+- `client/src/scenes/GameScene.ts` → +235 lines
+- `client/src/Application.ts` → +34 lines

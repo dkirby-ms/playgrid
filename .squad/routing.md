@@ -5,7 +5,8 @@
 | Work Type | Route To | Examples |
 |-----------|----------|----------|
 | Architecture & scope | Hal | Project structure, tech decisions, priorities |
-| Rendering & UI | Gately | Canvas rendering, game loop, input handling |
+| Canvas rendering | Gately | PixiJS rendering, game loop, input handling |
+| DOM UI & overlays | Ortho | Lobby, sidebar, setup screens, player info bars, CSS |
 | UX & Design | Mario | Layout, color, usability, interaction design |
 | Game systems | Pemulis | Simulation, AI, world generation, combat |
 | CI/CD & DevOps | Marathe | Workflows, deployment, build pipelines |
