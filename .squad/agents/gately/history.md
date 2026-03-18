@@ -489,3 +489,44 @@ Implemented cross-shaped board layout for Dominos 4-way spinner arms:
 **Build/Lint/Test:** ✅ All green (470 tests pass)
 
 ---
+
+---
+
+## 2026-03-18: Figma Design v1 Analysis — Game Chrome Patterns
+
+**Event:** Mario analyzed all 17 Figma design pages; Hal approved Option B (vanilla TS + CSS tokens). Design introduces new patterns for game screens across all games.
+
+**Key UI Patterns Gately Will Need to Implement:**
+
+1. **Player Info Bars (P0 — highest impact):**
+   - Above board: Opponent name + avatar circle, "Black Pieces" label, clock timer
+   - Below board: Your name + avatar, "Red Pieces" label, turn badge (green "Your Turn" / gray "Waiting")
+   - All games: Checkers, Backgammon, Risk, Dominos
+
+2. **Game Header Bar (P1):**
+   - Back to Lobby button, game title, action buttons (Move History / Results / Reset / Resign)
+   - Pattern: all game pages share this chrome
+
+3. **Risk-Specific:**
+   - Phase banner: Deploy/Attack/Fortify indicator with Next Phase button
+   - Player legend below map: 6-color grid showing player name, territory count, army count, ready status
+   - Both are new elements not in current Risk renderer
+
+4. **Design System Colors & Effects:**
+   - Palette: `slate-*` with `blue-*` accents (shift from current violet→blue)
+   - Glass effects: `backdrop-blur` + semi-transparent panels
+   - Gradients: stone textures (light/dark), zone backgrounds (emerald for Dominos)
+   - Spacing/Shadows: defined in design tokens (to be extracted by Hal in Phase 1)
+
+5. **Screen Flow Changes (affects game lifecycle):**
+   - New: Tile → Setup page (game config) → Game → Victory screen → Back to Lobby
+   - Old: Tile → Create Modal → Game → GameOverOverlay
+   - Setup screens will be vanilla DOM (not in renderer), but game state transitions need coordination
+
+**Cross-team coordination:**
+- Hal will extract design tokens (Phase 1)
+- Gately will apply tokens and build player info bars using design patterns (Phase 2-3)
+- Steeply will write tests for new state transitions (setup → game)
+
+**Lowest-risk start:** Player info bars + game header are the most visible wins and require only DOM additions, not game logic changes.
+

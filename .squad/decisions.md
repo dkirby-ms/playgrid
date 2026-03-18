@@ -3668,3 +3668,596 @@ Added 24 new tests (20 in dominosLogic.test.ts, 4 in dominosPlugin.test.ts) cove
 - Pattern: `setupActiveFourEnds()` helper available for future 4-way tests
 
 ---
+---
+
+### Mario: Figma Design v1 vs. Current Implementation — Full Comparison
+
+# Figma Design v1 vs. Current Implementation — Full Comparison
+
+**Author:** Mario (UX Consultant)  
+**Date:** 2026-03-17  
+**Design Source:** `docs/designs/playgrid-v1/src/app/`  
+**Current Client:** `client/src/ui/` + `client/src/renderers/`
+
+---
+
+## Executive Summary
+
+The Figma export (`playgrid-v1`) is a comprehensive React + shadcn/Tailwind reference covering **17 page designs** and **5 reusable components** across 6 games. Our current live implementation covers 4 games (Checkers, Backgammon, Risk, Dominos) with a vanilla DOM lobby, a glass-morphism sidebar, and PixiJS canvas renderers. The design introduces **major new screens** (Setup, History, Victory for each game), **player info bars** flanking the board, and a **complete game chrome system** that doesn't exist in our codebase yet.
+
+Key finding: **The biggest UX gap is not visual polish — it's missing screens.** We have zero Setup, History, or Victory screens. The design has 12 of them.
+
+---
+
+## Table of Contents
+
+1. [Lobby](#1-lobby)
+2. [Checkers](#2-checkers)
+3. [Backgammon](#3-backgammon)
+4. [Risk](#4-risk)
+5. [Dominos](#5-dominos)
+6. [Scrabble (Future)](#6-scrabble-future)
+7. [Catan (Future)](#7-catan-future)
+8. [Shared Components](#8-shared-components)
+9. [Gap Summary Matrix](#9-gap-summary-matrix)
+10. [Priority Recommendations](#10-priority-recommendations)
+
+---
+
+## 1. Lobby
+
+### Design (`Lobby.tsx`)
+
+**Layout:** Full-page dark gradient (`from-slate-950 via-slate-900 to-slate-800`). `max-w-7xl` centered. 3-column responsive grid: Game Library (2 cols) + Sidebar (1 col).
+
+**Header:**
+- Logo icon (Gamepad2) with blue gradient badge
+- Title: "Board Game Lounge" / subtitle: "Play with friends worldwide"
+- Settings button, User profile button (showing "Player123"), Logout button
+- All in `bg-slate-800` pill buttons with hover states
+
+**Game Library:**
+- 6 game tiles: Risk, Backgammon, Checkers, Catan, Scrabble, Dominos
+- Each tile is a `GameTile` component — photo card with Unsplash image, gradient overlay, game name, player count, active games count
+- Cards have `hover:scale-105` + `hover:shadow-2xl hover:shadow-blue-500/20`
+- Grid: `sm:grid-cols-2 lg:grid-cols-3` inside the 2-col area
+- Clicking a game navigates to its Setup page (not a create modal)
+
+**Sidebar:**
+- `ActiveGamesList` — card-style game sessions with: game name, player count/max, status badge (Waiting/Playing), elapsed time, overlapping player avatars, Join button
+- `OnlinePlayersList` — avatar circles with initial, status dot (green=online, amber=in-game, gray=away), player name, status text, count badge
+
+**No Activity Feed** in the new design (we currently have one).
+
+### Current Implementation (`LobbyScreen.ts`)
+
+**Layout:** Vanilla DOM overlay (`#lobby-overlay`). Dashboard with header, content grid (Game Library + Sidebar). Same 3-column concept.
+
+**Header:**
+- SVG logo icon, "Board Game Lounge" title, subtitle
+- Player name input field, user icon button
+
+**Game Library:**
+- 4 game tiles: Checkers, Backgammon, Risk, Dominos
+- Photo cards with local artwork (`/game-thumbnails/*.jpg`), game name, player count label, active count
+- Clicking a tile opens a **Create Game Modal** (not a setup page)
+- Filter buttons (All / Waiting / In Progress) with badge counts
+
+**Sidebar:**
+- Active Games panel with game cards (name, type icon, player count, status badge, join button)
+- Online Players panel with avatar, status dot, name
+- **Activity Feed / Message Log** panel (absent in design)
+
+**Create Game Modal:**
+- Game name input, Game type dropdown, Max players dropdown, CPU opponent checkbox, Head-to-head mode checkbox
+- Cancel / Create buttons
+
+### Gaps
+
+| Feature | Design | Current | Gap |
+|---------|--------|---------|-----|
+| Game tile count | 6 (includes Catan, Scrabble) | 4 (Checkers, Backgammon, Risk, Dominos) | Missing future games |
+| Tile click action | Navigate to Setup page | Opens Create Game modal | Different flow — design has pre-game setup screens |
+| Game images | Unsplash URLs (external) | Local thumbnails | ✅ Current is better for offline/performance |
+| Header user area | Profile button + Settings + Logout | Player name input + user icon | Design has richer header chrome |
+| Activity Feed | ❌ Absent | ✅ Present (MessageLog) | **We have something the design dropped** — team should decide |
+| Color scheme | `slate-*` based (blue accent) | `zinc-*` based (violet→blue transition) | Slight palette divergence |
+| Status dot colors | green/amber/zinc | green/amber (in_game distinction) | ✅ Aligned |
+| Active games Join button | Blue pill with Play icon | Blue pill with Play icon | ✅ Aligned |
+| Player avatars in Active Games | Overlapping circle avatars | Single avatar per game | Design has stacked avatar treatment |
+
+---
+
+## 2. Checkers
+
+### 2a. CheckersGame (`CheckersGame.tsx`)
+
+**Layout:** 3-column grid (Board 2 cols + Sidebar 1 col).
+
+**Header:** Back to Lobby button, "Checkers" title, Move History button (blue), Results button (green), Reset (icon), Resign (red flag icon).
+
+**Board Area:**
+- **Opponent info bar** above board: avatar circle, name, "Black Pieces" label, clock timer
+- **Board:** `aspect-square rounded-2xl` with stone gradients, 8x8 grid with gap-1, light squares (`from-stone-300 to-stone-500`), dark squares (`from-stone-700 to-stone-900`)
+- **Pieces:** 3D glossy — outer glow (blur), radial gradient body, inner white highlight, king crown (♔) with yellow ring
+- **Selection:** `ring-4 ring-blue-400 ring-offset-2 scale-95` on square, `scale-110` on piece
+- **Player info bar** below board: avatar, name "(You)", "Red Pieces" label, turn badge (green "Your Turn" / gray "Waiting...")
+
+**Sidebar panels:**
+- Game Info (current turn, game mode, time elapsed)
+- Move History (numbered moves with coordinates)
+- Controls (help text)
+
+### Current Implementation
+
+**Board:** PixiJS `CheckersRenderer.ts` — canvas-rendered 8×8 board with wood-textured frame, alternating dark squares, 3D gradient pieces with `FillGradient`, king marker (♛ glyph). Selection via highlight ring on canvas.
+
+**Chrome:** `GameSidebar.ts` — glass-panel sidebar with stat rows, player list, move history. `HUD.ts` for status panel.
+
+**No opponent/player info bars** flanking the board. No separate header with game-specific buttons (Move History, Results). No Setup, History, or Victory screens.
+
+### Gaps
+
+| Feature | Design | Current | Gap |
+|---------|--------|---------|-----|
+| Player info bars (above/below board) | ✅ Opponent + Player bars with avatars, names, turn indicator | ❌ Missing | **Major gap** — core game chrome |
+| Game header with action buttons | ✅ Back, History, Results, Reset, Resign | Partial — HUD has Leave button | Need full header bar |
+| Move History sidebar panel | ✅ Numbered move list | ✅ Present in GameSidebar | ✅ Aligned |
+| Turn indicator badge | ✅ Green "Your Turn" / Gray "Waiting" pill | ✅ HUD status panel | Partially aligned — design is cleaner |
+| Board styling | Stone gradients, rounded squares | Wood texture, PixiJS gradients | ✅ Conceptually aligned |
+| Piece styling | 3D glossy with blur/highlight | 3D gradient with FillGradient | ✅ Aligned — design validates our approach |
+| Selection ring | `ring-4 ring-blue-400` | Canvas highlight | Blue accent (was violet, shifting to blue) |
+
+### 2b. CheckersSetup (`CheckersSetup.tsx`)
+
+**Entirely new screen.** Pre-game configuration:
+- Player list (ready status, color assignment)
+- Board preview (static mini-board)
+- Game Mode selector (PvP / AI)
+- AI Difficulty (Easy/Medium/Hard/Expert)
+- Time Control (No Limit / Blitz / Rapid / Classical)
+- Game Rules toggles (Forced Capture, Flying Kings)
+- Start Game button (green gradient, disabled until all ready)
+
+### Current: ❌ Does not exist. We go directly from lobby → game room (via `WaitingRoom.ts`).
+
+### 2c. CheckersHistory (`CheckersHistory.tsx`)
+
+**Entirely new screen.** Full move review:
+- Expandable move list with player color, from/to coordinates, move type icons (➡️/⚔️/👑), timestamps, position evaluation bars
+- Game Statistics sidebar (total moves, duration, avg move time, kings created)
+- Captures comparison (red vs black with progress bars)
+- Quick action buttons (Back to Game, View Results)
+
+### Current: ❌ Does not exist. Move history is only a sidebar panel in-game.
+
+### 2d. CheckersVictory (`CheckersVictory.tsx`)
+
+**Entirely new screen.** Post-game results:
+- Animated victory banner with bouncing trophy
+- Radial gradient background effects
+- Stats grid (4 cards: Pieces Remaining, Captures, Kings, Accuracy)
+- Winner/Loser comparison panels (6 stats each)
+- Game Highlights section (notable moves)
+- Time Statistics sidebar
+- Action buttons: View Move History, Play Again, Back to Lobby
+
+### Current: ❌ Does not exist. We have `GameOverOverlay.ts` which shows a simple in-canvas overlay.
+
+---
+
+## 3. Backgammon
+
+### 3a. BackgammonGame (`BackgammonGame.tsx`)
+
+**Layout:** Same 3-col pattern. Board is wider (`max-w-4xl`).
+
+**Board:**
+- Amber/stone gradient frame
+- 24 triangular points using CSS `clipPath: polygon()`
+- Alternating amber/slate point colors
+- Checkers as gradient circles (white: `from-slate-100 to-slate-300`, black: `from-zinc-800 to-black`)
+- Center bar with "BAR" label
+- Dice area in middle section with Roll Dice button + white dice squares
+- Overflow indicator (`+N` badge) for stacked checkers
+
+**Player bars:** Same pattern — opponent above, player below, with turn indicator.
+
+**Sidebar:** Game Info (turn, last roll, time), Move History (backgammon notation), Quick Rules, **Pip Count** panel.
+
+### Current Implementation (`BackgammonRenderer.ts`): PixiJS canvas rendering. Has board rendering but details would need comparison.
+
+### Gaps: Same structural gaps as Checkers (no player bars, no dedicated header, no setup/history/victory screens). Backgammon-specific: **Pip Count** panel is in design sidebar.
+
+### 3b. BackgammonSetup (`BackgammonSetup.tsx`) — ❌ Does not exist
+
+Similar to CheckersSetup but with: Match Length (Short/Medium/Long/Unlimited), Doubling Cube toggle, Crawford Rule toggle. Includes simplified board preview.
+
+### 3c. BackgammonHistory (`BackgammonHistory.tsx`) — ❌ Does not exist
+
+Like CheckersHistory but with dice emoji display, backgammon-specific notation, pip count tracking, doubles indicator, hit/bear-off move types.
+
+### 3d. BackgammonVictory (`BackgammonVictory.tsx`) — ❌ Does not exist
+
+Like CheckersVictory but with: Victory Type (Backgammon/Gammon/Normal with multiplier), Match Score display, backgammon-specific stats (Borne Off, Hits, Doubles, Pip Count).
+
+---
+
+## 4. Risk
+
+### 4a. RiskGame (`RiskGame.tsx`)
+
+**Layout:** 4-column grid (Board 3 cols + Sidebar 1 col) — wider map needs more space.
+
+**Header:** Back to Lobby, "Risk: Global Domination" title, View Cards button, Victory button, Reset, Resign.
+
+**Board Area:**
+- **Phase Banner** across top: colored dot (pulsing), player name + phase (DEPLOY/ATTACK/FORTIFY), armies to deploy count, Next Phase button
+- **World Map:** `RiskMap` component — SVG-based world map with territories colored by owner, click handlers, hover effects
+- **Player Legend:** 6-player grid below map showing color dot, name, territory count, army count
+
+**Sidebar:**
+- Selected Territory panel (name, owner, armies, continent)
+- Continent Bonuses panel
+- Actions (Attack Territory / Fortify Position buttons, phase-aware enable/disable)
+- Quick Rules
+
+### Current Implementation (`RiskRenderer.ts`): PixiJS canvas with SVG map loading (`risk/svgMapLoader.ts`). `GameSidebar.ts` provides game info panels.
+
+### Gaps
+
+| Feature | Design | Current | Gap |
+|---------|--------|---------|-----|
+| Phase banner | ✅ Full banner with phase indicator, army count, Next Phase button | Partial — sidebar has phase info | **New UI element needed** |
+| Player legend below map | ✅ 6-color grid with stats | ❌ Missing | New component |
+| SVG world map | ✅ RiskMap component with interactive territories | ✅ svgMapLoader.ts | ✅ Conceptually aligned |
+| Selected territory detail panel | ✅ Dynamic sidebar panel | Partial — sidebar shows territory info | Mostly aligned |
+
+### 4b. RiskSetup (`RiskSetup.tsx`) — ❌ Does not exist
+
+Features: Multi-player list (2-6, with color assignments, ready status, empty slot placeholders), Add AI Player button, Game Mode (Classic/Quick/Domination), Turn Timer stepper, Starting Armies stepper.
+
+### 4c. RiskCards (`RiskCards.tsx`) — ❌ Does not exist
+
+Territory card management screen: Card grid (Infantry/Cavalry/Artillery/Wild), selection UI (up to 3), trade-in validation, army bonus calculation, trading rules reference.
+
+### 4d. RiskVictory (`RiskVictory.tsx`) — ❌ Does not exist
+
+Final standings with placement rankings, battle statistics (won/lost/conquered/continents/cards/dice), player comparison with elimination status.
+
+---
+
+## 5. Dominos
+
+### 5a. DominosGame (`DominosGame.tsx`)
+
+**Layout:** 4-column grid (Board 3 cols + Sidebar 1 col).
+
+**Header:** Back arrow + "Dominos" title + subtitle "Match the ends", Clock, Reset, Resign.
+
+**Board Area:**
+- **Opponent info bar** with avatar, "Opponent" name, tile count, score
+- **Playing board:** `bg-gradient-to-br from-emerald-800 to-emerald-900` (green felt!) with domino chain rendering
+- Domino pieces: horizontal tiles with pip dot rendering, gradient backgrounds (`from-zinc-100 to-zinc-200`), divider line
+- Play direction buttons (← / →) when piece is selected
+- **Player hand** below board: avatar, "You" with turn indicator, tile count, score, domino tiles in a flex-wrap grid
+- Pass Turn / Deselect buttons
+
+**Sidebar:**
+- Game Status (turn, tiles played, boneyard count)
+- How to Play rules
+- Tip card with blue gradient background
+
+### Current Implementation (`DominosRenderer.ts`): PixiJS canvas rendering.
+
+### Gaps
+
+| Feature | Design | Current | Gap |
+|---------|--------|---------|-----|
+| Green felt board | ✅ `emerald-800/900` gradient | Unknown — needs canvas check | Board color alignment needed |
+| Domino pip rendering | ✅ CSS dot positioning system | PixiJS rendered | Different tech, same visual |
+| Player hand UI | ✅ DOM-based flex grid below board | Likely canvas | Design suggests DOM treatment |
+| Opponent info bar | ✅ With tile count and score | ❌ Missing | New component |
+| Pass/Deselect buttons | ✅ Contextual action buttons | Unknown | Check renderer |
+
+---
+
+## 6. Scrabble (Future)
+
+### 6a. ScrabbleGame (`ScrabbleGame.tsx`) — 🔮 FUTURE
+
+15×15 board with bonus squares (3W=red, 2W=pink, 3L=blue, 2L=cyan), letter tiles with point values, tile rack with shuffle, score banner, word stats panel, board legend, letter distribution reference.
+
+### 6b. ScrabbleSetup (`ScrabbleSetup.tsx`) — 🔮 FUTURE
+
+2-4 player support, AI difficulty, Dictionary selection (Standard/Tournament/Advanced/International), Time limit, Challenge/Definition toggles.
+
+**Status:** Not implemented. Design is reference for future development.
+
+---
+
+## 7. Catan (Future)
+
+### CatanGame (`CatanGame.tsx`) — 🔮 FUTURE
+
+Hexagonal board with 19 tiles (CSS clipPath hexagons), 5 resource types with color coding, number tokens, robber, settlements/cities, dice rolling, resource cards, build actions (Road/Settlement/City/Dev Card), trade system, victory points tracker.
+
+**Status:** Not implemented. Design is reference for future development.
+
+---
+
+## 8. Shared Components
+
+### GameTile (`GameTile.tsx`)
+Photo card with image, gradient overlay, name, player count (Users icon), active games count (blue text). Hover: `scale-105` + `shadow-2xl shadow-blue-500/20`.
+
+**Current:** ✅ Our `buildGameTile()` in LobbyScreen.ts is functionally equivalent. Design uses Unsplash images; we use local thumbnails.
+
+### OnlinePlayersList (`OnlinePlayersList.tsx`)
+Glass panel with player list: avatar circle (gradient blue, initial letter), status dot (green/amber/zinc), name, status text, online count badge.
+
+**Current:** ✅ Our `renderOnlinePlayers()` matches this pattern closely. Status dot colors are aligned.
+
+### ActiveGamesList (`ActiveGamesList.tsx`)
+Glass panel: game name, player count + clock meta, status badge (Waiting=amber, Playing=green), overlapping player avatars, Join button.
+
+**Current:** ✅ Our `buildActiveGameCard()` is functionally equivalent. Design adds overlapping avatar stacking.
+
+### RiskMap (`RiskMap.tsx`)
+SVG world map injected via `dangerouslySetInnerHTML` equivalent, with territory click/hover handlers, color by owner.
+
+**Current:** ✅ Our `risk/svgMapLoader.ts` does the same thing in PixiJS.
+
+### RiskMapSvg
+Raw SVG world map definition with territory paths.
+
+**Current:** ✅ We have `risk/risk-map.svg` and `RiskMapDefinition.ts`.
+
+---
+
+## 9. Gap Summary Matrix
+
+### Missing Screens (Critical)
+
+| Screen | Games | Priority | Notes |
+|--------|-------|----------|-------|
+| **Setup screens** | Checkers, Backgammon, Risk | P1 | Pre-game config (mode, rules, players, ready) |
+| **Victory screens** | Checkers, Backgammon, Risk | P2 | Post-game stats, highlights, rematch |
+| **History screens** | Checkers, Backgammon | P2 | Full move review with analytics |
+| **Risk Cards screen** | Risk | P2 | Territory card trade-in UI |
+
+### Missing UI Elements (High)
+
+| Element | Games Affected | Priority | Notes |
+|---------|---------------|----------|-------|
+| **Player info bars** (above/below board) | All 4 games | P0 | Core game chrome — shows opponent name, your name, turn indicator, timer |
+| **Game header bar** | All 4 games | P1 | Back button + title + action buttons (History, Reset, Resign) |
+| **Phase banner** | Risk | P1 | Deploy/Attack/Fortify indicator with Next Phase button |
+| **Player legend** | Risk | P2 | 6-player color/stats grid below map |
+
+### Design Elements We Already Have ✅
+
+| Element | Status |
+|---------|--------|
+| Dark theme with glass-morphism panels | ✅ Implemented |
+| 3-column lobby layout | ✅ Implemented |
+| Game tile photo cards | ✅ Implemented |
+| Online Players list with status dots | ✅ Implemented |
+| Active Games list with Join buttons | ✅ Implemented |
+| Game sidebar with stat rows | ✅ Implemented |
+| 3D glossy piece rendering | ✅ Implemented (PixiJS) |
+| Board frame gradients | ✅ Implemented |
+| Selection ring effects | ✅ Implemented |
+| Risk SVG map | ✅ Implemented |
+
+### Things We Have That Design Dropped
+
+| Element | Current Status | Design Status | Decision Needed |
+|---------|---------------|---------------|-----------------|
+| **Activity Feed / Message Log** | ✅ Present in lobby sidebar | ❌ Absent from design | Keep or remove? |
+| **Create Game Modal** | ✅ Modal with game config | ❌ Design navigates to Setup pages | Which flow? |
+| **Filter buttons** (All/Waiting/In Progress) | ✅ Present | ❌ Absent from design | Keep — useful for many games |
+| **GameOverOverlay** (in-canvas) | ✅ Present | Replaced by Victory screen | Transition to full screen |
+
+---
+
+## 10. Priority Recommendations
+
+### P0 — Player Info Bars (Immediate Impact)
+The single highest-impact missing element. Every game page in the design shows opponent name/avatar above the board and player name/turn status below it. This is the most visible difference between design and implementation. Can be built as a shared DOM component used by all game screens.
+
+### P1 — Game Header Bar + Setup Screens
+The game-specific header (Back to Lobby, title, action buttons) gives players navigation confidence. Setup screens give players control over game configuration before committing. Together, these complete the pre-game → in-game flow.
+
+### P2 — Victory + History Screens
+Post-game celebration and review. The Victory screen is the emotional payoff — bouncing trophy, stats comparison, Play Again button. History is the analytical payoff. Both increase session stickiness.
+
+### P3 — Game-Specific Enhancements
+- Risk: Phase banner, Player legend, Cards screen
+- Dominos: Green felt board color, DOM-based hand rendering
+- Color palette final alignment (slate vs zinc, blue accent consistency)
+
+### Future — New Games
+Scrabble and Catan designs are complete reference specs. When implementation begins, the design export serves as the pixel-perfect target.
+
+---
+
+## Color Palette Note
+
+The design consistently uses `slate-*` tokens (not `zinc-*`). Our current implementation uses `zinc-*` from the earlier design system. The accent color is solidly **blue** (`blue-600`, `blue-400`, `blue-500/20`) across all design pages — confirming the violet → blue shift identified in the previous gap analysis.
+
+**Recommendation:** Align to `slate-*` + `blue-*` accent system as part of any implementation work.
+
+---
+
+*This analysis covers all 17 design pages + 5 components. Use as implementation spec.*
+
+---
+
+### Hal: Figma Design Implementation Scope
+
+# Decision: Figma Design Implementation Scope
+
+**Author:** Hal (Lead)  
+**Date:** 2026-03-16  
+**Status:** Proposed  
+
+## Context
+
+We received a Figma design export at `docs/designs/playgrid-v1/` — a full React + shadcn/ui + Tailwind CSS application with 17 page components (5,641 lines), 48 shadcn/ui primitives, and routes for Lobby, game screens, setup screens, victory screens, and history screens. It also includes pages for Scrabble and Catan, which don't exist in our codebase.
+
+Our current client is pure PixiJS + vanilla TypeScript DOM (2,458 lines across 8 UI files). We have working, tested PixiJS renderers for Checkers, Backgammon, Risk, and Dominos, a scene management system, Colyseus integration with reconnection support, and a fully functional lobby.
+
+## Assessment of Design Export
+
+**What's valuable:**
+- Visual design system: dark slate/zinc color palette, gradient treatments, backdrop-blur glass effects, spacing/typography patterns
+- Layout patterns: 3-column grid (2+1) for lobby and game screens, card-based component structure
+- New screen designs: Setup screens (game configuration), Victory screens (post-game stats), History screens (move replay)
+- Component patterns: GameTile, OnlinePlayersList, ActiveGamesList — useful as visual reference
+
+**What's throwaway (>60% of the export):**
+- Game board re-implementations in React DOM (CheckersGame board rendering, RiskGame territory rendering, etc.) — we have these in PixiJS already and they're better
+- All mock/hardcoded data — we have real Colyseus state
+- React Router setup — we use SceneManager
+- 43 of 48 shadcn/ui components — we'd use maybe 5 (button, card, badge, dialog, scroll-area)
+- Scrabble and Catan pages — games that don't exist
+- 30+ npm dependencies (Radix, Emotion, MUI, react-dnd, recharts, etc.)
+
+## Options Evaluated
+
+### Option A: Adopt React for DOM Layer (Hybrid React + PixiJS)
+
+Add React to manage all DOM UI. PixiJS canvas mounts inside a React component. Lobby, sidebar, overlays, setup, and victory screens become React components. Port the design export components directly.
+
+| Pro | Con |
+|-----|-----|
+| Direct reuse of design components | ~30 new dependencies |
+| React handles complex form/list state well | Rewrite 2.5K lines of working, tested code |
+| Tailwind gives us design tokens for free | Must solve React ↔ PixiJS canvas lifecycle |
+| Future-friendly for richer UI | Build pipeline changes (React plugin, PostCSS) |
+| | Re-test all lobby/reconnect/game-over flows |
+| | 2+ weeks for zero new features |
+| | shadcn/ui library is massive overkill |
+
+### Option B: Extract Design System, Build in Vanilla TS ← RECOMMENDED
+
+Extract the visual design (colors, gradients, spacing, layout patterns) from the Figma export into CSS custom properties. Apply to existing UI. Build new screens (setup, victory, history) in vanilla DOM using extracted design tokens.
+
+| Pro | Con |
+|-----|-----|
+| Zero new dependencies | Manual Tailwind → CSS conversion |
+| No architectural change | Can't copy-paste React components |
+| Existing tests/reconnect/state flows untouched | Ongoing divergence from design source |
+| Can be done incrementally per screen | New screens built from scratch |
+| Smallest risk, fastest to first visible result | |
+
+### Option C: Add Tailwind CSS Only (No React)
+
+Add Tailwind to the Vite build. Use utility classes in vanilla DOM `createElement`/`innerHTML` patterns.
+
+| Pro | Con |
+|-----|-----|
+| Gets design tokens cheaply | Tailwind classes in innerHTML strings = ugly DX |
+| Smaller dep surface than React | Still can't reuse React components |
+| Familiar CSS utility approach | Tailwind without JSX is awkward |
+
+## Decision: Option B — Extract Design System, Stay Vanilla
+
+**Rationale:**
+
+1. **The design export is a visual reference, not drop-in code.** Every page has hardcoded mock data, React Router navigation, and game board rendering that duplicates our PixiJS work. Adopting React to reuse these components would require gutting them anyway.
+
+2. **The complex rendering (games) stays in PixiJS regardless.** React would only manage the chrome around the canvas — lobby screen, sidebar, overlays. That's ~2.5K lines of UI. Not enough complexity to justify a framework.
+
+3. **React adoption should be a deliberate architectural decision, not a side effect of a Figma export.** If we hit 8K+ lines of vanilla DOM or need complex interactive forms/modals, we evaluate React as its own project with proper migration planning.
+
+4. **The real value is the design system, not the code.** Colors, gradients, spacing, typography, card patterns, glass effects — these translate to CSS custom properties trivially. We don't need React or Tailwind to use slate-900 backgrounds and backdrop-blur.
+
+5. **Stability matters more than polish right now.** We have working reconnection, game-over flows, and lobby state management. Rewriting these for a visual refresh is wrong-headed.
+
+## Implementation Plan
+
+### Phase 1: Design System Extraction (Small — 1-2 days)
+
+Create `client/src/ui/design-tokens.css` (or equivalent TS constants) extracted from the Figma export:
+- Color palette (slate/zinc/blue gradients from `theme.css` + inline Tailwind classes)
+- Spacing scale, border-radius values, shadow definitions
+- Glass effect pattern (bg-opacity + backdrop-blur)
+- Typography scale
+
+Apply to existing UI incrementally — LobbyScreen first, then GameSidebar.
+
+### Phase 2: Lobby Visual Refresh (Medium — 3-5 days)
+
+Restyle existing `LobbyScreen.ts` using extracted design tokens:
+- Game tile grid layout (from `Lobby.tsx` → `GameTile.tsx` pattern)
+- Online players list styling (from `OnlinePlayersList.tsx`)
+- Active games list styling (from `ActiveGamesList.tsx`)
+- Header/branding bar
+- No functional changes — same Colyseus integration, same event system
+
+### Phase 3: Game Sidebar Refresh (Small — 1-2 days)
+
+Restyle `GameSidebar.ts` using the game page sidebar patterns:
+- Game info card, move history card, controls card
+- Player info bars (opponent top, player bottom)
+- Turn indicator styling
+
+### Phase 4: New Screens — Setup & Victory (Medium each — 3-5 days each)
+
+Build new vanilla TS screens using design patterns as reference:
+- **Setup Screen:** Replace/enhance `WaitingRoom.ts` with game configuration options (mode, time control, rules). Reference: `CheckersSetup.tsx`, `RiskSetup.tsx`
+- **Victory Screen:** Replace/enhance `GameOverOverlay.ts` with post-game stats display. Reference: `CheckersVictory.tsx`
+- Wire into existing SceneManager transitions
+
+### Phase 5: History Screens (Small-Medium — 2-3 days)
+
+Optional — build move history view. Lower priority than setup/victory.
+Reference: `CheckersHistory.tsx`, `BackgammonHistory.tsx`
+
+## What to Skip / Defer
+
+| Item | Reason |
+|------|--------|
+| **Scrabble pages** | Game doesn't exist. Not on roadmap. |
+| **Catan pages** | Game doesn't exist. Not on roadmap. |
+| **React adoption** | Defer until vanilla DOM layer exceeds ~8K lines or we need complex interactive forms. Revisit as separate architectural decision. |
+| **shadcn/ui components** | Not adopting React, so not applicable. |
+| **Game board rendering from designs** | We have superior PixiJS renderers. The design's DOM-based boards are visual mockups, not game engines. |
+| **React Router** | We use SceneManager. No page-based routing needed. |
+| **Tailwind CSS** | Adds build complexity for marginal benefit without React/JSX. Extract tokens manually instead. |
+
+## Scope Summary
+
+| Phase | Scope | Priority | Depends On |
+|-------|-------|----------|------------|
+| Design system extraction | Small | P1 | Nothing |
+| Lobby visual refresh | Medium | P1 | Phase 1 |
+| Game sidebar refresh | Small | P2 | Phase 1 |
+| Setup screens | Medium | P2 | Phase 1 |
+| Victory screens | Medium | P2 | Phase 1 |
+| History screens | Small-Medium | P3 | Phase 4 |
+
+**Total estimated effort:** 2-3 weeks for all phases. Phases 1-2 are the highest-value, lowest-risk work and should ship first.
+
+## Trigger for Revisiting React
+
+Evaluate React adoption if any of these become true:
+- Vanilla DOM UI layer exceeds 8,000 lines
+- We need complex form validation (e.g., account settings, tournament brackets)
+- We add a chat system or other real-time DOM-heavy feature
+- A second Figma design iteration arrives and we want faster design→code cycles
+
+At that point, scope it as a dedicated migration project — not a side effect of a design drop.
+
+---
+
+### Copilot Directive: User Design Preferences (2026-03-18T00:51Z)
+
+### 2026-03-18T00:51Z: User directives — Figma design adoption
+**By:** Dale Kirby (dkirby-ms) (via Copilot)
+**What:**
+1. **Keep the Activity Feed** — the Figma design dropped it, but we keep it in the lobby sidebar.
+2. **Use Setup pages instead of Create Game Modal** — adopt the design's flow where clicking a game tile navigates to a Setup screen (pre-game config: mode, rules, players, ready status) instead of opening a modal.
+**Why:** User design decisions — captured for team memory during Figma v1 implementation planning.
