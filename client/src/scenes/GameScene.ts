@@ -3,6 +3,7 @@ import { Container, Text } from "pixi.js";
 import { RendererRegistry, type GameRenderer } from "../renderers";
 import type { Scene } from "./Scene";
 import { HUD, type HUDEvent } from "../ui/HUD";
+import { PlayerInfoBar, type PlayerInfoBarData, type PlayerInfoStatusTone } from "../ui/PlayerInfoBar";
 
 export interface GameSceneEnterData {
   room: Room;
@@ -20,6 +21,8 @@ interface ScenePlayerSnapshot {
   playerIndex: number;
 }
 
+const RISK_COLOR_LABELS = ["Red", "Blue", "Green", "Yellow", "Purple", "Orange"];
+
 export class GameScene implements Scene {
   readonly name = "game";
   readonly container = new Container();
@@ -28,8 +31,10 @@ export class GameScene implements Scene {
   private renderer: GameRenderer | null = null;
   private stateChangeHandler: ((state: unknown) => void) | null = null;
   private hud: HUD | null = null;
+  private playerInfoBars: { opponent: PlayerInfoBar; player: PlayerInfoBar } | null = null;
   private width = 0;
   private height = 0;
+  private gameType = "";
   private persistentMessage = "";
   private turnPromptUntil = 0;
   private lastObservedTurn = "";
@@ -67,6 +72,7 @@ export class GameScene implements Scene {
     }
 
     this.room = enterData.room;
+    this.gameType = enterData.gameType;
 
     if (!this.rendererRegistry.has(enterData.gameType)) {
       this.showMessage(`No renderer available for ${enterData.gameType}.`);
@@ -81,10 +87,12 @@ export class GameScene implements Scene {
       },
     });
     this.container.addChild(this.renderer.container);
+    this.initPlayerInfoBars();
 
     this.stateChangeHandler = (state) => {
       this.renderer?.onStateChange(state);
       this.updateHUD(state);
+      this.updatePlayerInfoBars(state);
       this.updateHeadToHeadPrompt(state);
     };
     this.room.onStateChange(this.stateChangeHandler);
@@ -95,6 +103,7 @@ export class GameScene implements Scene {
     }
 
     this.initHUD();
+    this.updatePlayerInfoBars(this.room.state);
   }
 
   onExit(): void {
@@ -127,8 +136,10 @@ export class GameScene implements Scene {
     this.room = null;
     this.turnPromptUntil = 0;
     this.lastObservedTurn = "";
+    this.gameType = "";
     this.hud?.setSidebarActive(false);
     this.hud?.hide();
+    this.destroyPlayerInfoBars();
     this.hideMessage();
 
     if (!this.renderer) {
@@ -165,6 +176,235 @@ export class GameScene implements Scene {
       gameTimer: turnTimeRemaining,
       showTimer: turnTimeRemaining > 0,
     });
+  }
+
+  private initPlayerInfoBars(): void {
+    const opponentMount = document.getElementById("game-info-top");
+    const playerMount = document.getElementById("game-info-bottom");
+
+    if (!opponentMount || !playerMount) {
+      return;
+    }
+
+    this.playerInfoBars = {
+      opponent: new PlayerInfoBar(opponentMount, "opponent"),
+      player: new PlayerInfoBar(playerMount, "player"),
+    };
+  }
+
+  private destroyPlayerInfoBars(): void {
+    if (!this.playerInfoBars) {
+      return;
+    }
+
+    this.playerInfoBars.opponent.destroy();
+    this.playerInfoBars.player.destroy();
+    this.playerInfoBars = null;
+  }
+
+  private updatePlayerInfoBars(state: unknown): void {
+    if (!this.playerInfoBars || !this.room || !this.gameType) {
+      return;
+    }
+
+    const players = this.extractPlayers(state);
+    const phase = this.extractPhase(state);
+    const currentTurn = this.extractCurrentTurn(state);
+    const turnTimeRemaining = this.extractTurnTimeRemaining(state);
+    const localSessionId = this.room.sessionId ?? "";
+
+    const localPlayer = localSessionId ? players.get(localSessionId) ?? null : null;
+    const opponentSelection = this.selectOpponent(players, currentTurn, localSessionId);
+
+    const playerData = this.buildPlayerInfoData(
+      {
+        sessionId: localSessionId,
+        player: localPlayer,
+        isLocal: true,
+        fallbackName: "You",
+      },
+      phase,
+      currentTurn,
+      turnTimeRemaining,
+      state,
+    );
+
+    const opponentData = this.buildPlayerInfoData(
+      {
+        sessionId: opponentSelection?.sessionId ?? "",
+        player: opponentSelection?.player ?? null,
+        isLocal: false,
+        fallbackName: "Waiting for opponent",
+      },
+      phase,
+      currentTurn,
+      turnTimeRemaining,
+      state,
+    );
+
+    this.playerInfoBars.player.update(playerData);
+    this.playerInfoBars.opponent.update(opponentData);
+  }
+
+  private selectOpponent(
+    players: Map<string, ScenePlayerSnapshot>,
+    currentTurn: string,
+    localSessionId: string,
+  ): { sessionId: string; player: ScenePlayerSnapshot } | null {
+    if (currentTurn && currentTurn !== localSessionId) {
+      const currentPlayer = players.get(currentTurn);
+      if (currentPlayer && !currentPlayer.isSpectator) {
+        return { sessionId: currentTurn, player: currentPlayer };
+      }
+    }
+
+    for (const [sessionId, player] of players.entries()) {
+      if (sessionId !== localSessionId && !player.isSpectator) {
+        return { sessionId, player };
+      }
+    }
+
+    return null;
+  }
+
+  private buildPlayerInfoData(
+    context: {
+      sessionId: string;
+      player: ScenePlayerSnapshot | null;
+      isLocal: boolean;
+      fallbackName: string;
+    },
+    phase: string,
+    currentTurn: string,
+    turnTimeRemaining: number,
+    state: unknown,
+  ): PlayerInfoBarData {
+    if (!context.player) {
+      const status = phase === "ended" ? "Game over" : "Waiting for players";
+      return {
+        name: context.fallbackName,
+        label: context.isLocal ? "Connecting..." : "Invite a player to join",
+        status,
+        statusTone: "neutral",
+        timerSeconds: null,
+      };
+    }
+
+    const name = this.getPlayerDisplayName(context.player, context.isLocal);
+    const label = this.getPlayerRoleLabel(this.gameType, context.player, context.sessionId, state);
+    const status = this.getStatusForPlayer(context, phase, currentTurn);
+    const timerSeconds =
+      context.sessionId && currentTurn === context.sessionId && turnTimeRemaining > 0
+        ? turnTimeRemaining
+        : null;
+
+    return {
+      name,
+      label,
+      status: status.text,
+      statusTone: status.tone,
+      timerSeconds,
+    };
+  }
+
+  private getPlayerDisplayName(player: ScenePlayerSnapshot, isLocal: boolean): string {
+    const trimmedName = player.displayName.trim();
+    if (trimmedName.length > 0) {
+      return isLocal ? `${trimmedName} (You)` : trimmedName;
+    }
+
+    return isLocal ? "You" : "Player";
+  }
+
+  private getPlayerRoleLabel(
+    gameType: string,
+    player: ScenePlayerSnapshot,
+    sessionId: string,
+    state: unknown,
+  ): string {
+    if (player.isSpectator) {
+      return "Spectating";
+    }
+
+    if (gameType === "checkers") {
+      if (player.playerIndex === 0) {
+        return "Black Pieces";
+      }
+      if (player.playerIndex === 1) {
+        return "Red Pieces";
+      }
+      return "Checkers Pieces";
+    }
+
+    if (gameType === "backgammon") {
+      if (player.playerIndex === 0) {
+        return "Black Checkers";
+      }
+      if (player.playerIndex === 1) {
+        return "White Checkers";
+      }
+      return "Backgammon";
+    }
+
+    if (gameType === "dominos") {
+      const handCount = this.getDominosHandCount(state, sessionId);
+      return handCount !== null ? `${handCount} tiles` : "Dominoes";
+    }
+
+    if (gameType === "risk") {
+      return this.getRiskColorLabel(player.playerIndex);
+    }
+
+    return "";
+  }
+
+  private getStatusForPlayer(
+    context: { sessionId: string; player: ScenePlayerSnapshot; isLocal: boolean },
+    phase: string,
+    currentTurn: string,
+  ): { text: string; tone: PlayerInfoStatusTone } {
+    if (phase === "waiting") {
+      return { text: "Waiting for players", tone: "neutral" };
+    }
+
+    if (phase === "ended") {
+      return { text: "Game over", tone: "neutral" };
+    }
+
+    if (context.player.isSpectator) {
+      return { text: "Spectating", tone: "neutral" };
+    }
+
+    if (!currentTurn) {
+      return { text: "Waiting...", tone: "waiting" };
+    }
+
+    if (currentTurn === context.sessionId) {
+      return { text: context.isLocal ? "Your Turn" : "Their Turn", tone: "active" };
+    }
+
+    return { text: "Waiting...", tone: "waiting" };
+  }
+
+  private getDominosHandCount(state: unknown, sessionId: string): number | null {
+    if (!sessionId || typeof state !== "object" || state === null) {
+      return null;
+    }
+
+    const stateObj = state as {
+      playerStates?: { get?: (id: string) => { handCount?: number } | undefined };
+    };
+    const playerState = stateObj.playerStates?.get?.(sessionId);
+    return typeof playerState?.handCount === "number" ? playerState.handCount : null;
+  }
+
+  private getRiskColorLabel(playerIndex: number): string {
+    if (playerIndex < 0) {
+      return "Commander";
+    }
+
+    const color = RISK_COLOR_LABELS[playerIndex % RISK_COLOR_LABELS.length] ?? "Player";
+    return `${color} Army`;
   }
 
   private extractTurnTimeRemaining(state: unknown): number {

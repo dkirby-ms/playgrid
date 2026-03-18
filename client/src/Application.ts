@@ -99,6 +99,7 @@ export class PlaygridApp {
   private activeGameType: string | null = null;
   private isDisplayNameUpdatePending = false;
   private gameContainer: HTMLElement | null = null;
+  private gameCanvasFrame: HTMLElement | null = null;
   private gameContainerResizeObserver: ResizeObserver | null = null;
   private resizeSyncFrameId: number | null = null;
   private readonly rendererRegistry = rendererRegistry;
@@ -155,6 +156,8 @@ export class PlaygridApp {
   async init(container: HTMLElement): Promise<void> {
     const gameContainer = this.getGameContainer(container);
     this.gameContainer = gameContainer;
+    const { canvasFrame } = this.createGameLayout(gameContainer);
+    this.gameCanvasFrame = canvasFrame;
 
     this.createVersionFooter();
 
@@ -163,10 +166,10 @@ export class PlaygridApp {
       width: GAME_WIDTH,
       height: GAME_HEIGHT,
       backgroundColor: 0x1a1a2e,
-      resizeTo: gameContainer,
+      resizeTo: canvasFrame,
     });
 
-    gameContainer.appendChild(this.pixiApp.canvas);
+    canvasFrame.appendChild(this.pixiApp.canvas);
 
     this.connectionManager = new ConnectionManager();
     this.setupConnectionListeners();
@@ -188,7 +191,7 @@ export class PlaygridApp {
     window.addEventListener("pagehide", () => this.persistSessionForRefresh());
     window.addEventListener("resize", () => this.scheduleViewportSync());
     window.addEventListener(GAME_LAYOUT_CHANGE_EVENT, () => this.scheduleViewportSync());
-    this.observeGameContainer(gameContainer);
+    this.observeGameContainer(canvasFrame);
     this.layoutStatusText();
 
     this.pixiApp.ticker.add(() => {
@@ -825,7 +828,7 @@ export class PlaygridApp {
     this.resizeSyncFrameId = window.requestAnimationFrame(() => {
       this.resizeSyncFrameId = null;
 
-      if (!this.pixiApp || !this.sceneManager || !this.gameContainer) {
+      if (!this.pixiApp || !this.sceneManager || !this.gameCanvasFrame) {
         return;
       }
 
@@ -842,6 +845,34 @@ export class PlaygridApp {
     }
 
     return gameContainer;
+  }
+
+  private createGameLayout(gameContainer: HTMLElement): {
+    container: HTMLDivElement;
+    canvasFrame: HTMLDivElement;
+  } {
+    const layout = document.createElement("div");
+    layout.id = "game-layout";
+    layout.className = "game-layout";
+
+    const topBar = document.createElement("div");
+    topBar.id = "game-info-top";
+    topBar.className = "game-info-slot";
+    topBar.style.display = "none";
+
+    const canvasFrame = document.createElement("div");
+    canvasFrame.id = "game-canvas-frame";
+    canvasFrame.className = "game-canvas-frame";
+
+    const bottomBar = document.createElement("div");
+    bottomBar.id = "game-info-bottom";
+    bottomBar.className = "game-info-slot";
+    bottomBar.style.display = "none";
+
+    layout.append(topBar, canvasFrame, bottomBar);
+    gameContainer.replaceChildren(layout);
+
+    return { container: layout, canvasFrame };
   }
 
   private ensureInitialized(): void {
