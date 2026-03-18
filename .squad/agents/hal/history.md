@@ -1234,3 +1234,57 @@ Phase breakdown:
 - **Design token compliance check**: One-line grep for rgba/hex in new files catches hardcoded colors quickly: `grep -E "(rgba|#[0-9a-fA-F]{3,6})" file.ts`
 
 **PR:** #152 (reviewed, approved via comment — can't formally approve own PR in GitHub)
+
+
+---
+
+## Learnings
+
+### Move History Architecture Design (2025-01-XX)
+
+**Task:** Design generic move history system for turn-based games (Checkers, Backgammon, Dominos, future games).
+
+**Investigation findings:**
+1. **Action flow:** `BaseGameRoom.handleAction()` → plugin action handler → `processAction()` validates, executes, checks end conditions
+2. **Current state:** Zero move history infrastructure exists server-side
+3. **State schemas:** BaseGameState has `turnNumber`, `currentTurn`, `phase` — but no move tracking
+4. **Game plugins:** Each implements `GamePlugin<TState>` with action handlers that return `ActionResult` (success, error, endsTurn, endsGame)
+5. **Client patterns:** VictoryScreen is an overlay (not a scene) — good pattern for HistoryScreen to follow
+6. **Figma references:** UI designs show move list with timestamps, player names, move summaries, expandable details
+
+**Architecture decision:**
+- **Server-side only storage** — in-memory array (`moveHistory: MoveEntry[]` in BaseGameRoom), no schema changes
+- **Recording point:** `BaseGameRoom.processAction()` immediately after successful action handler
+- **Delivery:** Attach to `GameResult.metadata` at game end (reuses existing `"game-end"` message)
+- **Generic format:** `MoveEntry` interface with `moveNumber`, `playerId`, `timestamp`, `actionType`, `summary`, `metadata`
+- **Game-specific formatters:** Plugin method `formatMoveHistory?()` generates human-readable summary strings
+- **Client component:** `HistoryScreen` overlay (like VictoryScreen), with per-game formatters for display
+
+**Key trade-offs:**
+- ✅ Zero state overhead during gameplay (no schema bloat)
+- ✅ Simple implementation (one array, one message)
+- ✅ Extensible via plugin system
+- ⚠️ No persistence (acceptable for MVP)
+- ⚠️ No live updates during game (not needed)
+
+**Scope cuts:**
+- NO replay/playback (out of scope)
+- NO undo moves (different feature)
+- NO database persistence (ephemeral history only)
+- NO real-time live history (display at game end only)
+- NO move analysis/evaluation (requires AI engine)
+
+**Implementation phases:**
+1. Core infrastructure (MoveEntry interface, BaseGameRoom recording, delivery)
+2. Checkers implementation (formatter + UI)
+3. Backgammon & Dominos formatters
+4. Polish (scroll, stats, mobile)
+
+**Files to modify:**
+- New: `shared/src/MoveEntry.ts`, `client/src/ui/HistoryScreen.ts`, `client/src/ui/historyFormatters.ts`
+- Modified: `shared/src/gamePlugin.ts`, `server/src/game/BaseGameRoom.ts`, game plugins, `client/src/ui/VictoryScreen.ts`
+
+**Validation:** Play full games of each type, verify all moves captured correctly, UI displays match Figma, no performance issues with long games.
+
+**Document created:** `.squad/decisions/inbox/hal-move-history-architecture.md`
+

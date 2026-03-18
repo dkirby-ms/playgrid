@@ -4508,3 +4508,80 @@ Enhanced Risk-specific game UI: Phase banner now prominently displayed with puls
 **Files Modified:**
 - client/src/renderers/RiskRenderer.ts
 
+
+---
+
+### Hal: Move History Architecture for Turn-Based Games
+
+**Status:** Proposed  
+**Date:** 2025-01-XX  
+**Decision Lead:** Hal  
+
+Generic move history system for turn-based games (Checkers, Backgammon, Dominos, and future games).
+
+**Key Decisions:**
+- **Server-side storage only**: In-memory `MoveEntry[]` array in `BaseGameRoom`. Zero schema changes, zero bandwidth overhead during play.
+- **Delivery at game end**: History attached to `GameResult.metadata` via existing `GAME_ENDED_MESSAGE`.
+- **Plugin-based formatting**: Optional `formatMoveHistory()` hook in `GamePlugin` interface for game-specific summaries. Falls back to raw `actionType`.
+- **Client overlay component**: New `HistoryScreen` overlay (not a scene), following `VictoryScreen` pattern. Game-specific formatters in `HistoryFormatters` map.
+
+**MoveEntry Interface:**
+```typescript
+{
+  moveNumber: number;
+  playerId: string;
+  playerName: string;
+  playerIndex: number;
+  timestamp: number;
+  actionType: string;
+  summary: string;
+  metadata?: Record<string, unknown>;
+}
+```
+
+**Implementation phases:**
+1. Core infrastructure (MoveEntry type, BaseGameRoom recording, delivery) — 2-3 hours
+2. Checkers game + HistoryScreen UI — 2 hours
+3. Backgammon & Dominos formatters — 1-2 hours each
+4. Polish (scroll, expandable details, stats sidebar) — 1 hour
+
+**Scope boundaries (out of scope):**
+- No move replay or interactive playback
+- No undo functionality
+- No persistence to database
+- No real-time live history during play
+- No PGN/notation export
+- No move analysis/evaluation
+
+**Trade-offs:**
+- ✅ Simple, zero overhead, extensible
+- ⚠️ No persistence (acceptable for MVP), no live updates, memory grows with game length
+
+**Rationale:**
+- Eliminates state bloat during gameplay (rejects schema syncing)
+- Reuses existing message protocol and delivery mechanism
+- Extensible via plugin system for future games
+- Follows established patterns (VictoryScreen overlay, GamePlugin hooks)
+
+**Files to Create:**
+- `shared/src/MoveEntry.ts`
+- `client/src/ui/HistoryScreen.ts`
+- `client/src/ui/historyFormatters.ts`
+
+**Files to Modify:**
+- `shared/src/gamePlugin.ts` — Add `formatMoveHistory?()` to interface
+- `server/src/game/BaseGameRoom.ts` — Add `moveHistory[]`, `recordMove()`, delivery in `endGame()`
+- `server/src/games/{checkers,backgammon,dominos}/Plugin.ts` — Implement `formatMoveHistory()`
+- `client/src/ui/VictoryScreen.ts` — Add "View History" button
+
+**Validation Plan:**
+- Checkers 2P: Verify all move types (normal, capture, king) captured and displayed
+- Backgammon: Verify dice rolls and multi-moves per turn
+- Dominos 4P: Verify play/draw/pass actions and turn order
+- Long game stress test (Risk 100+ moves): Memory usage and JSON serialization performance
+
+**Open Questions Resolved:**
+- Risk phased turns: Each action gets separate entry (simpler than turn grouping)
+- CPU moves: Included in history (they're real moves)
+- Spectator visibility: Yes, everyone sees game result
+
