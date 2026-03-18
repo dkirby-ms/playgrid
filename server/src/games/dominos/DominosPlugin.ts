@@ -106,6 +106,15 @@ function buildScoreResult(
     if (ps) ps.score += points;
   }
 
+  const playerStats: Record<string, unknown> = {};
+  for (const [sessionId, ps] of state.playerStates.entries()) {
+    const hand = getPlayerHand(state, sessionId);
+    playerStats[sessionId] = {
+      tilesRemaining: hand.length,
+      score: ps.score,
+    };
+  }
+
   return {
     type: "win",
     winnerId,
@@ -115,6 +124,10 @@ function buildScoreResult(
         ps.score,
       ]),
     ),
+    metadata: {
+      tilesPlayed: state.board.length,
+      ...playerStats,
+    },
   };
 }
 
@@ -328,10 +341,21 @@ export const dominosPlugin: GamePlugin<DominosState> = {
         const hand = allHands.get(sessionId) ?? [];
         if (hand.length === 0) {
           const scores = scoreDomino(state, sessionId, allHands);
+          const playerStats: Record<string, unknown> = {};
+          for (const [sid, ps] of state.playerStates.entries()) {
+            playerStats[sid] = {
+              tilesRemaining: (allHands.get(sid) ?? []).length,
+              score: ps.score,
+            };
+          }
           return {
             type: "win",
             winnerId: sessionId,
             scores,
+            metadata: {
+              tilesPlayed: state.board.length,
+              ...playerStats,
+            },
           };
         }
       }
@@ -340,10 +364,21 @@ export const dominosPlugin: GamePlugin<DominosState> = {
       const boneyard = getBoneyard(state);
       if (isRoundBlocked(state, boneyard, allHands)) {
         const { winnerId, scores } = resolveBlockedRound(state, allHands);
+        const playerStats: Record<string, unknown> = {};
+        for (const [sid, ps] of state.playerStates.entries()) {
+          playerStats[sid] = {
+            tilesRemaining: (allHands.get(sid) ?? []).length,
+            score: ps.score,
+          };
+        }
         return {
           type: "win",
           winnerId,
           scores,
+          metadata: {
+            tilesPlayed: state.board.length,
+            ...playerStats,
+          },
         };
       }
 

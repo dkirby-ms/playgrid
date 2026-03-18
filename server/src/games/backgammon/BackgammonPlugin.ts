@@ -58,15 +58,29 @@ function buildGameResult(state: BackgammonState, winnerColor: BackgammonColor): 
     return null;
   }
 
+  const loser = players.find((player) => player.sessionId !== winner.sessionId);
+  const loserColor = winnerColor === BLACK ? RED : BLACK;
+
+  const winnerBorneOff = winnerColor === BLACK ? state.blackBorneOff : state.redBorneOff;
+  const winnerBar = winnerColor === BLACK ? state.blackBar : state.redBar;
+  const loserBorneOff = loserColor === BLACK ? state.blackBorneOff : state.redBorneOff;
+  const loserBar = loserColor === BLACK ? state.blackBar : state.redBar;
+
+  const metadata: Record<string, unknown> = {
+    winnerColor,
+    [winner.sessionId]: { borneOff: winnerBorneOff, remaining: 15 - winnerBorneOff, bar: winnerBar },
+  };
+  if (loser) {
+    metadata[loser.sessionId] = { borneOff: loserBorneOff, remaining: 15 - loserBorneOff, bar: loserBar };
+  }
+
   return {
     type: "win",
     winnerId: winner.sessionId,
     scores: Object.fromEntries(
       players.map((player) => [player.sessionId, player.sessionId === winner.sessionId ? 1 : 0]),
     ),
-    metadata: {
-      winnerColor,
-    },
+    metadata,
   };
 }
 
