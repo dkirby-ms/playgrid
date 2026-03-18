@@ -35,6 +35,7 @@ import { SandboxScene } from "./scenes/SandboxScene";
 import { ReconnectOverlay } from "./ui/ReconnectOverlay";
 import { GameOverOverlay } from "./ui/GameOverOverlay";
 import { VictoryScreen, type VictoryScreenEvent, type VictoryPlayerInfo } from "./ui/VictoryScreen";
+import { ConsoleLog } from "./ui/ConsoleLog";
 import { JOIN_GAME, type JoinGamePayload, type LobbyEvent } from "./ui/LobbyScreen";
 import { GAME_LAYOUT_CHANGE_EVENT } from "./ui/gameLayout";
 
@@ -97,6 +98,7 @@ export class PlaygridApp {
   private reconnectOverlay!: ReconnectOverlay;
   private gameOverOverlay!: GameOverOverlay;
   private victoryScreen!: VictoryScreen;
+  private consoleLog!: ConsoleLog;
   private statusHideTimeoutId: number | null = null;
   private reconnectOverlayHideTimeoutId: number | null = null;
   private reconnectReturnTimeoutId: number | null = null;
@@ -199,6 +201,8 @@ export class PlaygridApp {
     this.reconnectOverlay = new ReconnectOverlay();
     this.gameOverOverlay = new GameOverOverlay();
     this.victoryScreen = new VictoryScreen();
+    this.consoleLog = new ConsoleLog();
+    this.lobbyScene.setConsoleLog(this.consoleLog);
     window.addEventListener("beforeunload", () => this.persistSessionForRefresh());
     window.addEventListener("pagehide", () => this.persistSessionForRefresh());
     window.addEventListener("resize", () => this.scheduleViewportSync());
@@ -447,6 +451,17 @@ export class PlaygridApp {
     const gameType = this.activeGameType ?? this.gameRoom?.name ?? "checkers";
     const players = this.extractVictoryPlayers();
 
+    const endMsg = result.type === "win"
+      ? (result.winnerId === sessionId ? "Victory! You won the game." : "Defeat — opponent wins.")
+      : result.type === "draw"
+        ? "Game ended in a draw."
+        : result.type === "forfeit"
+          ? "Game ended by forfeit."
+          : result.type === "timeout"
+            ? "Game ended due to timeout."
+            : "Game over.";
+    this.consoleLog?.log(endMsg, result.winnerId === sessionId ? "success" : "info");
+
     this.victoryScreen.show(
       { result, sessionId, gameType, players },
       (event: VictoryScreenEvent) => {
@@ -510,6 +525,7 @@ export class PlaygridApp {
     console.log(`[playgrid] Dropped game room ${this.getRoomLabel(room)} (code: ${code})`);
     this.clearReconnectReturnTimeout();
     this.reconnectOverlay.showReconnecting();
+    this.consoleLog?.warn("Connection dropped — attempting to reconnect…");
     this.setStatus("Reconnecting...", { persistent: true, visibleInGame: true });
   }
 
@@ -518,6 +534,7 @@ export class PlaygridApp {
     this.persistActiveSession(room, gameType);
     this.clearReconnectReturnTimeout();
     this.reconnectOverlay.showReconnected();
+    this.consoleLog?.success("Reconnected to game session.");
     this.setStatus("Reconnected!", { visibleInGame: true });
     this.scheduleReconnectOverlayHide();
   }
@@ -530,6 +547,7 @@ export class PlaygridApp {
       this.clearReconnectOverlayFeedback();
       this.activeGameType = null;
       this.gameRoom = null;
+      this.consoleLog?.info("Left game room.");
       await this.returnToLobby({ message: "Game room closed. Back in the lobby.", tone: "info" });
       return;
     }
@@ -539,6 +557,7 @@ export class PlaygridApp {
     this.activeGameType = null;
     this.gameRoom = null;
     this.reconnectOverlay.showFailure();
+    this.consoleLog?.error("Connection to game lost. Returning to lobby…");
     this.setStatus("Connection lost. Returning to lobby...", {
       tone: "error",
       persistent: true,
@@ -610,6 +629,10 @@ export class PlaygridApp {
     this.statusText.text = message;
     this.statusText.style.fill = tone === "error" ? 0xff7b72 : 0xd1d5db;
     this.layoutStatusText();
+
+    if (message.length > 0) {
+      this.consoleLog?.log(message, tone === "error" ? "error" : "info");
+    }
 
     if (!persistent && message.length > 0) {
       this.statusHideTimeoutId = window.setTimeout(() => {
@@ -1009,6 +1032,7 @@ export class PlaygridApp {
       this.lobbyScene.showNotice(message, "error");
     }
 
+    this.consoleLog?.error(`Connection error: ${message}`);
     this.setStatus(`Error: ${message}`, { tone: "error", persistent: true });
   }
 }
