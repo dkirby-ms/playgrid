@@ -22,6 +22,11 @@ import {
 } from "./scenes/GameScene";
 import { LobbyScene, type LobbySceneEnterData } from "./scenes/LobbyScene";
 import {
+  SetupScene,
+  type SetupSceneEnterData,
+  type SetupSceneEvent,
+} from "./scenes/SetupScene";
+import {
   WaitingRoomScene,
   type WaitingRoomSceneEnterData,
   type WaitingRoomSceneEvent,
@@ -106,6 +111,9 @@ export class PlaygridApp {
   private readonly lobbyScene = new LobbyScene((event) => {
     void this.handleLobbyEvent(event);
   });
+  private readonly setupScene = new SetupScene((event) => {
+    void this.handleSetupSceneEvent(event);
+  });
   private readonly waitingRoomScene = new WaitingRoomScene((event) => {
     void this.handleWaitingRoomEvent(event);
   });
@@ -176,6 +184,7 @@ export class PlaygridApp {
 
     this.sceneManager = new SceneManager(this.pixiApp.stage);
     this.sceneManager.register(this.lobbyScene);
+    this.sceneManager.register(this.setupScene);
     this.sceneManager.register(this.waitingRoomScene);
     this.sceneManager.register(this.gameScene);
     this.sceneManager.register(this.sandboxScene);
@@ -279,6 +288,7 @@ export class PlaygridApp {
     this.gameRoom = null;
     this.activeGameType = null;
     this.waitingRoomScene.hideOverlay();
+    this.setupScene.hideOverlay();
     this.clearReconnectOverlayFeedback();
     this.setStatus("Connecting to lobby…", { persistent: true });
 
@@ -325,6 +335,22 @@ export class PlaygridApp {
       return;
     }
 
+    if (event.type === "setup") {
+      if (!this.lobbyRoom) {
+        this.lobbyScene.showConnectionError("Lobby room is unavailable.");
+        return;
+      }
+
+      const data: SetupSceneEnterData = {
+        room: this.lobbyRoom,
+        mode: "create",
+        gameType: event.gameType,
+      };
+      this.setStatus(`Setting up ${event.gameType} game…`);
+      await this.transitionTo(this.setupScene.name, data);
+      return;
+    }
+
     if (event.type === "waiting") {
       if (!this.lobbyRoom) {
         this.lobbyScene.showConnectionError("Lobby room is unavailable.");
@@ -332,19 +358,31 @@ export class PlaygridApp {
       }
 
       this.syncWaitingRoomJoinUrl(event.gameId);
-      const data: WaitingRoomSceneEnterData = {
+      const data: SetupSceneEnterData = {
         room: this.lobbyRoom,
+        mode: "waiting",
+        gameType: event.gameInfo?.gameType ?? "checkers",
         gameId: event.gameId,
         gameInfo: event.gameInfo,
         isHost: event.isHost,
       };
 
-      this.setStatus(`Waiting room — ${event.gameInfo?.name ?? "Game"}`);
-      await this.transitionTo(this.waitingRoomScene.name, data);
+      this.setStatus(`Setup — ${event.gameInfo?.name ?? "Game"}`);
+      await this.transitionTo(this.setupScene.name, data);
       return;
     }
 
-    await this.joinGame(event.roomId, event.gameType, event.spectator);
+    await this.joinGame(event.roomId, event.gameType);
+  }
+
+  private async handleSetupSceneEvent(event: SetupSceneEvent): Promise<void> {
+    if (event.type === "leave") {
+      this.syncWaitingRoomJoinUrl(null);
+      await this.showLobby({ message: "Returned to the lobby browser.", tone: "info" });
+      return;
+    }
+
+    await this.joinGame(event.roomId, event.gameType);
   }
 
   private async handleWaitingRoomEvent(event: WaitingRoomSceneEvent): Promise<void> {
@@ -458,6 +496,7 @@ export class PlaygridApp {
     console.log(`[playgrid] Left lobby room (code: ${code})`);
     this.lobbyRoom = null;
     this.waitingRoomScene.hideOverlay();
+    this.setupScene.hideOverlay();
     this.lobbyScene.showConnectionError("Lost connection to the lobby room.");
     this.setStatus("Lobby disconnected.", { tone: "error", persistent: true });
 
