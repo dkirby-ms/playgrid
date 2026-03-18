@@ -111,3 +111,29 @@
 2. **Setup Screen Template:** Reusable for future overlay screens (settings, pause menu, victory screen, spectator controls)
 3. **Config Panel Architecture:** Per-game implementations + shared control factories establish scalable pattern
 4. **Design Token Discipline:** All visual styling references CSS custom properties from `design-tokens.css`
+
+---
+
+## 2026-07-22: Console Log Panel (#146) — Complete ✅
+
+**Status:** Complete — PR #152
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass (467 tests)
+
+### What was built
+
+**Created:**
+- `client/src/ui/ConsoleLog.ts` — Collapsible inline console log panel with timestamped, color-coded entries (info/success/warning/error). Glass morphism styling, ARIA accessibility, auto-scroll with manual scroll detection, unread badge.
+
+**Modified:**
+- `client/src/Application.ts` — ConsoleLog instantiation; all `setStatus()` calls, reconnection events, game-end results, and connection errors now route to console log
+- `client/src/ui/LobbyScreen.ts` — `setConsoleLog()` setter; notices, connection errors, and lobby log events forwarded to console
+- `client/src/scenes/LobbyScene.ts` — `setConsoleLog()` pass-through
+- `client/index.html` — ReconnectOverlay restyled from full-screen modal to compact top-right toast; added `#console-log-container`
+
+**NOT changed:** VictoryScreen.ts, SetupScreen.ts, GameOverOverlay.ts, server code
+
+### Learnings
+
+- **ConsoleLog pattern:** Follows same `injectStyles()` pattern as PlayerInfoBar/SetupScreen. Uses `#console-log-container` in index.html. Exposes `log()`, `info()`, `success()`, `warn()`, `error()` methods. Pass instance via `setConsoleLog()` to components that need it.
+- **ReconnectOverlay reduced:** Changed from full-screen centered modal to compact top-right toast indicator using design tokens. Still functional for reconnection states, but no longer blocks gameplay.
+- **Status message routing:** `setStatus()` in Application.ts now dual-writes to both PixiJS statusText and ConsoleLog. This means all status messages are persisted in scrollable history.

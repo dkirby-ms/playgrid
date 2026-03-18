@@ -1172,3 +1172,65 @@ Phase breakdown:
 
 **Trigger for React revisit:** >8K vanilla DOM lines, complex form validation, chat system, or second design iteration.
 
+
+---
+
+## 2026-03-18 — PR #152 Review: Console Log Panel
+
+**Outcome:** ✅ APPROVED — Clean, well-architected implementation of inline console log panel.
+
+**Context:**
+- PR #152 by Ortho: Replaces modal status popups with persistent inline console log panel (closes #146)
+- Branch: `squad/146-console-log-panel` against `dev`
+- Design system established in PR #151 (glass morphism, design tokens)
+
+**What was reviewed:**
+1. **New ConsoleLog.ts component (383 lines)**:
+   - Collapsible panel at bottom viewport
+   - Timestamped, color-coded entries (info/success/warning/error)
+   - Auto-scroll with manual scroll detection
+   - Unread badge counter when collapsed
+   - Preview of latest message in collapsed header
+   - ARIA attributes for accessibility
+   - Glass morphism + design tokens styling
+   - Style injection pattern matching PlayerInfoBar/SetupScreen
+
+2. **Integration points**:
+   - Application.ts: ConsoleLog instance created at init, logs reconnection events, game-end, connection errors, all `setStatus()` calls
+   - LobbyScreen.ts: `setConsoleLog()` setter, `showNotice()` and `showConnectionError()` log to console, `LOBBY_LOG_EVENT` forwarded
+   - LobbyScene.ts: Pass-through `setConsoleLog()` to LobbyScreen
+   - index.html: ReconnectOverlay reduced from full-screen modal to compact top-right toast, added `#console-log-container` element
+
+3. **Scope verification**:
+   - VictoryScreen.ts: ✅ untouched
+   - SetupScreen.ts: ✅ untouched
+   - Only 5 files changed: index.html, Application.ts, LobbyScene.ts, LobbyScreen.ts, ConsoleLog.ts (new)
+
+**Review findings:**
+
+✅ **Architecture**: Clean API (`log`, `info`, `success`, `warn`, `error`, `toggle`, `expand`, `collapse`, `destroy`), proper lifecycle, type-safe interfaces, memory-managed (MAX_ENTRIES=200, FIFO buffer with DOM cleanup)
+
+✅ **Design system compliance**: Uses design tokens throughout (`--glass-bg-strong`, `--glass-blur`, `--glass-border`, `--bg-card`, `--text-muted`, etc.). Only one hardcoded rgba (L120: `rgba(255, 255, 255, 0.03)` for hover — minor nit, non-blocking)
+
+✅ **Type safety**: No `any` types, proper null checks, optional chaining (`consoleLog?.`) throughout Application.ts
+
+✅ **Memory**: Event listeners cleaned in `destroy()`, buffer limit enforced
+
+✅ **Accessibility**: Proper ARIA (`role="log"`, `aria-live="polite"`, `aria-label="Console log"`, `aria-hidden` on decorative elements)
+
+✅ **Integration quality**: All status paths now log to console, proper optional chaining, no race conditions (ConsoleLog created early in init)
+
+✅ **Validation**: Build passes, 467 tests pass, no new lint errors
+
+**Non-blocking nits:**
+- L120 rgba could be extracted to `--hover-overlay` token for consistency
+- Could add `clear()` method for explicit log cleanup (not needed for this PR)
+
+**Result:** Ortho delivered exactly what #146 asked for. Ready to merge.
+
+**Learnings:**
+- **Style injection pattern**: ConsoleLog, PlayerInfoBar, SetupScreen all use same pattern (check for style ID, inject once). This is now the team standard for self-contained components.
+- **Optional chaining on new instances**: When a new subsystem (ConsoleLog) is integrated late, use optional chaining (`consoleLog?.`) even though it's initialized at app start — defensive pattern for future refactoring.
+- **Design token compliance check**: One-line grep for rgba/hex in new files catches hardcoded colors quickly: `grep -E "(rgba|#[0-9a-fA-F]{3,6})" file.ts`
+
+**PR:** #152 (reviewed, approved via comment — can't formally approve own PR in GitHub)
