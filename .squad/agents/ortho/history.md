@@ -32,6 +32,9 @@
 - **Setup Screens (Phase 4):** Built per-game setup screens replacing the inline Create Game modal. Architecture: `SetupScreen.ts` (shared base with glass-morphism two-column layout) + per-game config panels in `client/src/ui/setup/{Game}SetupConfig.ts` + `SetupScene.ts` (scene wrapper). Config panels use shared `configControls.ts` factories (option groups, toggles, steppers). Two modes: "create" (host configures before creating) and "waiting" (post-create player list + ready/start). The SetupScreen binds to the lobby room directly for `GAME_JOINED`, `GAME_PLAYERS`, `GAME_STARTED` messages. Both new game creation (tile click → setup) and joining existing games (Join btn → "waiting" mode) route through SetupScene. The old WaitingRoom.ts and WaitingRoomScene.ts are preserved for backward compatibility with e2e tests. LobbyEvent union type extended with `{ type: "setup"; gameType: string }`.
 - **Key file paths for setup screens:** `client/src/ui/SetupScreen.ts`, `client/src/ui/setup/configControls.ts`, `client/src/ui/setup/{Checkers,Backgammon,Risk,Dominos}SetupConfig.ts`, `client/src/scenes/SetupScene.ts`. Overlay div `#setup-overlay` added to `client/index.html`.
 - **Style injection pattern:** SetupScreen follows the same `injectStyles()` pattern as PlayerInfoBar — creates a `<style>` element with a unique ID, injects into `document.head`, uses CSS classes with design tokens exclusively.
+- **Player Info Bars (P0):** Verified working across all games. Already had data flow (GameScene → updatePlayerInfoBars), mount points (game-info-top/bottom), and visibility toggle. Added subtle pulse animation to "Your Turn" status badge (2s ease-in-out with box-shadow glow). The bars follow glass-morphism pattern: `var(--glass-bg)`, `var(--shadow-card)`, `var(--border-light)`.
+- **Game Header (P1):** Created new `GameHeader.ts` component for game scene chrome. Three-section layout: Back to Lobby (left) + Game Title (center) + Resign (right). Uses `var(--glass-bg-strong)` and `var(--glass-blur)` for header bar. Both actions trigger `leave_game` event (resign logic refinement deferred). Mount point `#game-header` added to game layout ABOVE `#game-info-top`. GameScene manages lifecycle: `initGameHeader()` / `destroyGameHeader()`. HUD's Leave button hidden when GameHeader is active (chat toggle stays visible).
+- **Game chrome architecture:** Layout order is now: GameHeader → Opponent Info Bar → Canvas → Player Info Bar. All chrome components use the same glass-morphism token system and lifecycle pattern (init on enter, destroy on exit, visibility toggle via `display: none/flex`).
 
 ---
 
@@ -97,6 +100,72 @@
 - No changes needed
 - SetupScene is standalone screen; game rendering happens when players transition to game room
 - Sidebar and SetupScreen complement Gately's game rendering layer
+
+---
+
+## 2026-03-19: Player Info Bars (P0) + Game Header (P1) — Complete ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass (467 tests)
+
+### P0: Player Info Bars — Verification & Completion
+
+**Audit Results:**
+- Player info bars WERE already working correctly
+- Data flow: GameScene.ts → `updatePlayerInfoBars()` → PlayerInfoBar.update()
+- Mount points created in Application.ts → `createGameLayout()`
+- Visibility toggle working via `game-info-slot` CSS `display: none/flex`
+- Bars show for all game types (checkers, backgammon, risk, dominos)
+
+**Enhancement:**
+- Added pulse animation to "Your Turn" status badge
+- Keyframes: 2s ease-in-out infinite with opacity fade + box-shadow glow
+
+**Modified:**
+- `client/src/ui/PlayerInfoBar.ts` — Added `@keyframes status-pulse` animation to `.player-info-bar__status--active` class
+
+### P1: Game Header Bar — New Component
+
+**Created:**
+- `client/src/ui/GameHeader.ts` (234 lines)
+  - Three-section layout: Back to Lobby (left), Game Title (center), Resign (right)
+  - Glass-morphism styling: `var(--glass-bg-strong)`, `var(--glass-blur)`, `var(--border-light)`
+  - Event system: `onEvent()` callback for `back_to_lobby` | `resign`
+  - Style injection pattern matching PlayerInfoBar
+  - Responsive: Mobile stacks vertically, desktop horizontal
+
+**Modified:**
+- `client/src/Application.ts` — Added `#game-header` mount point to game layout (above `#game-info-top`)
+- `client/src/scenes/GameScene.ts` — Integrated GameHeader lifecycle:
+  - Import GameHeader and GameHeaderEvent types
+  - Added `gameHeader` instance variable
+  - `initGameHeader()` creates header, hides HUD Leave button
+  - `destroyGameHeader()` removes header, restores HUD Leave button
+  - `handleGameHeaderEvent()` routes both actions to `leave_game` event
+  - `formatGameTitle()` capitalizes game type for display
+  - Both actions (back_to_lobby, resign) trigger existing leave flow
+
+**Architecture:**
+- Game layout order: `#game-header` → `#game-info-top` → `#game-canvas-frame` → `#game-info-bottom`
+- All chrome components follow same pattern: mount point in Application.ts, lifecycle in GameScene.ts, glass-morphism tokens in component styles
+- HUD Leave button hidden when GameHeader active (no duplicate controls)
+- Chat toggle remains in HUD (bottom-right floating button)
+
+**Key Decisions:**
+- Both Back and Resign trigger leave_game for now (resign can be refined later with proper game state updates)
+- History and Results buttons omitted (those screens don't exist yet)
+- Header uses stronger glass background (`var(--glass-bg-strong)`) for hierarchy vs info bars
+
+### Cross-Agent Impact
+
+**Gately (PixiJS Rendering):**
+- No changes needed
+- Game chrome is DOM overlay layer, doesn't affect canvas rendering
+
+**Pemulis (Game Logic):**
+- No changes needed
+- GameHeader uses existing leave_game event flow
+- Resign refinement (server-side game state update) deferred for future work
 
 **Server Team:**
 - No changes needed

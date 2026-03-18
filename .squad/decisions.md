@@ -4400,3 +4400,64 @@ Before implementing or fixing any UI element, always check the Figma design expo
 - Game thumbnails and assets sourced from Figma specifications, not hand-created
 - Reduces rework and ensures design fidelity
 
+
+---
+
+### Ortho: Game Chrome Architecture — Player Info Bars + Game Header
+
+**Status:** Implemented  
+**Date:** 2026-03-18  
+
+Implemented DOM UI chrome components around the PixiJS canvas: header bar (navigation + title + actions) and player info bars (opponent above, player below).
+
+**Layout Structure:**
+- `#game-header` — Back to Lobby, game title, Resign action
+- `#game-info-top` — Opponent player info
+- `#game-canvas-frame` — PixiJS canvas (flex: 1)
+- `#game-info-bottom` — Local player info "(You)"
+
+**Component Pattern:**
+- GameScene creates/destroys on enter/exit
+- Components manage visibility via `mount.style.display`
+- Components inject styles (once per page load)
+- All use design tokens exclusively
+
+**Player Info Bars Features:**
+- Status badges: "Your Turn" (pulse animation + active tone), "Waiting..." (waiting tone), "Game over" (neutral)
+- Auto-hide when no player data
+- Show avatar, name, role label, status, optional timer
+
+**GameHeader Features:**
+- Left: "Back to Lobby" button
+- Center: Game title (capitalized)
+- Right: "Resign" button
+- Both actions trigger `leave_game` event (resign refinable later)
+- Hides HUD's Leave button (no duplicate controls)
+
+**Styling:**
+- Glass-morphism backgrounds: `var(--glass-bg)`, `var(--glass-bg-strong)`
+- Backdrop filter: `var(--glass-blur)`
+- Borders: `var(--glass-border)`, `var(--border-light)`
+- Shadow: `var(--shadow-card)`
+- Typography: `var(--text-primary)`, `var(--text-secondary)`, `var(--text-muted)`
+- Status tokens: `var(--status-playing-*)`, `var(--status-waiting-*)`
+
+**Impact:**
+- GameHeader.ts: New component (234 lines)
+- PlayerInfoBar.ts: Pulse animation added
+- Application.ts: `#game-header` mount point
+- GameScene.ts: Integrated lifecycle
+- All 4 games inherit this chrome automatically
+
+**Rationale:**
+- Separates navigation/chrome (DOM) from rendering (PixiJS)
+- Consistent component lifecycle
+- Design token ensures visual consistency
+- Player bars provide at-a-glance game state
+- Clear exit path and game context
+
+**Files Modified:**
+- client/src/ui/GameHeader.ts
+- client/src/ui/PlayerInfoBar.ts
+- client/src/Application.ts
+- client/src/screens/GameScene.ts
