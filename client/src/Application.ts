@@ -34,6 +34,7 @@ import {
 import { SandboxScene } from "./scenes/SandboxScene";
 import { ReconnectOverlay } from "./ui/ReconnectOverlay";
 import { GameOverOverlay } from "./ui/GameOverOverlay";
+import { VictoryScreen, type VictoryScreenEvent, type VictoryPlayerInfo } from "./ui/VictoryScreen";
 import { JOIN_GAME, type JoinGamePayload, type LobbyEvent } from "./ui/LobbyScreen";
 import { GAME_LAYOUT_CHANGE_EVENT } from "./ui/gameLayout";
 
@@ -95,6 +96,7 @@ export class PlaygridApp {
   private statusText!: Text;
   private reconnectOverlay!: ReconnectOverlay;
   private gameOverOverlay!: GameOverOverlay;
+  private victoryScreen!: VictoryScreen;
   private statusHideTimeoutId: number | null = null;
   private reconnectOverlayHideTimeoutId: number | null = null;
   private reconnectReturnTimeoutId: number | null = null;
@@ -196,6 +198,7 @@ export class PlaygridApp {
     this.statusText = createStatusText(this.pixiApp);
     this.reconnectOverlay = new ReconnectOverlay();
     this.gameOverOverlay = new GameOverOverlay();
+    this.victoryScreen = new VictoryScreen();
     window.addEventListener("beforeunload", () => this.persistSessionForRefresh());
     window.addEventListener("pagehide", () => this.persistSessionForRefresh());
     window.addEventListener("resize", () => this.scheduleViewportSync());
@@ -441,11 +444,67 @@ export class PlaygridApp {
     this.reconnectOverlay.hide();
 
     const sessionId = this.gameRoom?.sessionId ?? "";
-    this.gameOverOverlay.show(result, sessionId, () => {
-      this.gameOverOverlay.hide();
-      void this.returnToLobby({ message: "Game ended. Back in the lobby.", tone: "info" });
-    });
+    const gameType = this.activeGameType ?? this.gameRoom?.name ?? "checkers";
+    const players = this.extractVictoryPlayers();
+
+    this.victoryScreen.show(
+      { result, sessionId, gameType, players },
+      (event: VictoryScreenEvent) => {
+        this.victoryScreen.hide();
+        void this.handleVictoryEvent(event);
+      },
+    );
   }
+
+  private async handleVictoryEvent(event: VictoryScreenEvent): Promise<void> {
+    if (event.type === "play_again") {
+      if (!this.lobbyRoom) {
+        await this.connectToLobby();
+      }
+
+      if (this.lobbyRoom) {
+        const data: SetupSceneEnterData = {
+          room: this.lobbyRoom,
+          mode: "create",
+          gameType: event.gameType,
+        };
+        this.setStatus(`Setting up ${event.gameType} game…`);
+        await this.transitionTo(this.setupScene.name, data);
+        return;
+      }
+
+      await this.returnToLobby({ message: "Game ended. Back in the lobby.", tone: "info" });
+      return;
+    }
+
+    await this.returnToLobby({ message: "Game ended. Back in the lobby.", tone: "info" });
+  }
+
+  private extractVictoryPlayers(): VictoryPlayerInfo[] {
+    const state = this.gameRoom?.state as Record<string, unknown> | undefined;
+    const players: VictoryPlayerInfo[] = [];
+
+    if (!state) return players;
+
+    const playerEntries = (
+      state.players as
+        | { entries?: () => Iterable<[string, Record<string, unknown>]> }
+        | undefined
+    )?.entries?.();
+
+    for (const [sessionId, player] of playerEntries ?? []) {
+      if (!player.isSpectator) {
+        players.push({
+          sessionId,
+          displayName: typeof player.displayName === "string" ? player.displayName : "Player",
+          playerIndex: typeof player.playerIndex === "number" ? player.playerIndex : -1,
+        });
+      }
+    }
+
+    return players;
+  }
+
 
   private handleGameRoomDrop(room: ColyseusRoom, code: number): void {
     console.log(`[playgrid] Dropped game room ${this.getRoomLabel(room)} (code: ${code})`);
