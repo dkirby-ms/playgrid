@@ -4336,3 +4336,67 @@ Game tile clicks in the lobby now navigate to a full-screen Setup screen instead
 - Any new status messages added anywhere should also route to `consoleLog`
 - Components that need console logging should receive the ConsoleLog instance via setter (same pattern as LobbyScreen)
 - The `#console-log-container` div is in index.html at the bottom of `#app`
+
+---
+
+## Session: Figma Design Audit & P0/P1 Kickoff (2026-03-18)
+
+### Copilot: UI Implementation Reference Directive
+
+**Status:** Approved  
+**Date:** 2026-03-18  
+
+When implementing or fixing UI, always reference the Figma design exports in `docs/designs/playgrid-v1/` (React/shadcn components). Don't make up assets — use the design source of truth.
+
+**Rationale:**
+- Design exports provide React source code and component specifications
+- Unsplash URLs are pre-selected in design; use them rather than hand-creating or finding alternates
+- Maintains visual consistency and reduces rework
+
+**Impact:** All agents working on client UI should reference Figma first, especially for images and component styling.
+
+---
+
+### Mario: Comprehensive Figma v1 Design Audit — Exhaustive Gap Analysis
+
+**Status:** Complete  
+**Date:** 2026-03-18  
+
+Full comparison of Figma design export (`docs/designs/playgrid-v1/src/app/`) against live implementation (`client/src/`). Examined 17 design pages, 6 custom components, and corresponding live screen implementations.
+
+**Findings:**
+- Live implementation: **40-50% alignment** with Figma v1
+- **12 entire screen types missing** (Setup/Victory/History for 3 games; Catan, Scrabble, Risk Cards)
+- **Player info bars:** Designed but not integrated; critical for UX (players don't know whose turn it is)
+- **Game header bar:** Absent; no back button, history access, or resign visible
+- **Missing component implementations:** ActiveGamesList, OnlinePlayersList (designed, not coded)
+- **Visual divergence:** Color palette shift (live: zinc+violet; design: slate+blue)
+- **Well-aligned:** Core game boards (Checkers 85%, Backgammon 80%, Risk 75%)
+
+**Priority Recommendations:**
+1. **P0: Player Info Bars** (4-6h) — Complete integration with game renderers
+2. **P1: Game Header Bar** (6-8h) — Consistent pattern across all games (Back/Title/Actions)
+3. **P2: Dedicated Setup Screens** (12-16h) — Full-page flows with configuration panels
+4. **P3: Victory & History Screens** (14-18h) — Post-game stats and move replay
+5. **P4: Color Palette Migration** (4-6h) — Shift from zinc+violet to slate+blue
+6. **P5: New Games** (20-30h each) — Catan and Scrabble renderers
+7. **P6: Visual Polish** (12-16h) — Hover effects, animations, gradients
+
+**Key Insight:** Missing screens are not cosmetic polish—they are functional flows users expect (Setup, Victory, History). Gaps are not about polish; they're about completeness.
+
+---
+
+### Ortho: Always Source UI Assets from Figma Design Exports
+
+**Status:** Approved  
+**Date:** 2026-03-18  
+
+Before implementing or fixing any UI element, always check the Figma design exports first. For image assets, use the URLs/references specified in the design rather than hand-making replacements. Design pipeline: **Figma → React export → PixiJS/DOM implementation**.
+
+**Context:** Dominos lobby thumbnail was previously fixed by hand-creating SVG instead of referencing Figma export which already specifies Unsplash URLs for all game tiles.
+
+**Impact:**
+- All agents working on client UI must reference `docs/designs/playgrid-v1/` before making visual changes
+- Game thumbnails and assets sourced from Figma specifications, not hand-created
+- Reduces rework and ensures design fidelity
+

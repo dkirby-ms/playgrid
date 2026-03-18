@@ -137,8 +137,9 @@
 - **ConsoleLog pattern:** Follows same `injectStyles()` pattern as PlayerInfoBar/SetupScreen. Uses `#console-log-container` in index.html. Exposes `log()`, `info()`, `success()`, `warn()`, `error()` methods. Pass instance via `setConsoleLog()` to components that need it.
 - **ReconnectOverlay reduced:** Changed from full-screen centered modal to compact top-right toast indicator using design tokens. Still functional for reconnection states, but no longer blocks gameplay.
 - **Status message routing:** `setStatus()` in Application.ts now dual-writes to both PixiJS statusText and ConsoleLog. This means all status messages are persisted in scrollable history.
-- **Dominos thumbnail fix:** `dominos.jpg` was missing from `client/public/game-thumbnails/`. Created `dominos.svg` (1200×900 SVG with domino tiles on dark background) and updated `GAME_TILE_ARTWORK` path in `LobbyScreen.ts` from `.jpg` to `.svg`. Added `onerror` fallback on game tile `<img>` elements to gracefully degrade to checkers thumbnail if any image fails to load.
-- **Game thumbnail assets:** Located at `client/public/game-thumbnails/`. Checkers, backgammon, risk use JPEG (1200×900). Dominos uses SVG. Path mapping in `GAME_TILE_ARTWORK` constant in `LobbyScreen.ts` (line ~153).
+- **Dominos thumbnail fix (v2):** Replaced hand-made `dominos.svg` with proper Unsplash JPEG (`dominos.jpg`) sourced from the Figma design export (`docs/designs/playgrid-v1/src/app/pages/Lobby.tsx`). All four game thumbnails now consistently use `.jpg` format.
+- **Game thumbnail assets:** Located at `client/public/game-thumbnails/`. All games (checkers, backgammon, risk, dominos) use JPEG. Path mapping in `GAME_TILE_ARTWORK` constant in `LobbyScreen.ts` (line ~153).
+- **Design pipeline discipline:** Always reference `docs/designs/playgrid-v1/` Figma exports before implementing or fixing UI elements. The Figma Lobby.tsx contains Unsplash URLs for all game tile images. Don't hand-make assets when the design already specifies them.
 
 ---
 
