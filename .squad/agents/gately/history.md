@@ -577,3 +577,27 @@ Implemented cross-shaped board layout for Dominos 4-way spinner arms:
 - `client/src/ui/PlayerInfoBar.ts` → NEW
 - `client/src/scenes/GameScene.ts` → +235 lines
 - `client/src/Application.ts` → +34 lines
+
+---
+
+## 2026-03-18: Ortho — Sidebar + Setup Screens (Cross-Agent Note)
+
+**Ortho completed two phases of DOM UI work:**
+
+### Phase 3: GameSidebar Visual Refresh ✅
+- Replaced all hardcoded `rgba()` in `client/src/ui/GameSidebar.ts` with design tokens
+- Glass morphism pattern now consistent with PlayerInfoBar
+- All existing APIs preserved
+
+### Phase 4: Setup Screens ✅
+- Created per-game setup screens replacing Create Game modal
+- `client/src/ui/SetupScreen.ts` (shared base) + per-game config panels
+- `client/src/scenes/SetupScene.ts` (scene wrapper)
+- Both "create" and "join" flows now route through SetupScene
+- Full-screen experience with two modes: "create" and "waiting"
+
+**Impact on Gately's work:**
+- No changes needed to PixiJS rendering layer
+- SetupScene is standalone screen; game rendering happens when players transition to game room
+- PlayerInfoBar continues to work alongside sidebar and setup screens
+- Gately's GameScene remains the primary rendering surface for in-game content

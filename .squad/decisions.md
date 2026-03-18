@@ -4261,3 +4261,56 @@ At that point, scope it as a dedicated migration project — not a side effect o
 1. **Keep the Activity Feed** — the Figma design dropped it, but we keep it in the lobby sidebar.
 2. **Use Setup pages instead of Create Game Modal** — adopt the design's flow where clicking a game tile navigates to a Setup screen (pre-game config: mode, rules, players, ready status) instead of opening a modal.
 **Why:** User design decisions — captured for team memory during Figma v1 implementation planning.
+
+---
+
+## Session: Ortho — Sidebar & Setup Screens (2026-03-18)
+
+### Ortho: GameSidebar Visual Refresh (Phase 3)
+
+**Status:** ✅ Completed  
+**Date:** 2026-03-18
+
+Restyled `client/src/ui/GameSidebar.ts` to use design tokens from `design-tokens.css`, eliminating all hardcoded `rgba()` color values.
+
+**Key decisions:**
+- Glass morphism consistency with PlayerInfoBar: `var(--glass-bg)`, `var(--shadow-card)`, `var(--border-light)`, `var(--bg-card-dark)`
+- Button gradients: `var(--gradient-button-primary)`, `var(--gradient-button-danger)`, `var(--bg-card-dark)` for secondary
+- Note cards: `var(--notice-info-bg/border/text)` instead of hardcoded blue-tinted rgba
+- Typography: `font-family: var(--font-family)`, panel headings `font-weight: 600`
+- Spacing: Panel gap `var(--space-lg)` (1.5rem) matching Figma `space-y-6`
+- Responsive: Tablet breakpoint 768–1024px with narrower sidebar
+- DOM structure and APIs fully preserved — purely visual
+
+**Cross-impact:** Establishes token-based styling pattern for all game overlays.
+
+---
+
+### Ortho: Setup Screens Replace Create Game Modal (Phase 4)
+
+**Status:** ✅ Implemented  
+**Date:** 2026-03-18
+
+Game tile clicks in the lobby now navigate to a full-screen Setup screen instead of opening the Create Game modal.
+
+**Architecture:**
+- **SetupScreen** (`client/src/ui/SetupScreen.ts`) — Two-column glass morphism layout with "create" and "waiting" modes
+- **Per-game config panels** (`client/src/ui/setup/`) — CheckersSetupConfig, BackgammonSetupConfig, RiskSetupConfig, DominosSetupConfig
+- **Shared controls** (`configControls.ts`) — Reusable factories for option groups, toggles, steppers
+- **SetupScene** (`client/src/scenes/SetupScene.ts`) — Scene wrapper for transitions
+- **LobbyEvent** extended with `{ type: "setup"; gameType: string }`
+
+**Key decisions:**
+- Full-screen experience, not modal
+- Game-specific configuration panels
+- Server unchanged: Uses existing CREATE_GAME, GAME_JOINED, GAME_PLAYERS, GAME_STARTED messages
+- WaitingRoom and WaitingRoomScene preserved for e2e backward compatibility
+- Both "create" and "join" flows route through SetupScene
+
+**Rationale:** User directive from Figma v1 — per-game setup screens provide better UX than generic modal. Matches design mockups.
+
+**Cross-impact:**
+- Server: No changes needed
+- Renderers: No changes; Setup screens are pure DOM
+- Gately (PixiJS): No changes; SetupScene is standalone screen
+- E2E tests: May need updates to navigate through SetupScreen (WaitingRoom preserved for compat)
