@@ -136,8 +136,8 @@ function lobbyOverlay(page: Page): Locator {
   return page.locator("#lobby-overlay.visible");
 }
 
-function waitingRoomOverlay(page: Page): Locator {
-  return page.locator("#waiting-room-overlay.visible");
+function setupOverlay(page: Page): Locator {
+  return page.locator("#setup-overlay.visible");
 }
 
 // ── Lobby helpers ──────────────────────────────────────────────────────
@@ -181,11 +181,11 @@ async function startCpuGame(browser: Browser, gameName: string, gameType: "check
   const player = await openLobbyPlayer(browser, uniqueName(`cpu-${gameType}`));
 
   await createCpuGame(player.page, gameName, gameType);
-  await expect(waitingRoomOverlay(player.page)).toBeVisible();
+  await expect(setupOverlay(player.page)).toBeVisible();
 
   // CPU is auto-ready; host clicks Start Game
-  await player.page.getByRole("button", { name: "Start Game", exact: true }).click();
-  await expect(player.page.getByRole("button", { name: "Leave Game" })).toBeVisible();
+  await player.page.getByRole("button", { name: "Start Game" }).click();
+  await expect(player.page.getByRole("button", { name: "Back to Lobby" })).toBeVisible();
 
   return player;
 }

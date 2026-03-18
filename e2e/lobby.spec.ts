@@ -13,8 +13,8 @@ function lobbyOverlay(page: Page): Locator {
   return page.locator("#lobby-overlay.visible");
 }
 
-function waitingRoomOverlay(page: Page): Locator {
-  return page.locator("#waiting-room-overlay.visible");
+function setupOverlay(page: Page): Locator {
+  return page.locator("#setup-overlay.visible");
 }
 
 function activeGameCard(page: Page, gameName: string): Locator {
@@ -52,7 +52,7 @@ async function createGame(page: Page, gameName: string): Promise<void> {
   await createGameModal.locator('input[name="game-name"]').fill(gameName);
   await createGameModal.locator('select[name="game-type"]').selectOption("checkers");
   await createGameModal.getByRole("button", { name: "Create Game", exact: true }).click();
-  await expect(waitingRoomOverlay(page)).toBeVisible();
+  await expect(setupOverlay(page)).toBeVisible();
 }
 
 test.describe("lobby e2e", () => {
@@ -70,10 +70,10 @@ test.describe("lobby e2e", () => {
       const gameName = uniqueName("validation");
       await createGame(page, gameName);
 
-      const hostPlayer = waitingRoomOverlay(page).locator(".waiting-room-player");
-      await expect(waitingRoomOverlay(page).locator(".waiting-room-player-name")).toHaveText(["Steeply Host"]);
+      const hostPlayer = setupOverlay(page).locator(".setup-player-card");
+      await expect(setupOverlay(page).locator(".setup-player-name")).toHaveText(["Steeply Host"]);
       await expect(hostPlayer).toContainText("You");
-      await expect(page.getByRole("button", { name: "Start Game", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Start Game" })).toBeVisible();
     } finally {
       await context.close().catch(() => undefined);
     }
@@ -95,7 +95,7 @@ test.describe("lobby e2e", () => {
       await expect(spectatorCard).toContainText("Waiting");
       await expect(spectatorCard.getByRole("button", { name: "Join" })).toBeVisible();
 
-      await host.page.getByRole("button", { name: "Leave" }).click();
+      await host.page.getByRole("button", { name: "Back to Lobby" }).click();
       await expect(lobbyOverlay(host.page)).toBeVisible();
       await expect(activeGameCard(spectator.page, gameName)).toHaveCount(0);
     } finally {
@@ -118,17 +118,17 @@ test.describe("lobby e2e", () => {
       await expect(guestCard).toContainText("Waiting");
       await guestCard.getByRole("button", { name: "Join" }).click();
 
-      await expect(waitingRoomOverlay(guest.page)).toBeVisible();
-      await expect(waitingRoomOverlay(host.page).locator(".waiting-room-player-list")).toContainText("Host Player");
-      await expect(waitingRoomOverlay(host.page).locator(".waiting-room-player-list")).toContainText("Guest Player");
-      await expect(waitingRoomOverlay(guest.page).locator(".waiting-room-player-list")).toContainText("Host Player");
-      await expect(waitingRoomOverlay(guest.page).locator(".waiting-room-player-list")).toContainText("Guest Player");
+      await expect(setupOverlay(guest.page)).toBeVisible();
+      await expect(setupOverlay(host.page).locator(".setup-player-list")).toContainText("Host Player");
+      await expect(setupOverlay(host.page).locator(".setup-player-list")).toContainText("Guest Player");
+      await expect(setupOverlay(guest.page).locator(".setup-player-list")).toContainText("Host Player");
+      await expect(setupOverlay(guest.page).locator(".setup-player-list")).toContainText("Guest Player");
 
-      await expect(host.page.getByRole("button", { name: "Start when everyone is ready", exact: true })).toBeVisible();
-      await expect(host.page.getByRole("button", { name: "Start when everyone is ready", exact: true })).toBeDisabled();
-      await expect(host.page.getByRole("button", { name: "Ready", exact: true })).toBeHidden();
-      await expect(guest.page.getByRole("button", { name: "Ready", exact: true })).toBeVisible();
-      await expect(guest.page.getByRole("button", { name: "Start Game", exact: true })).toBeHidden();
+      await expect(host.page.getByRole("button", { name: "Waiting for players" })).toBeVisible();
+      await expect(host.page.getByRole("button", { name: "Waiting for players" })).toBeDisabled();
+      await expect(host.page.getByRole("button", { name: /^✓ Ready$/ })).toBeHidden();
+      await expect(guest.page.getByRole("button", { name: /^✓ Ready$/ })).toBeVisible();
+      await expect(guest.page.getByRole("button", { name: "Start Game" })).toBeHidden();
 
       const spectatorCard = activeGameCard(spectator.page, gameName);
       await expect(spectatorCard).toContainText(gameName);
