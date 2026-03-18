@@ -147,7 +147,7 @@ jobs:
           set -euo pipefail
 
           git add package.json package-lock.json client/package.json server/package.json shared/package.json
-          git commit -m "chore: bump patch version to v${{ steps.version.outputs.new_version }} [skip ci]"
+          git commit -m "chore: bump patch version to v${{ steps.version.outputs.new_version }}"
 
       - name: Push version bump
         run: git push origin HEAD:dev

@@ -741,3 +741,27 @@ permissions:
 
 **Status:** Complete. Production deployments now automatically publish GitHub Releases.
 
+---
+
+## 2026-03-17: Fix `[skip ci]` in Version-Bump Workflow (Critical Bug Fix)
+
+**Problem:** PR #153 (dev → uat) squash-merged with commit body containing text from version-bump commits that included `[skip ci]`. GitHub Actions scans the ENTIRE commit message for this directive, causing the Deploy UAT workflow to silently skip. This broke production deploys.
+
+**Root Cause:** The CI version-bump workflow at `.github/workflows/ci.yml` line 150 included `[skip ci]` in the commit message, which propagated into squash merge bodies. The workflow uses `token: ${{ github.token }}` (default GITHUB_TOKEN), which already prevents workflow triggers by GitHub's built-in behavior.
+
+**Fix:** Removed `[skip ci]` from the version-bump commit message (line 150). The directive is redundant — pushes made with GITHUB_TOKEN do not trigger other workflows by design.
+
+**Verification:**
+- Validated YAML syntax with Python yaml module
+- Confirmed git diff shows single-line change removing `[skip ci]`
+- No additional workflow condition checks needed
+
+**Impact:**
+- Squash merges to uat/prod will no longer silently skip deployment workflows
+- Version-bump commits will still not trigger CI loops (GITHUB_TOKEN behavior)
+- Critical deploy reliability issue resolved
+
+**Key Learning:** `[skip ci]` in commit messages is dangerous when squash-merging — it pollutes the merge commit body and causes unintended workflow skips. Always prefer GitHub's built-in token behavior or workflow-level conditions over commit message directives.
+
+**File Changed:** `.github/workflows/ci.yml` (line 150)
+
