@@ -1122,3 +1122,24 @@ Implemented standard dominos spinner rules with 4-way branching:
 - **Pattern to remember:** Any test that asserts `room.disconnect()` after a game-ending action must use fake timers and advance past the 6-second disconnect delay introduced in the turn timer system.
 - **Affected tests:** "ends the game when an action reports endsGame", "does not hold a seat for a consented disconnect...", "does not award a forfeit win to the shared-device opponent...", "releases the reserved seat after the reconnection window expires", "cleans up the shared-device opponent when the controller times out".
 - **Commit:** 266e002
+### Dominos tile orientation rendering fix (2026-03-16)
+
+- Fixed bug #155 where dominos tiles rendered with flipped orientation, showing invalid connections (e.g., 0 touching 4 when they should match).
+- **Root cause:** The renderer's `drawBoardTile()` function was **ignoring the `exposedEnd` field** on `BoardTile` and always drawing `highPips` on the left/top and `lowPips` on the right/bottom, regardless of which pip should actually face the chain.
+- **Server logic (correct):** `placeTileOnBoard()` in `dominosLogic.ts` calls `resolvePlay(tile, endValue)` which returns `newEndValue` (the pip facing outward after placement). This is stored in `BoardTile.exposedEnd`.
+  - If `tile.highPips === endValue`, the tile connects via highPips, so `lowPips` is exposed.
+  - Otherwise, the tile connects via lowPips, so `highPips` is exposed.
+- **Fix:** Modified `drawBoardTile()` to respect `exposedEnd`:
+  - **Horizontal orientation:** Draw `exposedEnd` on the **left** half, the other pip on the **right**.
+  - **Vertical orientation:** Draw `exposedEnd` on the **top** half, the other pip on the **bottom**.
+- Added 3 new tests in `dominosLogic.test.ts` to verify `exposedEnd` is correctly set during placement (highPips match, lowPips match, and double tile cases).
+- All tests pass (515 total), build and lint green.
+- Committed to existing PR branch `squad/155-dominos-placement` (PR #158 already open).
+
+**Key file paths:**
+- Renderer fix: `client/src/renderers/DominosRenderer.ts` (drawBoardTile method)
+- State schema: `shared/src/games/dominos/DominosState.ts` (BoardTile with exposedEnd field)
+- Placement logic: `server/src/games/dominos/dominosLogic.ts` (resolvePlay, toBoardTile, placeTileOnBoard)
+- Tests: `server/src/games/dominos/__tests__/dominosLogic.test.ts` (exposedEnd verification tests)
+
+**Pattern to remember:** When a game state schema includes orientation/directionality metadata (like `exposedEnd`), the renderer **must** use that field rather than assuming a fixed orientation based on `highPips`/`lowPips`. Server-authoritative state always wins.

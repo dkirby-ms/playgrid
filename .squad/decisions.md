@@ -4929,3 +4929,98 @@ Never use `[skip ci]` in commit messages when workflows involve squash-merging. 
 **Files Modified:**
 - `.github/workflows/ci.yml`
 
+
+---
+
+### Ortho: P6.3 History Formatters (Backgammon, Dominos, Risk)
+
+**Status:** Implemented  
+**Date:** 2026-03-19  
+
+Added three game-specific `MoveFormatter` implementations to `client/src/ui/historyFormatters.ts`.
+
+**Formatters:**
+- **backgammonFormatter** — `roll`, `move` (point 1-24, Bar, Off), `pass`
+- **dominosFormatter** — `play` (graceful pip detection), `draw`, `pass`
+- **riskFormatter** — `pickTerritory`, `placeArmy`, `attack`, `captureMove`, `fortify`, `tradeCards`, `endPhase`; territory ID resolution via `getTerritoryById()`
+
+**Key Design Choices:**
+1. Dominos pip detection defers to server-side enrichment; falls back to `entry.description`
+2. Risk reuses existing `getTerritoryById()` (no data duplication); IDs gracefully fall back to raw string if not found
+3. Attack display limited to dice count (server-side results not in client payload; enrichment supported via future `formatMoveHistory`)
+
+**Team Impact:**
+- Server devs: Consider adding `formatMoveHistory` to Backgammon/Dominos/Risk plugins to enrich payloads
+- No breaking changes (additive only)
+
+**Files Modified:**
+- `client/src/ui/historyFormatters.ts`
+
+**Test Coverage:** 41 new test cases (Steeply); 580 total tests passing
+
+---
+
+### Gately: Preserve Drags Across Colyseus State Changes
+
+**Status:** Implemented  
+**Date:** 2026-03-19  
+
+Fixed drag-and-drop flakiness where pieces disappear when dragged slowly across grid.
+
+**Root Cause:**
+`CheckersRenderer.onStateChange()` and `DominosRenderer.onStateChange()` unconditionally called `dragHelper.cancel()` on every Colyseus state sync. In multiplayer games, state updates arrive frequently (timer ticks, opponent moves). If the user was mid-drag—even after crossing the 6px promotion threshold—the proxy was destroyed, making the piece vanish.
+
+**Solution:**
+1. **Renderers** — `onStateChange` now cancels drags only when the source is invalidated (piece captured, tile left hand, turn changed)
+2. **DragHelper.cancel()** — Always calls `onDragCancel` for both promoted and pending drags; previously silent for pending drags, leaving renderer state (`dragSourceIndex`/`dragTileId`) stale
+3. **Hover guard** — `handleSquareHover` in Checkers blocks during pending drags (not just promoted ones), preventing redraws during 6px build-up
+
+**Impact:**
+- All games using DragHelper benefit (Checkers, Dominos)
+- Existing click-vs-drag distinction (6px threshold) unchanged
+- 4 new regression tests added
+
+**Files Modified:**
+- `client/src/renderers/DragHelper.ts`
+- `client/src/renderers/DragHelper.test.ts`
+- `client/src/renderers/CheckersRenderer.ts`
+- `client/src/renderers/DominosRenderer.ts`
+
+**Test Coverage:** 4 regression tests added; 583 total tests passing
+
+---
+
+### Gately: Fix Dominos Hand Desync on Join and Reconnect
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+
+Fixed two Dominos bugs where (1) the board appeared non-functional on game start because the player's hand tiles were missing, and (2) hand tiles were invisible after a page-refresh reconnect.
+
+**Root Cause:**
+Both bugs share the same race condition. The server sends `player-data` (hand tiles) via `client.send()` during `onJoin()` — inside `startGame()` (initial join) or the reconnect path. But the Colyseus SDK delivers these messages before the client has registered its `room.onMessage("player-data")` handler. The SDK silently drops unhandled messages — there is no replay or buffering. The player's hand array stays empty, making the game unplayable.
+
+A secondary issue affects all games: the async `SceneManager.transitionTo()` creates a window where Colyseus state patches can silently update `room.state` without triggering `onStateChange` (handler not yet registered).
+
+**Solution:**
+
+1. **BaseGameRoom** — Registered a `"request-player-data"` message handler that re-sends the player's private data on demand (via the existing `sendPlayerMessage` path).
+2. **DominosRenderer** — After subscribing to `"player-data"` events, immediately sends `"request-player-data"` to the server so the hand is always received regardless of join timing.
+3. **GameScene** — After registering `room.onStateChange`, immediately invokes the handler with `room.state` to flush any patches that arrived during the async scene transition.
+
+**Impact:**
+- ✅ Hand tiles appear on first join without requiring a page refresh
+- ✅ Hand tiles survive page-refresh reconnect
+- ✅ All existing tests pass (583 tests, 0 regressions)
+- ✅ Generic fix in BaseGameRoom benefits any future game with private player data
+- ✅ GameScene state-flush benefits all game renderers, not just Dominos
+
+**Key Learning:**
+Never rely on server-initiated messages sent during `onJoin()` reaching the client's renderer. The Colyseus join handshake completes and delivers messages before the application has finished its scene transition and registered game-specific handlers. Always pair server-push with client-pull for critical state like player hands.
+
+**Files Modified:**
+- `server/src/game/BaseGameRoom.ts`
+- `client/src/renderers/DominosRenderer.ts`
+- `client/src/scenes/GameScene.ts`
+
+**Test Coverage:** No new tests required — the fix is a timing/ordering change. All 583 existing tests pass.

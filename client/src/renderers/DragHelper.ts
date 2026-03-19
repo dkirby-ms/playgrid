@@ -101,13 +101,11 @@ export class DragHelper {
   /** Cancel any in-progress or pending drag. */
   cancel(): void {
     if (!this.active) return;
-    const { id, proxy, shadow, promoted } = this.active;
+    const { id, proxy, shadow } = this.active;
     proxy.destroy();
     shadow.destroy();
     this.active = null;
-    if (promoted) {
-      this.callbacks.onDragCancel(id);
-    }
+    this.callbacks.onDragCancel(id);
   }
 
   /** Returns true if a drag was pending but never promoted (i.e. it was a click). */

@@ -151,4 +151,74 @@ describe("DragHelper", () => {
 
     helper.destroy();
   });
+
+  it("cancel() on a pending (non-promoted) drag still calls onDragCancel", () => {
+    const stage = createMockStage();
+    const layer = createMockDragLayer();
+    const onDragCancel = vi.fn();
+    const helper = new DragHelper(stage, layer, { onDragCancel });
+
+    const proxy = createProxy();
+    helper.beginDrag("piece-5", proxy, 100, 100);
+    expect(helper.draggingId).toBe("piece-5");
+    expect(helper.isDragging).toBe(false); // not promoted
+
+    helper.cancel();
+    expect(helper.draggingId).toBeNull();
+    expect(onDragCancel).toHaveBeenCalledWith("piece-5");
+    expect(proxy.destroy).toHaveBeenCalled();
+
+    helper.destroy();
+  });
+
+  it("drag survives if not explicitly cancelled (simulates state change preserving drag)", () => {
+    const stage = createMockStage();
+    const layer = createMockDragLayer();
+    const onDragMove = vi.fn();
+    const onDrop = vi.fn(() => true);
+    const helper = new DragHelper(stage, layer, { onDragMove, onDrop });
+
+    const proxy = createProxy();
+    helper.beginDrag("piece-6", proxy, 100, 100);
+
+    // Move past threshold — drag promoted
+    (stage as unknown as { emit: (event: string, ...args: unknown[]) => void }).emit("pointermove", {
+      global: { x: 120, y: 120 },
+    });
+    expect(helper.isDragging).toBe(true);
+
+    // Simulate continued movement (as if state change did NOT cancel)
+    (stage as unknown as { emit: (event: string, ...args: unknown[]) => void }).emit("pointermove", {
+      global: { x: 130, y: 130 },
+    });
+    expect(helper.isDragging).toBe(true);
+    expect(onDragMove).toHaveBeenCalledTimes(2);
+
+    // Drop still works
+    (stage as unknown as { emit: (event: string, ...args: unknown[]) => void }).emit("pointerup", {
+      global: { x: 130, y: 130 },
+    });
+    expect(onDrop).toHaveBeenCalledWith("piece-6", 130, 130);
+
+    helper.destroy();
+  });
+
+  it("pointerup on non-promoted drag does not call onDragCancel", () => {
+    const stage = createMockStage();
+    const layer = createMockDragLayer();
+    const onDragCancel = vi.fn();
+    const helper = new DragHelper(stage, layer, { onDragCancel });
+
+    const proxy = createProxy();
+    helper.beginDrag("piece-7", proxy, 100, 100);
+
+    // Release without exceeding threshold (click)
+    (stage as unknown as { emit: (event: string, ...args: unknown[]) => void }).emit("pointerup", {
+      global: { x: 101, y: 101 },
+    });
+    expect(onDragCancel).not.toHaveBeenCalled();
+    expect(helper.draggingId).toBeNull();
+
+    helper.destroy();
+  });
 });

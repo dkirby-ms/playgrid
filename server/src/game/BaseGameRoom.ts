@@ -96,6 +96,13 @@ export class BaseGameRoom extends Room {
 
     this.registerActionHandlers();
 
+    // Allow clients to request their player-specific data (e.g. hand tiles)
+    // after registering message handlers — the initial broadcast during
+    // onJoin/startGame may arrive before the client's handler is ready.
+    this.onMessage("request-player-data", (client) => {
+      this.sendPlayerMessage(client);
+    });
+
     if (this.plugin.lifecycle.onTick) {
       this.setSimulationInterval((deltaTime) => {
         this.plugin.lifecycle.onTick?.(this.state, deltaTime);
@@ -322,6 +329,10 @@ export class BaseGameRoom extends Room {
     handler: ActionHandler<BaseGameState>,
     sendErrors: boolean,
   ) {
+    if (this.state.phase === "ended") {
+      return false;
+    }
+
     const player = this.state.players.get(client.sessionId);
     if (player?.isSpectator) {
       if (sendErrors) {

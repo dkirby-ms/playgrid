@@ -1,4 +1,5 @@
 import type { MoveEntry } from "@eschaton/shared";
+import { getTerritoryById } from "@eschaton/shared";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,6 +59,179 @@ const checkersFormatter: MoveFormatter = {
 };
 
 // ---------------------------------------------------------------------------
+// Backgammon helpers
+// ---------------------------------------------------------------------------
+
+/** Format a backgammon point index for human display. */
+function formatBackgammonPoint(value: unknown): string {
+  if (value === "bar") return "Bar";
+  if (value === "off") return "Off";
+  if (typeof value === "number") return `Point ${value + 1}`;
+  return String(value ?? "?");
+}
+
+// ---------------------------------------------------------------------------
+// Backgammon formatter
+// ---------------------------------------------------------------------------
+
+const backgammonFormatter: MoveFormatter = {
+  formatMove(entry: MoveEntry): string {
+    const p = entry.payload;
+
+    if (entry.actionType === "roll") {
+      return entry.description ?? "🎲 Rolled dice";
+    }
+
+    if (entry.actionType === "move") {
+      const from = formatBackgammonPoint(p.from);
+      const to = formatBackgammonPoint(p.to);
+      const die = typeof p.die === "number" ? ` (🎲 ${p.die})` : "";
+      if (p.to === "off") return `🏁 ${from} → Off${die}`;
+      if (p.from === "bar") return `↩️ Bar → ${to}${die}`;
+      return `🔘 ${from} → ${to}${die}`;
+    }
+
+    if (entry.actionType === "pass") {
+      return "⏭️ No valid moves — passed";
+    }
+
+    return entry.description ?? `Move ${entry.actionType}`;
+  },
+
+  getMoveIcon(entry: MoveEntry): string {
+    if (entry.actionType === "roll") return "🎲";
+    if (entry.actionType === "pass") return "⏭️";
+    if (entry.payload.to === "off") return "🏁";
+    if (entry.payload.from === "bar") return "↩️";
+    return "🔘";
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Dominos helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Try to extract domino pip values from the payload.
+ * Server-side formatMoveHistory may enrich with `pips`, `a`/`b`, or
+ * `tileA`/`tileB` fields.  Returns a display string like "[3|5]" or null.
+ */
+function formatDominoPips(p: Record<string, unknown>): string | null {
+  if (Array.isArray(p.pips) && p.pips.length === 2) {
+    return `[${p.pips[0]}|${p.pips[1]}]`;
+  }
+  if (typeof p.a === "number" && typeof p.b === "number") {
+    return `[${p.a}|${p.b}]`;
+  }
+  if (typeof p.tileA === "number" && typeof p.tileB === "number") {
+    return `[${p.tileA}|${p.tileB}]`;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Dominos formatter
+// ---------------------------------------------------------------------------
+
+const dominosFormatter: MoveFormatter = {
+  formatMove(entry: MoveEntry): string {
+    const p = entry.payload;
+
+    if (entry.actionType === "play") {
+      const pips = formatDominoPips(p);
+      return pips ? `🁢 ${pips} played` : (entry.description ?? "🁢 Played tile");
+    }
+
+    if (entry.actionType === "draw") {
+      return "📥 Drew from boneyard";
+    }
+
+    if (entry.actionType === "pass") {
+      return "⏭️ Pass";
+    }
+
+    return entry.description ?? `Move ${entry.actionType}`;
+  },
+
+  getMoveIcon(entry: MoveEntry): string {
+    if (entry.actionType === "play") return "🁢";
+    if (entry.actionType === "draw") return "📥";
+    if (entry.actionType === "pass") return "⏭️";
+    return "🔹";
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Risk helpers
+// ---------------------------------------------------------------------------
+
+/** Resolve a territory ID to its display name, falling back to the raw ID. */
+function territoryName(id: unknown): string {
+  if (typeof id !== "string") return String(id ?? "?");
+  return getTerritoryById(id)?.name ?? id;
+}
+
+// ---------------------------------------------------------------------------
+// Risk formatter
+// ---------------------------------------------------------------------------
+
+const riskFormatter: MoveFormatter = {
+  formatMove(entry: MoveEntry): string {
+    const p = entry.payload;
+
+    if (entry.actionType === "pickTerritory") {
+      return `📍 Claimed ${territoryName(p.territoryId)}`;
+    }
+
+    if (entry.actionType === "placeArmy") {
+      const count = typeof p.count === "number" ? p.count : 1;
+      return `🛡️ Reinforced ${territoryName(p.territoryId)} (+${count})`;
+    }
+
+    if (entry.actionType === "attack") {
+      const from = territoryName(p.from);
+      const to = territoryName(p.to);
+      const dice = typeof p.attackerDice === "number" ? p.attackerDice : "?";
+      return `⚔️ Attacked ${to} from ${from} (×${dice} dice)`;
+    }
+
+    if (entry.actionType === "captureMove") {
+      const count = typeof p.count === "number" ? p.count : "?";
+      return `🚩 Moved ${count} armies into captured territory`;
+    }
+
+    if (entry.actionType === "fortify") {
+      const from = territoryName(p.from);
+      const to = territoryName(p.to);
+      const count = typeof p.count === "number" ? p.count : "?";
+      return `🏰 Fortified ${count} armies: ${from} → ${to}`;
+    }
+
+    if (entry.actionType === "tradeCards") {
+      const count = typeof p.cardCount === "number" ? p.cardCount : 3;
+      return `🃏 Traded ${count} cards for reinforcements`;
+    }
+
+    if (entry.actionType === "endPhase") {
+      return "⏭️ Ended phase";
+    }
+
+    return entry.description ?? `Move ${entry.actionType}`;
+  },
+
+  getMoveIcon(entry: MoveEntry): string {
+    if (entry.actionType === "pickTerritory") return "📍";
+    if (entry.actionType === "placeArmy") return "🛡️";
+    if (entry.actionType === "attack") return "⚔️";
+    if (entry.actionType === "captureMove") return "🚩";
+    if (entry.actionType === "fortify") return "🏰";
+    if (entry.actionType === "tradeCards") return "🃏";
+    if (entry.actionType === "endPhase") return "⏭️";
+    return "🔹";
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Default (fallback) formatter
 // ---------------------------------------------------------------------------
 
@@ -77,6 +251,9 @@ const defaultFormatter: MoveFormatter = {
 
 const formatters: Record<string, MoveFormatter> = {
   checkers: checkersFormatter,
+  backgammon: backgammonFormatter,
+  dominos: dominosFormatter,
+  risk: riskFormatter,
 };
 
 /** Get the MoveFormatter for a given game type, falling back to a generic one. */

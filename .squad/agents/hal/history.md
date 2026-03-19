@@ -1402,3 +1402,22 @@ All expect `room.disconnect()` to be called but it's not being invoked.
 **Assignment:** `squad:pemulis` — BaseGameRoom is core infrastructure. The disconnect/forfeit lifecycle belongs to Pemulis (Systems Dev), not the drag-and-drop feature author.
 
 **Key Finding:** The drag-and-drop PR (#160) itself is sound — no new test failures introduced. The CI blocker is unrelated to this feature; it's a pre-existing infrastructure bug that needs fixing before dev can move forward.
+## Learnings
+
+### PR Review Batch — PRs #157, #158, #159, #160 (2026-03-16)
+
+**Reviews posted for 4 PRs against dev:**
+
+- **PR #157 (Risk Quickstart)** — Request Changes. Critical lifecycle bug: `onGameStart` reads `state.currentTurn` which is empty at that point (BaseGameRoom sets it after calling `onGameStart`). First player gets 0 reinforcements. Test masks this with incorrect setup order.
+
+- **PR #158 (Dominos Placement)** — Approved. Scale-aware offsets and ghost preview are solid. Non-blocking note about innerHTML XSS vector in HistoryScreen.ts.
+
+- **PR #159 (Turn Timer)** — Request Changes. TurnManager uses native `setTimeout` instead of Colyseus `clock.setTimeout()`. Violates project timer convention. Timer won't sync with simulation loop or auto-clean on room dispose.
+
+- **PR #160 (Drag-and-Drop)** — Request Changes. Two issues: (1) `this.ghostLayer` referenced but never declared in DominosRenderer — cross-branch dependency on PR #158 not resolved, will throw at runtime. (2) Memory leak in `redrawHand()` — removes children without destroying, leaks 2 event listeners per tile per redraw.
+
+**Cross-cutting concern identified:** `HistoryScreen.ts` uses `innerHTML` with unsanitized player `displayName` in move descriptions — XSS vector present in PRs #157 and #158. Recommend filing a dedicated issue.
+
+**CI note:** Vite/esbuild client build doesn't run type checking (`tsc --noEmit`). TypeScript errors in client code pass CI. Consider adding a `tsc --noEmit` step to CI.
+
+**BaseGameRoom lifecycle reminder:** `onGameStart` → `startTurns` → set `currentTurn`. Plugins must not rely on `currentTurn` during `onGameStart`. Use `onTurnStarted` for turn-dependent initialization.

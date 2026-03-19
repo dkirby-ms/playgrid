@@ -259,3 +259,47 @@ private syncSelectionWithState(): void {
 - **GameScene integration:** `client/src/scenes/GameScene.ts`
 - **Colyseus Room:** https://docs.colyseus.io/client/room/
 - **PixiJS Containers:** https://pixijs.download/release/docs/scene.Container.html
+
+## State Schema Orientation Fields
+
+**Critical pattern:** When rendering game elements with directional/orientation metadata in the state schema, **always use the state field** rather than assuming a fixed orientation.
+
+### Example: Dominos Tile Orientation
+
+The `BoardTile` schema includes an `exposedEnd` field indicating which pip value faces outward toward the chain:
+
+```typescript
+class BoardTile extends Schema {
+  highPips: number;
+  lowPips: number;
+  exposedEnd: number;  // Which pip faces the chain's left/top
+  // ...
+}
+```
+
+**Correct rendering logic** (respects `exposedEnd`):
+
+```typescript
+// Horizontal tile
+const leftPips = tile.exposedEnd === tile.highPips ? tile.highPips : tile.lowPips;
+const rightPips = tile.exposedEnd === tile.highPips ? tile.lowPips : tile.highPips;
+drawPips(leftPips, leftHalf);
+drawPips(rightPips, rightHalf);
+
+// Vertical tile
+const topPips = tile.exposedEnd === tile.highPips ? tile.highPips : tile.lowPips;
+const bottomPips = tile.exposedEnd === tile.highPips ? tile.lowPips : tile.highPips;
+drawPips(topPips, topHalf);
+drawPips(bottomPips, bottomHalf);
+```
+
+**Bug:** The original renderer ignored `exposedEnd` and always drew `highPips` on the left/top, causing tiles to render with flipped orientation.
+
+### General Rule
+
+If the server-side placement logic computes orientation/direction metadata (e.g., `exposedEnd`, `rotation`, `facing`, `direction`), the renderer **must** use that field to determine visual layout. Server-authoritative state is the source of truth.
+
+### Testing
+
+Add server-side tests to verify orientation fields are correctly set during state mutations (e.g., `placeTileOnBoard` tests for `exposedEnd`). This catches server logic bugs before they reach the renderer.
+

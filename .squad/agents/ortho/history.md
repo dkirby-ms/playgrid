@@ -353,4 +353,6 @@
 - **Move history data flow:** `GameResult.metadata.moveHistory` is the `MoveEntry[]` array. Extracted as `Record<string, unknown>` in Application.ts, then cast.
 - **Player color coding:** Up to 4 players supported via `hs-player-{0..3}` CSS classes, assigned by order of first appearance in move history.
 - **Formatter extensibility:** Add new game formatters to the `formatters` record in `historyFormatters.ts`. Each gets a `MoveFormatter` implementation.
+- **Game formatter payloads (P6.3):** Backgammon move payloads use `{ from: number|"bar", to: number|"off", die: number }` — points are 0-indexed, display as 1-indexed. Risk payloads use territory IDs (e.g., `"alaska"`) resolved to display names via `getTerritoryById()` from `@eschaton/shared`. Dominos play payloads only contain `{ tileId, end }` — pip values are server-side only; formatter checks for enriched `pips`/`a`/`b` fields and falls back gracefully.
+- **Risk action types for history:** `pickTerritory`, `placeArmy`, `attack`, `captureMove`, `fortify`, `tradeCards`, `endPhase`. Attack payload lacks dice roll results (computed server-side), so display uses attacker dice count only.
 
