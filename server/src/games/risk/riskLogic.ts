@@ -189,3 +189,62 @@ export function calculateInitialArmies(playerCount: number): number {
   if (playerCount === 6) return 20;
   return 20;
 }
+
+/**
+ * Fisher-Yates shuffle (in-place).
+ */
+function shuffleArray<T>(array: T[]): T[] {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
+/**
+ * Quickstart setup: randomly distribute all territories round-robin,
+ * place 1 army each, then distribute remaining initial armies randomly.
+ */
+export function performQuickstartSetup(state: RiskState): void {
+  const activePlayers = Array.from(state.players.values())
+    .filter((p) => !p.isSpectator)
+    .sort((a, b) => a.playerIndex - b.playerIndex);
+
+  const playerCount = activePlayers.length;
+  const initialArmies = calculateInitialArmies(playerCount);
+
+  // Shuffle territory IDs and distribute round-robin
+  const territoryIds = shuffleArray(TERRITORIES.map((t) => t.id));
+
+  for (let i = 0; i < territoryIds.length; i++) {
+    const player = activePlayers[i % playerCount];
+    const territory = state.territories.get(territoryIds[i]);
+    if (territory) {
+      territory.owner = player.sessionId;
+      territory.armyCount = 1;
+    }
+  }
+
+  // Update territory counts and distribute remaining armies randomly
+  for (const player of activePlayers) {
+    updatePlayerTerritoryCount(state, player.sessionId);
+
+    const riskPlayer = state.riskPlayers.get(player.sessionId);
+    if (!riskPlayer) continue;
+
+    const remainingArmies = initialArmies - riskPlayer.territoriesOwned;
+    if (remainingArmies <= 0) continue;
+
+    const ownedTerritoryIds = getOwnedTerritories(state, player.sessionId);
+    for (let i = 0; i < remainingArmies; i++) {
+      const targetId = ownedTerritoryIds[Math.floor(Math.random() * ownedTerritoryIds.length)];
+      const territory = state.territories.get(targetId);
+      if (territory) {
+        territory.armyCount += 1;
+      }
+    }
+
+    riskPlayer.armiesToPlace = 0;
+    riskPlayer.cardsHeld = 0;
+  }
+}

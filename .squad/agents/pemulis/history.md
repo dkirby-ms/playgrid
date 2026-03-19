@@ -726,3 +726,22 @@ Implemented standard dominos spinner rules with 4-way branching:
 **Key file paths:**
 - Formatter logic: `server/src/games/checkers/CheckersPlugin.ts` (formatMoveEntries helper + formatMoveHistory method)
 - Tests: `server/src/games/checkers/__tests__/formatMoveHistory.test.ts`
+
+### Risk Quickstart mode (#156, PR #157) (2026-03-16)
+
+- Implemented quickstart toggle for Risk that skips the tedious setup-pick and setup-place phases by randomly distributing territories and armies.
+- **Option flow:** `quickstart` boolean passes through `CreateGamePayload` → `LobbyGameEntry` → `matchMaker.createRoom` options → `plugin.lifecycle.onCreate` → stored on `RiskState.quickstart`.
+- **Core logic** in `performQuickstartSetup()` (`riskLogic.ts`): Fisher-Yates shuffle of all 42 territory IDs, round-robin assignment to players, 1 army per territory, remaining armies (using existing `calculateInitialArmies` formula) distributed randomly across each player's owned territories.
+- **Phase transition:** When quickstart is enabled, `onGameStart` sets `gamePhase="playing"` and `turnPhase="reinforce"` immediately, grants first player reinforcements. No setup-pick or setup-place phases occur.
+- **Plugin lifecycle pattern:** First use of `onCreate` hook in a game plugin. Used to extract `quickstart` from room options and persist on state before `onGameStart` runs (since `onGameStart` doesn't receive options).
+- **UI:** Added `createToggleRow` for quickstart in `RiskSetupConfig.ts` with label "Quickstart" and description "Skip drafting — territories and armies assigned randomly".
+- **Schema change:** Added `quickstart: boolean` to `RiskState` (Colyseus Schema v4, synced to clients).
+- **Tests:** 15 new unit tests covering territory distribution evenness (2-6 players), army count correctness per player count, phase transitions, card/combat state initialization, first-player reinforcements, gameplay after quickstart, and backward compatibility of normal setup flow.
+- All 521 tests pass, build and lint clean.
+
+**Key file paths:**
+- Quickstart logic: `server/src/games/risk/riskLogic.ts` (`performQuickstartSetup`, line ~208)
+- Plugin hooks: `server/src/games/risk/RiskPlugin.ts` (`onCreate` and `onGameStart`)
+- State schema: `shared/src/games/risk/RiskState.ts` (`quickstart` field)
+- Client toggle: `client/src/ui/setup/RiskSetupConfig.ts`
+- Tests: `server/src/__tests__/risk.test.ts` (Quickstart Mode describe block)
