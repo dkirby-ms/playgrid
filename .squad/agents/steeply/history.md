@@ -612,3 +612,4 @@ Wrote comprehensive test coverage for P6.1 Move History Core Infrastructure befo
 - Payload immutability is important — history should deep-copy payloads, not store references
 - Invalid moves should NOT be recorded in history
 - formatMoveHistory is optional — plugins that don't provide it get raw history
+- Dominos CPU test file lives at `server/src/games/dominos/__tests__/dominosCpu.test.ts` (24 tests). Uses `describe.skipIf` gated on dynamic import of `../dominosCpu` — auto-activates when Pemulis lands `selectCpuMove`. Expected signature: `selectCpuMove(state: DominosState, hand: RawTile[]): { tileId: number; end: PlayEnd } | null`. Tests assume the CPU function is a pure move-selection algorithm (same pattern as checkers/backgammon), with BaseGameRoom handling draw/pass/delay integration.

@@ -356,3 +356,21 @@
 - **Game formatter payloads (P6.3):** Backgammon move payloads use `{ from: number|"bar", to: number|"off", die: number }` — points are 0-indexed, display as 1-indexed. Risk payloads use territory IDs (e.g., `"alaska"`) resolved to display names via `getTerritoryById()` from `@eschaton/shared`. Dominos play payloads only contain `{ tileId, end }` — pip values are server-side only; formatter checks for enriched `pips`/`a`/`b` fields and falls back gracefully.
 - **Risk action types for history:** `pickTerritory`, `placeArmy`, `attack`, `captureMove`, `fortify`, `tradeCards`, `endPhase`. Attack payload lacks dice roll results (computed server-side), so display uses attacker dice count only.
 
+
+### Task: Migrate modal status popups to ConsoleLog
+
+**Commit:** `refactor: migrate modal status popups to ConsoleLog panel`
+
+Replaced 15 transient modal/notification-bar calls with ConsoleLog across 7 files:
+- **ReconnectOverlay** (Application.ts): 4 calls — showReconnecting/showReconnected/showFailure replaced with consoleLog.warn/success/error. Overlay infrastructure (hide/scheduling) left intact as no-op.
+- **LobbyScreen**: 5 showNotice calls replaced with consoleLog.error.
+- **LobbyScene**: showNotice method and onEnter notice now route through consoleLog.log().
+- **SetupScreen**: 2 showError calls replaced with consoleLog.error. Added setConsoleLog setter.
+- **WaitingRoom**: 1 showError call replaced with consoleLog.error. Added setConsoleLog setter.
+- **Application.ts**: 2 lobbyScene.showNotice calls replaced with consoleLog.success/error. Wired consoleLog to SetupScene and WaitingRoomScene.
+
+### Learnings
+
+- **ConsoleLog API:** `info()`, `success()`, `warn()`, `error()`, `log(msg, level)`. Singleton class, instantiated in Application.ts. Passed to scenes/screens via `setConsoleLog()` setter pattern.
+- **showNotice double-logging:** LobbyScreen.showNotice already logged to consoleLog internally (line 584). When replacing showNotice calls with direct consoleLog calls, the duplicate log path through showNotice is bypassed.
+- **ReconnectOverlay still exists:** The overlay has a spinner + text, so its DOM and scheduling infrastructure was left in place. After this migration it's never shown (show* calls removed), but hide() calls remain as harmless no-ops.

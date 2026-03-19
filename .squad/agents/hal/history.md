@@ -1362,3 +1362,22 @@ All expect `room.disconnect()` to be called but it's not being invoked.
 **CI note:** Vite/esbuild client build doesn't run type checking (`tsc --noEmit`). TypeScript errors in client code pass CI. Consider adding a `tsc --noEmit` step to CI.
 
 **BaseGameRoom lifecycle reminder:** `onGameStart` → `startTurns` → set `currentTurn`. Plugins must not rely on `currentTurn` during `onGameStart`. Use `onTurnStarted` for turn-dependent initialization.
+
+### Issue #163 Triage: Dominoes CPU Opponents (2026-03-19)
+
+**Event:** Triaged feature request for CPU opponents in Dominoes game mode.
+
+**Findings:**
+- CPU opponent pattern is well-established: Checkers (PR #121) + Backgammon refinements all in BaseGameRoom + LobbyRoom
+- Framework is game-agnostic; only game-specific part is move selection strategy
+- Dominoes CPU strategy differs: action space is ternary (play → draw → pass) vs. Checkers' binary or Backgammon's multi-phase
+
+**Architectural Decision:**
+- Implement `selectCpuMove()` in new `server/src/games/dominos/CpuOpponent.ts` (simple heuristic: hand reduction priority, break ties by tile ID)
+- No new framework patterns needed; reuse `createSyntheticClient()`, `pendingCpuTurn`, `executeDoominosCpuTurn()` pattern
+- Scope: Medium (1 new module + 2 method updates in BaseGameRoom/LobbyRoom)
+- Effort: ~6 hours (Pemulis 3-4h for strategy + integration, Steeply 2-3h for tests)
+
+**Decision Document:** `.squad/decisions/inbox/hal-cpu-opponents-dominos-triage.md`
+
+**Key Learning:** CPU opponent framework is extensible by design. New games just implement a strategy selector (`selectCpuX(state)`) and call it from `executeGameTypeCpuTurn()`. No architectural changes needed for Dominos.

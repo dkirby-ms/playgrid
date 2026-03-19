@@ -774,3 +774,15 @@ Implemented standard dominos spinner rules with 4-way branching:
 - Tests: `server/src/games/dominos/__tests__/dominosLogic.test.ts` (exposedEnd verification tests)
 
 **Pattern to remember:** When a game state schema includes orientation/directionality metadata (like `exposedEnd`), the renderer **must** use that field rather than assuming a fixed orientation based on `highPips`/`lowPips`. Server-authoritative state always wins.
+
+### Dominos CPU opponents (2026-03-19, Issue #163)
+
+- Created `server/src/games/dominos/CpuOpponent.ts` following the exact Checkers/Backgammon `CpuOpponent.ts` pattern.
+- Exports `selectCpuAction(state: DominosState)` returning `{ actionType: "play" | "draw" | "pass", payload? }`.
+- Decision tree: if hand has playable tile → play best; if not and boneyard > 0 → draw; else → pass.
+- Scoring heuristics: doubles (+200), pip total (×10), flexibility (+50 per remaining matching tile in hand).
+- Wired into `BaseGameRoom.executeCpuTurn()` via new `executeDominosCpuTurn()` method, same dispatch pattern as backgammon (multi-action per turn via `queueCpuTurnIfNeeded` loop).
+- Enabled dominos in the `cpuOpponentEnabled` gate in both `BaseGameRoom.onCreate()` and `LobbyRoom.shouldEnableCpuOpponent()`.
+- Added 10 unit tests in `server/src/games/dominos/__tests__/cpuOpponent.test.ts` covering play/draw/pass decisions, double preference, high-pip preference, end selection, flexibility scoring, perpendicular arm handling.
+- Full test suite: 594 tests pass (up from 584), build clean, lint clean.
+- Key insight: Dominos CPU uses the same multi-action pattern as Backgammon because `draw` returns `endsTurn: false`, so the CPU re-queues after each draw until it can play or must pass.
