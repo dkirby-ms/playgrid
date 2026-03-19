@@ -323,10 +323,19 @@ export class DominosRenderer implements GameRenderer {
   }
 
   onStateChange(state: unknown): void {
-    this.dragHelper?.cancel();
-    this.dragTileId = null;
     this.applyState(state);
     this.syncSelection();
+
+    // Only cancel a drag if the tile is no longer in hand or it's no longer our turn.
+    // Preserving the drag across routine state syncs prevents the proxy from
+    // disappearing while the player is still moving slowly.
+    if (this.dragTileId !== null) {
+      const hand = this.getMyHand();
+      if (!this.isLocalPlayersTurn() || !hand.some((t) => t.id === this.dragTileId)) {
+        this.dragHelper?.cancel();
+      }
+    }
+
     this.redrawAll();
   }
 

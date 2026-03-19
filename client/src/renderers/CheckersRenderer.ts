@@ -273,10 +273,18 @@ export class CheckersRenderer implements GameRenderer {
   }
 
   onStateChange(state: unknown): void {
-    this.dragHelper?.cancel();
-    this.dragSourceIndex = null;
     this.applyState(state);
     this.syncSelectionWithState();
+
+    // Only cancel a drag if the source piece is no longer valid (e.g. turn changed,
+    // piece captured). Preserving the drag across routine state syncs prevents the
+    // proxy from disappearing while the player is still moving slowly.
+    if (this.dragSourceIndex !== null) {
+      if (!this.isLocalPlayersTurn() || !this.isSelectableSquare(this.dragSourceIndex)) {
+        this.dragHelper?.cancel();
+      }
+    }
+
     this.redrawBoard();
     this.redrawPieces();
     this.updateHud();
@@ -604,7 +612,8 @@ export class CheckersRenderer implements GameRenderer {
   }
 
   private handleSquareHover(displayIndex: number | null): void {
-    if (this.dragHelper?.isDragging) return;
+    // Block hover changes while a drag is active OR pending (not yet promoted past threshold)
+    if (this.dragHelper?.draggingId !== null) return;
 
     const hoveredIndex = displayIndex === null ? null : this.toBoardIndex(displayIndex);
     const nextHoveredIndex = hoveredIndex !== null && this.isHoverablePiece(hoveredIndex)
