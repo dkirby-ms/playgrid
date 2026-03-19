@@ -125,4 +125,39 @@ describe("TurnManager", () => {
     expect(onTimeout).not.toHaveBeenCalled();
     expect(manager.isActive()).toBe(false);
   });
+
+  it("resets the timer for the current player without advancing turns", () => {
+    const onTimeout = vi.fn();
+    const manager = new TurnManager(["player-1", "player-2"], {
+      turnTimeLimit: 5,
+      onTimeout,
+    });
+
+    manager.startTurns();
+    vi.advanceTimersByTime(3_000);
+
+    manager.resetTimer();
+
+    expect(manager.getCurrentPlayer()).toBe("player-1");
+    expect(manager.getTurnNumber()).toBe(1);
+    expect(manager.getRemainingTimeSeconds()).toBe(5);
+
+    vi.advanceTimersByTime(4_999);
+    expect(onTimeout).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(onTimeout).toHaveBeenCalledWith("player-1");
+  });
+
+  it("does nothing when resetTimer is called on an inactive manager", () => {
+    const onTimeout = vi.fn();
+    const manager = new TurnManager(["player-1"], {
+      turnTimeLimit: 5,
+      onTimeout,
+    });
+
+    manager.resetTimer();
+    vi.advanceTimersByTime(10_000);
+    expect(onTimeout).not.toHaveBeenCalled();
+  });
 });

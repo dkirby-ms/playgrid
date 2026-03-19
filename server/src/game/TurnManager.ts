@@ -61,6 +61,17 @@ export class TurnManager {
     return this.playerIds[this.currentIndex];
   }
 
+  /** Restart the turn timer for the current player without advancing turns. */
+  resetTimer(): void {
+    if (!this.active || this.currentIndex === -1 || this.turnTimeLimitMs === undefined) {
+      return;
+    }
+
+    this.paused = false;
+    this.remainingTurnTimeMs = this.turnTimeLimitMs;
+    this.startTimer();
+  }
+
   getCurrentPlayer(): string {
     if (!this.active || this.currentIndex === -1 || this.playerIds.length === 0) {
       throw new Error("Turns are not active.");
