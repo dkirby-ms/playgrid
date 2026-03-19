@@ -38,14 +38,16 @@ async function savePlayerName(page: Page, displayName: string): Promise<void> {
   const playerNameInput = page.locator('input[name="player-name"]');
   await playerNameInput.fill(displayName);
   await playerNameInput.blur();
-  await expect(page.locator(".lobby-notice.visible")).toHaveText("Player name saved.");
-  await expect(page.locator(".lobby-notice.visible")).not.toBeVisible();
-  await expect(playerNameInput).toHaveValue(displayName.trim());
+  // Verify the name was actually saved: input reflects trimmed value and lobby reconnects
+  const trimmed = displayName.trim();
+  await expect(playerNameInput).toHaveValue(trimmed);
   await expect(lobbyOverlay(page)).toBeVisible();
+  // Wait for lobby reconnection to complete (player appears in online list)
+  await expect(page.locator(".online-player-name", { hasText: trimmed })).toBeVisible();
 }
 
 async function createGame(page: Page, gameName: string): Promise<void> {
-  await page.getByRole("button", { name: "Create Game", exact: true }).click();
+  await page.locator(".create-game-trigger").click();
 
   const createGameModal = page.locator("#create-game-modal.visible");
   await expect(createGameModal).toBeVisible();
@@ -63,7 +65,7 @@ test.describe("lobby e2e", () => {
       const playerNameInput = page.locator('input[name="player-name"]');
       await playerNameInput.fill("   ");
       await playerNameInput.blur();
-      await expect(page.locator(".lobby-notice.visible")).toHaveText("Player name is required.");
+      await expect(page.locator(".console-log-preview")).toContainText("Player name is required.");
 
       await savePlayerName(page, "  Steeply Host  ");
 

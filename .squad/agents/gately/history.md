@@ -1859,3 +1859,20 @@ npm run test   # ✅ 472 tests passed (5 new)
 - **MoveEntry.actionType vs payload fields:** Stats and detail rendering must use `entry.actionType` (top-level) for action type discrimination, not `entry.payload.action`. The payload holds game-specific data (coordinates, dice, etc), not the action type.
 - **Formatter registry owns detail rendering:** `MoveFormatter.formatMoveDetails()` returns structured `{label, value}` pairs. The HistoryScreen consumes these generically — no game-specific branching in the screen itself.
 - **Risk has 6+ action types:** pickTerritory, placeArmy, attack, captureMove, fortify, tradeCards, endPhase. Stats should count all meaningful ones, not just attack/fortify.
+
+## Add/Remove CPU Player from Waiting Room (Server-Side)
+
+**Date:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
+**Task:** Add `ADD_CPU_PLAYER` and `REMOVE_CPU_PLAYER` message handlers to LobbyRoom so hosts can toggle CPU opponents after game creation.
+
+**Changes:**
+- `shared/src/lobbyTypes.ts`: Added `ADD_CPU_PLAYER` / `REMOVE_CPU_PLAYER` constants, `AddCpuPlayerPayload` / `RemoveCpuPlayerPayload` types
+- `server/src/rooms/LobbyRoom.ts`: Added `handleAddCpuPlayer()` and `handleRemoveCpuPlayer()` handlers with full validation (host check, game status, CPU support gate, capacity, duplicate prevention). Extracted `isCpuSupported()` helper from `shouldEnableCpuOpponent()` to share the game-type check.
+- `server/src/__tests__/lobby-pregame.test.ts`: Updated shared mock to include new message constants.
+
+**Patterns Used:**
+- Same validation/broadcast pattern as `CREATE_GAME` CPU flow (lines ~219-258)
+- Reuses `createCpuPreGamePlayerInfo()`, `CPU_OPPONENT_SESSION_ID`, `broadcastGamePlayers()`
+- `isCpuSupported()` extracts the game-type check so it's DRY across create-time and add-time paths
+
+**Build/Lint/Test:** All pass (718 tests green, lint has only pre-existing warnings).

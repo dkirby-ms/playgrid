@@ -146,9 +146,10 @@ async function savePlayerName(page: Page, displayName: string): Promise<void> {
   const playerNameInput = page.locator('input[name="player-name"]');
   await playerNameInput.fill(displayName);
   await playerNameInput.blur();
-  await expect(page.locator(".lobby-notice.visible")).toHaveText("Player name saved.");
-  await expect(page.locator(".lobby-notice.visible")).not.toBeVisible();
-  await expect(playerNameInput).toHaveValue(displayName.trim());
+  const trimmed = displayName.trim();
+  await expect(playerNameInput).toHaveValue(trimmed);
+  await expect(page.locator("#lobby-overlay.visible")).toBeVisible();
+  await expect(page.locator(".online-player-name", { hasText: trimmed })).toBeVisible();
 }
 
 async function openLobbyPlayer(browser: Browser, displayName: string): Promise<PlayerClient> {
@@ -163,16 +164,12 @@ async function openLobbyPlayer(browser: Browser, displayName: string): Promise<P
 }
 
 async function createCpuGame(page: Page, gameName: string, gameType: "checkers" | "backgammon"): Promise<void> {
-  await page.getByRole("button", { name: "Create Game", exact: true }).click();
+  await page.locator(".create-game-trigger").click();
 
   const modal = page.locator("#create-game-modal.visible");
   await expect(modal).toBeVisible();
   await modal.locator('input[name="game-name"]').fill(gameName);
   await modal.locator('select[name="game-type"]').selectOption(gameType);
-
-  const cpuCheckbox = modal.locator('input[name="cpu-opponent"]');
-  await expect(cpuCheckbox).toBeEnabled();
-  await cpuCheckbox.check();
 
   await modal.getByRole("button", { name: "Create Game", exact: true }).click();
 }
@@ -181,9 +178,15 @@ async function startCpuGame(browser: Browser, gameName: string, gameType: "check
   const player = await openLobbyPlayer(browser, uniqueName(`cpu-${gameType}`));
 
   await createCpuGame(player.page, gameName, gameType);
-  await expect(setupOverlay(player.page)).toBeVisible();
+  const setup = player.page.locator("#setup-overlay.visible");
+  await expect(setup).toBeVisible();
 
-  // CPU is auto-ready; host clicks Start Game
+  // Add CPU player from the setup screen
+  await setup.locator(".setup-add-cpu-btn").click();
+  // Wait for CPU player to appear in the player list
+  await expect(setup.locator(".setup-player-card")).toHaveCount(2, { timeout: 10000 });
+
+  // Host clicks Start Game
   await player.page.getByRole("button", { name: "Start Game" }).click();
   await expect(player.page.getByRole("button", { name: "Back to Lobby" })).toBeVisible();
 

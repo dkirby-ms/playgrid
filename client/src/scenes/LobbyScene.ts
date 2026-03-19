@@ -47,16 +47,14 @@ export class LobbyScene implements Scene {
       void this.onEventCallback(event);
     });
     this.lobbyScreen.show();
+    this.lobbyScreen.clearNotice();
 
     if (enterData?.notice) {
       this.consoleLog?.log(
         enterData.notice.message,
         enterData.notice.tone === "error" ? "error" : "info",
       );
-      return;
     }
-
-    this.lobbyScreen.clearNotice();
   }
 
   onExit(): void {

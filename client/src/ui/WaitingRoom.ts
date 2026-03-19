@@ -2,10 +2,12 @@ import type { Room } from "@colyseus/sdk";
 import { buildJoinGameHref } from "../joinLinks";
 import type { ConsoleLog } from "./ConsoleLog";
 import {
+  ADD_CPU_PLAYER,
   GAME_PLAYERS,
   GAME_STARTED,
   LEAVE_GAME,
   LOBBY_ERROR,
+  REMOVE_CPU_PLAYER,
   SET_READY,
   START_GAME,
   type GameSessionInfo,
@@ -284,6 +286,15 @@ export class WaitingRoom {
       }
       if (player.isCPU) {
         meta.append(createChip("CPU"));
+        if (this.isHost) {
+          const removeBtn = createElement("button", "waiting-room-remove-cpu", "✕");
+          removeBtn.type = "button";
+          removeBtn.title = "Remove CPU player";
+          removeBtn.addEventListener("click", () => {
+            this.room?.send(REMOVE_CPU_PLAYER, { gameId: this.gameId });
+          });
+          meta.append(removeBtn);
+        }
       }
 
       const readyState = createElement(
@@ -294,6 +305,25 @@ export class WaitingRoom {
 
       item.append(meta, readyState);
       this.playerListEl.append(item);
+    }
+
+    // Add CPU Player slot (host only, CPU-supporting games, room not full, no CPU yet)
+    const hasCpu = this.players.some((p) => p.isCPU);
+    const maxPlayers = this.gameInfo?.maxPlayers ?? 0;
+    if (
+      this.isHost &&
+      this.supportsCpuOpponent() &&
+      this.players.length < maxPlayers &&
+      !hasCpu
+    ) {
+      const slot = createElement("li", "waiting-room-add-cpu");
+      const addBtn = createElement("button", "waiting-room-add-cpu-btn", "🤖 Add CPU Player");
+      addBtn.type = "button";
+      addBtn.addEventListener("click", () => {
+        this.room?.send(ADD_CPU_PLAYER, { gameId: this.gameId });
+      });
+      slot.append(addBtn);
+      this.playerListEl.append(slot);
     }
   }
 
@@ -367,10 +397,10 @@ export class WaitingRoom {
   }
 
   private updateInviteSectionVisibility(): void {
-    const isCpu = this.gameInfo?.cpuOpponent ?? false;
+    const hasCpu = this.players.some((p) => p.isCPU);
     const isFull =
       this.gameInfo != null && this.players.length >= this.gameInfo.maxPlayers;
-    this.inviteSection.style.display = isCpu || isFull ? "none" : "";
+    this.inviteSection.style.display = hasCpu || isFull ? "none" : "";
   }
 
   private updatePlayerCount(): void {
@@ -434,5 +464,10 @@ export class WaitingRoom {
   private clearError(): void {
     this.errorEl.textContent = "";
     this.errorEl.style.display = "none";
+  }
+
+  private supportsCpuOpponent(): boolean {
+    const gameType = this.gameInfo?.gameType ?? "";
+    return gameType === "checkers" || gameType === "backgammon" || gameType === "dominos";
   }
 }

@@ -444,4 +444,5 @@ Implemented comprehensive design enhancements to HistoryScreen based on Figma de
 - **Grid auto-fit pattern:** `grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))` auto-collapses to single column on narrow screens without media query.
 - **Touch target sizing:** 44px minimum height for mobile tap targets (WCAG AA guideline).
 - **Unused parameter prefix:** ESLint `@typescript-eslint/no-unused-vars` requires unused params to start with `_` (e.g., `_meta`, `_playerIndexMap`).
+- **Add CPU Player button:** CPU opponent selection moved from game creation time to the waiting room. The host sees an "Add CPU Player" dashed-border slot in the player list (both WaitingRoom.ts and SetupScreen.ts). Sends `ADD_CPU_PLAYER`/`REMOVE_CPU_PLAYER` messages to the lobby room. CPU-supporting games: checkers, backgammon, dominos. The PvP/AI mode toggle was removed from CheckersSetupConfig and BackgammonSetupConfig, and the cpuOpponent checkbox removed from LobbyScreen's create modal. Invite section visibility now checks `players.some(p => p.isCPU)` instead of `gameInfo.cpuOpponent`.
 

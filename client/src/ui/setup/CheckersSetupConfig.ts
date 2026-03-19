@@ -6,26 +6,13 @@ import {
   createToggleRow,
 } from "./configControls";
 
-type GameMode = "pvp" | "ai";
 type TimeControl = "no-limit" | "blitz" | "rapid" | "classical";
 
 export function createCheckersSetupConfig(): SetupConfigPanel {
   const container = document.createElement("div");
   container.className = "setup-config-panels";
 
-  // Game Mode
-  const modePanel = createPanel("Game Mode", "⚙");
-  const modeGroup = createOptionGroup<GameMode>(
-    [
-      { value: "pvp", label: "Player vs Player", description: "Play against a friend" },
-      { value: "ai", label: "Player vs AI", description: "Challenge the computer" },
-    ],
-    "pvp",
-  );
-  modePanel.append(modeGroup.element);
-  container.append(modePanel);
-
-  // Head-to-Head toggle (only visible for PvP)
+  // Head-to-Head toggle
   const h2hToggle = createToggleRow(
     "Shared Device",
     "Both players on the same screen",
@@ -61,13 +48,11 @@ export function createCheckersSetupConfig(): SetupConfigPanel {
     element: container,
     getPayloadOverrides(): Partial<CreateGamePayload> {
       return {
-        cpuOpponent: modeGroup.getValue() === "ai",
-        headToHeadMode: modeGroup.getValue() === "pvp" && h2hToggle.getValue(),
+        headToHeadMode: h2hToggle.getValue(),
         maxPlayers: 2,
       };
     },
     setReadOnly(readOnly: boolean) {
-      modeGroup.setReadOnly(readOnly);
       h2hToggle.setReadOnly(readOnly);
       timeGroup.setReadOnly(readOnly);
       forcedCapture.setReadOnly(readOnly);

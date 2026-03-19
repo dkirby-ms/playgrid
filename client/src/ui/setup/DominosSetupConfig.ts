@@ -32,12 +32,7 @@ export function createDominosSetupConfig(): SetupConfigPanel {
     2, 4, 1, 2,
     (v) => `${v} players`,
   );
-  const pointTarget = createStepper(
-    "Point Target",
-    50, 200, 25, 100,
-    (v) => `${v} pts`,
-  );
-  settingsPanel.append(maxPlayers.element, pointTarget.element);
+  settingsPanel.append(maxPlayers.element);
   container.append(settingsPanel);
 
   return {
@@ -50,7 +45,6 @@ export function createDominosSetupConfig(): SetupConfigPanel {
     setReadOnly(readOnly: boolean) {
       modeGroup.setReadOnly(readOnly);
       maxPlayers.setReadOnly(readOnly);
-      pointTarget.setReadOnly(readOnly);
     },
     destroy() {
       container.remove();

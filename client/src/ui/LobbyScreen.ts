@@ -15,6 +15,8 @@ export const GAME_STARTED = "game_started" as const;
 export const GAME_PLAYERS = "game_players" as const;
 export const LOBBY_ERROR = "lobby_error" as const;
 export const ONLINE_PLAYERS = "online_players" as const;
+export const ADD_CPU_PLAYER = "add_cpu_player" as const;
+export const REMOVE_CPU_PLAYER = "remove_cpu_player" as const;
 export const LOBBY_LOG_EVENT = "lobby_log_event" as const;
 
 export type GameStatus = "waiting" | "in_progress" | "ended";
@@ -183,7 +185,6 @@ export class LobbyScreen {
   private readonly gameNameInput: HTMLInputElement;
   private readonly gameTypeInput: HTMLSelectElement;
   private readonly maxPlayersInput: HTMLSelectElement;
-  private readonly cpuOpponentInput: HTMLInputElement;
   private readonly headToHeadInput: HTMLInputElement;
   private readonly createButton: HTMLButtonElement;
   private readonly filterButtons = new Map<LobbyFilter, HTMLButtonElement>();
@@ -203,6 +204,7 @@ export class LobbyScreen {
   private activeFilter: LobbyFilter = "all";
   private pendingTransition: "create" | "join" | null = null;
   private pendingSpectator = false;
+  private pendingCreatePayload: CreateGamePayload | null = null;
   private createTimeout: ReturnType<typeof window.setTimeout> | null = null;
   private noticeTimeout: ReturnType<typeof window.setTimeout> | null = null;
   private isCreatePending = false;
@@ -384,15 +386,6 @@ export class LobbyScreen {
     this.maxPlayersInput = createElement("select", "lobby-select") as HTMLSelectElement;
     this.maxPlayersInput.name = "max-players";
 
-    const cpuOpponentField = createElement("label", "field-group");
-    const cpuOpponentLabel = createElement("span", "field-label", "Opponent");
-    const cpuOpponentToggle = createElement("label") as HTMLLabelElement;
-    this.cpuOpponentInput = createElement("input") as HTMLInputElement;
-    this.cpuOpponentInput.type = "checkbox";
-    this.cpuOpponentInput.name = "cpu-opponent";
-    const cpuOpponentText = createElement("span", undefined, "Play vs CPU");
-    cpuOpponentToggle.append(this.cpuOpponentInput, cpuOpponentText);
-
     const headToHeadField = createElement("label", "field-group");
     const headToHeadLabel = createElement("span", "field-label", "Mode");
     const headToHeadToggle = createElement("label") as HTMLLabelElement;
@@ -407,10 +400,9 @@ export class LobbyScreen {
 
     gameTypeField.append(gameTypeLabel, this.gameTypeInput);
     maxPlayersField.append(maxPlayersLabel, this.maxPlayersInput);
-    cpuOpponentField.append(cpuOpponentLabel, cpuOpponentToggle);
     headToHeadField.append(headToHeadLabel, headToHeadToggle);
 
-    createForm.append(nameField, gameTypeField, maxPlayersField, cpuOpponentField, headToHeadField);
+    createForm.append(nameField, gameTypeField, maxPlayersField, headToHeadField);
     createForm.addEventListener("submit", (event) => {
       event.preventDefault();
       this.handleCreateGame();
@@ -506,11 +498,31 @@ export class LobbyScreen {
     });
 
     room.onMessage(GAME_JOINED, (payload: GameJoinedPayload) => {
-      const joinedGame = this.games.get(payload.gameId) ?? null;
+      let joinedGame = this.games.get(payload.gameId) ?? null;
       const isHost = joinedGame?.hostId === room.sessionId || this.pendingTransition === "create";
+      const createPayload = this.pendingCreatePayload;
       this.pendingTransition = null;
+      this.pendingCreatePayload = null;
       this.setCreatePending(false);
       this.clearNotice();
+
+      // When GAME_JOINED arrives before GAME_UPDATED, build a fallback from
+      // the creation payload so downstream screens know maxPlayers, gameType, etc.
+      if (!joinedGame && isHost && createPayload) {
+        joinedGame = {
+          id: payload.gameId,
+          name: createPayload.name,
+          gameType: createPayload.gameType,
+          hostId: room.sessionId,
+          hostName: "",
+          status: "waiting",
+          playerCount: 1,
+          maxPlayers: createPayload.maxPlayers ?? 2,
+          createdAt: Date.now(),
+          cpuOpponent: createPayload.cpuOpponent,
+          headToHeadMode: createPayload.headToHeadMode,
+        };
+      }
 
       if (payload.roomId) {
         this.eventCallback?.({
@@ -532,6 +544,7 @@ export class LobbyScreen {
 
     room.onMessage(LOBBY_ERROR, (payload: LobbyErrorPayload) => {
       this.pendingTransition = null;
+      this.pendingCreatePayload = null;
       this.setCreatePending(false);
       this.consoleLog?.error(payload.message);
       this.eventCallback?.({ type: "error", message: payload.message });
@@ -613,11 +626,11 @@ export class LobbyScreen {
       name: this.gameNameInput.value.trim() || this.gameNameInput.placeholder || "New game",
       gameType: this.getSelectedGameType(),
       maxPlayers: this.getSelectedMaxPlayers(),
-      cpuOpponent: this.shouldUseCpuOpponent(),
       headToHeadMode: this.shouldUseHeadToHeadMode(),
     };
 
     this.pendingTransition = "create";
+    this.pendingCreatePayload = payload;
     this.setCreatePending(true);
     this.room.send(CREATE_GAME, payload);
   }
@@ -641,6 +654,7 @@ export class LobbyScreen {
 
     this.createTimeout = window.setTimeout(() => {
       this.pendingTransition = null;
+      this.pendingCreatePayload = null;
       this.setCreatePending(false);
       this.consoleLog?.error("Game creation timed out. Try again.");
     }, 30000);
@@ -671,21 +685,12 @@ export class LobbyScreen {
       this.maxPlayersInput.append(option);
     }
 
-    const supportsCpuOpponent = this.supportsCpuOpponent(gameTypeOption.value);
-    if (!supportsCpuOpponent) {
-      this.cpuOpponentInput.checked = false;
-    }
-
     const supportsHeadToHeadMode = this.supportsHeadToHeadMode(gameTypeOption.value);
     if (!supportsHeadToHeadMode) {
       this.headToHeadInput.checked = false;
     }
 
     this.maxPlayersInput.disabled = this.isCreatePending || this.isTwoPlayerGameType(gameTypeOption.value);
-    this.cpuOpponentInput.disabled = this.isCreatePending || !supportsCpuOpponent;
-    this.cpuOpponentInput.title = supportsCpuOpponent
-      ? ""
-      : "CPU opponents are not available for this game type.";
     this.headToHeadInput.disabled = this.isCreatePending || !supportsHeadToHeadMode;
     this.headToHeadInput.title = supportsHeadToHeadMode
       ? ""
@@ -694,14 +699,6 @@ export class LobbyScreen {
 
   private isTwoPlayerGameType(gameType: string): boolean {
     return getGameTypeOption(gameType).selectablePlayerCounts.length === 1;
-  }
-
-  private supportsCpuOpponent(gameType: string): boolean {
-    return gameType === "checkers" || gameType === "backgammon";
-  }
-
-  private shouldUseCpuOpponent(): boolean {
-    return this.supportsCpuOpponent(this.getSelectedGameType()) && this.cpuOpponentInput.checked;
   }
 
   private supportsHeadToHeadMode(gameType: string): boolean {

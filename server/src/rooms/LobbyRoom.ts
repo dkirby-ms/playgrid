@@ -1,5 +1,6 @@
 import { Client, CloseCode, Room, matchMaker } from "colyseus";
 import {
+  ADD_CPU_PLAYER,
   CREATE_GAME,
   GAME_JOINED,
   GAME_LIST,
@@ -12,8 +13,10 @@ import {
   LOBBY_ERROR,
   LOBBY_LOG_EVENT,
   ONLINE_PLAYERS,
+  REMOVE_CPU_PLAYER,
   SET_READY,
   START_GAME,
+  type AddCpuPlayerPayload,
   type CreateGamePayload,
   type GameJoinedPayload,
   type GamePlayersPayload,
@@ -25,6 +28,7 @@ import {
   type OnlinePlayerInfo,
   type OnlinePlayersPayload,
   type PreGamePlayerInfo,
+  type RemoveCpuPlayerPayload,
   type SetReadyPayload,
 } from "@eschaton/shared";
 import { gameRegistry } from "../game/GameRegistry.js";
@@ -106,6 +110,14 @@ export class LobbyRoom extends Room {
 
     this.onMessage(SET_READY, (client, payload: SetReadyPayload) => {
       this.handleSetReady(client, payload);
+    });
+
+    this.onMessage(ADD_CPU_PLAYER, (client, payload: AddCpuPlayerPayload) => {
+      this.handleAddCpuPlayer(client, payload);
+    });
+
+    this.onMessage(REMOVE_CPU_PLAYER, (client, payload: RemoveCpuPlayerPayload) => {
+      this.handleRemoveCpuPlayer(client, payload);
     });
 
     void this.presence.subscribe(GAME_ROOM_DISPOSED_TOPIC, this.handleDisposedGameRoom);
@@ -521,6 +533,104 @@ export class LobbyRoom extends Room {
     this.broadcastGamePlayers(game.id);
   }
 
+  private handleAddCpuPlayer(client: Client, payload: AddCpuPlayerPayload) {
+    const session = this.sessions.get(client.sessionId);
+    if (!session) {
+      this.sendError(client, "You must join the lobby first.");
+      return;
+    }
+
+    const game = this.games.get(payload.gameId);
+    if (!game) {
+      this.sendError(client, "Game not found.");
+      return;
+    }
+
+    if (game.hostId !== client.sessionId) {
+      this.sendError(client, "Only the host can add a CPU player.");
+      return;
+    }
+
+    if (game.status !== "waiting") {
+      this.sendError(client, "Can only add a CPU player to a waiting game.");
+      return;
+    }
+
+    if (!this.isCpuSupported(game.gameType)) {
+      this.sendError(client, "CPU opponents are not available for this game type.");
+      return;
+    }
+
+    const players = this.waitingPlayers.get(game.id);
+    if (!players) {
+      this.sendError(client, "Game is no longer available.");
+      return;
+    }
+
+    if (players.has(CPU_OPPONENT_SESSION_ID)) {
+      this.sendError(client, "A CPU player is already in this game.");
+      return;
+    }
+
+    if (players.size >= game.maxPlayers) {
+      this.sendError(client, "Game is full.");
+      return;
+    }
+
+    players.set(CPU_OPPONENT_SESSION_ID, this.createCpuPreGamePlayerInfo());
+    game.cpuOpponent = true;
+    game.playerCount = players.size;
+
+    this.broadcast(GAME_UPDATED, { game: this.toGameSessionInfo(game) });
+    this.broadcastGamePlayers(game.id);
+
+    console.log(`[LobbyRoom] CPU player added to game ${game.id} by ${session.displayName}`);
+  }
+
+  private handleRemoveCpuPlayer(client: Client, payload: RemoveCpuPlayerPayload) {
+    const session = this.sessions.get(client.sessionId);
+    if (!session) {
+      this.sendError(client, "You must join the lobby first.");
+      return;
+    }
+
+    const game = this.games.get(payload.gameId);
+    if (!game) {
+      this.sendError(client, "Game not found.");
+      return;
+    }
+
+    if (game.hostId !== client.sessionId) {
+      this.sendError(client, "Only the host can remove a CPU player.");
+      return;
+    }
+
+    if (game.status !== "waiting") {
+      this.sendError(client, "Can only remove a CPU player from a waiting game.");
+      return;
+    }
+
+    const players = this.waitingPlayers.get(game.id);
+    if (!players) {
+      this.sendError(client, "Game is no longer available.");
+      return;
+    }
+
+    if (!players.has(CPU_OPPONENT_SESSION_ID)) {
+      this.sendError(client, "No CPU player in this game.");
+      return;
+    }
+
+    players.delete(CPU_OPPONENT_SESSION_ID);
+    game.cpuOpponent = false;
+    game.playerCount = players.size;
+
+    this.broadcast(GAME_UPDATED, { game: this.toGameSessionInfo(game) });
+    this.broadcastGamePlayers(game.id);
+
+    console.log(`[LobbyRoom] CPU player removed from game ${game.id} by ${session.displayName}`);
+  }
+
   private broadcastGamePlayers(gameId: string) {
     const players = this.waitingPlayers.get(gameId);
     if (!players) {
@@ -739,8 +849,12 @@ export class LobbyRoom extends Room {
     return trimmed || DEFAULT_GAME_TYPE;
   }
 
+  private isCpuSupported(gameType: string) {
+    return gameType === "checkers" || gameType === "backgammon" || gameType === "dominos";
+  }
+
   private shouldEnableCpuOpponent(gameType: string, cpuOpponent: unknown) {
-    return cpuOpponent === true && (gameType === "checkers" || gameType === "backgammon" || gameType === "dominos");
+    return cpuOpponent === true && this.isCpuSupported(gameType);
   }
 
   private shouldEnableHeadToHeadMode(gameType: string, headToHeadMode: unknown) {

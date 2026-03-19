@@ -6,24 +6,11 @@ import {
   createToggleRow,
 } from "./configControls";
 
-type GameMode = "pvp" | "ai";
 type MatchLength = "short" | "medium" | "long" | "unlimited";
 
 export function createBackgammonSetupConfig(): SetupConfigPanel {
   const container = document.createElement("div");
   container.className = "setup-config-panels";
-
-  // Game Mode
-  const modePanel = createPanel("Game Mode", "⚙");
-  const modeGroup = createOptionGroup<GameMode>(
-    [
-      { value: "pvp", label: "Player vs Player", description: "Play against a friend" },
-      { value: "ai", label: "Player vs AI", description: "Challenge the computer" },
-    ],
-    "pvp",
-  );
-  modePanel.append(modeGroup.element);
-  container.append(modePanel);
 
   // Match Length
   const matchPanel = createPanel("Match Length", "🏆");
@@ -50,12 +37,10 @@ export function createBackgammonSetupConfig(): SetupConfigPanel {
     element: container,
     getPayloadOverrides(): Partial<CreateGamePayload> {
       return {
-        cpuOpponent: modeGroup.getValue() === "ai",
         maxPlayers: 2,
       };
     },
     setReadOnly(readOnly: boolean) {
-      modeGroup.setReadOnly(readOnly);
       matchGroup.setReadOnly(readOnly);
       doublingCube.setReadOnly(readOnly);
       crawfordRule.setReadOnly(readOnly);
