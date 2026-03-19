@@ -2,12 +2,14 @@ import type { Room } from "@colyseus/sdk";
 import { buildJoinGameHref } from "../joinLinks";
 import type { ConsoleLog } from "./ConsoleLog";
 import {
+  ADD_CPU_PLAYER,
   CREATE_GAME,
   GAME_JOINED,
   GAME_PLAYERS,
   GAME_STARTED,
   LEAVE_GAME,
   LOBBY_ERROR,
+  REMOVE_CPU_PLAYER,
   SET_READY,
   START_GAME,
   type CreateGamePayload,
@@ -494,6 +496,54 @@ function injectStyles(): void {
       border: 2px dashed var(--border-default);
       color: var(--text-muted);
       font-size: var(--font-sm);
+    }
+    .setup-add-cpu-slot {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-md);
+      border-radius: var(--radius-xl);
+      border: 2px dashed rgba(255, 255, 255, 0.2);
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .setup-add-cpu-slot:hover {
+      border-color: rgba(255, 255, 255, 0.4);
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .setup-add-cpu-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      cursor: pointer;
+      padding: 0;
+      font-family: inherit;
+      transition: color 0.15s;
+    }
+    .setup-add-cpu-slot:hover .setup-add-cpu-btn {
+      color: var(--text-primary);
+    }
+    .setup-remove-cpu-btn {
+      background: none;
+      border: 1px solid rgba(248, 113, 113, 0.3);
+      color: #f87171;
+      font-size: var(--font-xs);
+      line-height: 1;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      transition: background 0.15s, border-color 0.15s;
+      font-family: inherit;
+    }
+    .setup-remove-cpu-btn:hover {
+      background: rgba(248, 113, 113, 0.15);
+      border-color: rgba(248, 113, 113, 0.5);
     }
 
     /* ===== Invite section ===== */
@@ -1008,13 +1058,39 @@ export class SetupScreen {
       this.playerListEl.append(this.buildPlayerCard(player, hostId));
     }
 
-    // Empty slots
+    // Add CPU Player slot or empty slots
     const maxPlayers = this.gameInfo?.maxPlayers ?? 0;
     const emptySlots = Math.max(0, maxPlayers - this.players.length);
-    for (let i = 0; i < emptySlots; i++) {
-      const slot = el("div", "setup-empty-slot");
-      slot.textContent = "Waiting for player…";
-      this.playerListEl.append(slot);
+    const hasCpu = this.players.some((p) => p.isCPU);
+
+    if (
+      emptySlots > 0 &&
+      this.isHost &&
+      this.supportsCpuOpponent() &&
+      !hasCpu
+    ) {
+      // First empty slot becomes an "Add CPU" button
+      const cpuSlot = el("div", "setup-add-cpu-slot");
+      const addBtn = el("button", "setup-add-cpu-btn", "🤖 Add CPU Player") as HTMLButtonElement;
+      addBtn.type = "button";
+      addBtn.addEventListener("click", () => {
+        this.room?.send(ADD_CPU_PLAYER, { gameId: this.gameId });
+      });
+      cpuSlot.append(addBtn);
+      this.playerListEl.append(cpuSlot);
+
+      // Remaining empty slots
+      for (let i = 1; i < emptySlots; i++) {
+        const slot = el("div", "setup-empty-slot");
+        slot.textContent = "Waiting for player…";
+        this.playerListEl.append(slot);
+      }
+    } else {
+      for (let i = 0; i < emptySlots; i++) {
+        const slot = el("div", "setup-empty-slot");
+        slot.textContent = "Waiting for player…";
+        this.playerListEl.append(slot);
+      }
     }
   }
 
@@ -1046,6 +1122,15 @@ export class SetupScreen {
     }
     if (player.isCPU) {
       nameRow.append(el("span", "setup-player-chip", "CPU"));
+      if (this.isHost) {
+        const removeBtn = el("button", "setup-remove-cpu-btn", "✕") as HTMLButtonElement;
+        removeBtn.type = "button";
+        removeBtn.title = "Remove CPU player";
+        removeBtn.addEventListener("click", () => {
+          this.room?.send(REMOVE_CPU_PLAYER, { gameId: this.gameId });
+        });
+        nameRow.append(removeBtn);
+      }
     }
 
     info.append(nameRow);
@@ -1150,6 +1235,10 @@ export class SetupScreen {
     );
   }
 
+  private supportsCpuOpponent(): boolean {
+    return this.gameType === "checkers" || this.gameType === "backgammon" || this.gameType === "dominos";
+  }
+
   // ---------------------------------------------------------------------------
   // Invite link
   // ---------------------------------------------------------------------------
@@ -1161,9 +1250,9 @@ export class SetupScreen {
   }
 
   private updateInviteVisibility(): void {
-    const isCpu = this.gameInfo?.cpuOpponent ?? this.configPanel?.getPayloadOverrides().cpuOpponent ?? false;
+    const hasCpu = this.players.some((p) => p.isCPU);
     const isFull = this.gameInfo != null && this.players.length >= this.gameInfo.maxPlayers;
-    this.inviteSection.style.display = this.mode === "waiting" && !isCpu && !isFull ? "" : "none";
+    this.inviteSection.style.display = this.mode === "waiting" && !hasCpu && !isFull ? "" : "none";
   }
 
   private async copyJoinLink(): Promise<void> {

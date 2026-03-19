@@ -15,6 +15,8 @@ export const GAME_STARTED = "game_started" as const;
 export const GAME_PLAYERS = "game_players" as const;
 export const LOBBY_ERROR = "lobby_error" as const;
 export const ONLINE_PLAYERS = "online_players" as const;
+export const ADD_CPU_PLAYER = "add_cpu_player" as const;
+export const REMOVE_CPU_PLAYER = "remove_cpu_player" as const;
 export const LOBBY_LOG_EVENT = "lobby_log_event" as const;
 
 export type GameStatus = "waiting" | "in_progress" | "ended";
@@ -183,7 +185,6 @@ export class LobbyScreen {
   private readonly gameNameInput: HTMLInputElement;
   private readonly gameTypeInput: HTMLSelectElement;
   private readonly maxPlayersInput: HTMLSelectElement;
-  private readonly cpuOpponentInput: HTMLInputElement;
   private readonly headToHeadInput: HTMLInputElement;
   private readonly createButton: HTMLButtonElement;
   private readonly filterButtons = new Map<LobbyFilter, HTMLButtonElement>();
@@ -384,15 +385,6 @@ export class LobbyScreen {
     this.maxPlayersInput = createElement("select", "lobby-select") as HTMLSelectElement;
     this.maxPlayersInput.name = "max-players";
 
-    const cpuOpponentField = createElement("label", "field-group");
-    const cpuOpponentLabel = createElement("span", "field-label", "Opponent");
-    const cpuOpponentToggle = createElement("label") as HTMLLabelElement;
-    this.cpuOpponentInput = createElement("input") as HTMLInputElement;
-    this.cpuOpponentInput.type = "checkbox";
-    this.cpuOpponentInput.name = "cpu-opponent";
-    const cpuOpponentText = createElement("span", undefined, "Play vs CPU");
-    cpuOpponentToggle.append(this.cpuOpponentInput, cpuOpponentText);
-
     const headToHeadField = createElement("label", "field-group");
     const headToHeadLabel = createElement("span", "field-label", "Mode");
     const headToHeadToggle = createElement("label") as HTMLLabelElement;
@@ -407,10 +399,9 @@ export class LobbyScreen {
 
     gameTypeField.append(gameTypeLabel, this.gameTypeInput);
     maxPlayersField.append(maxPlayersLabel, this.maxPlayersInput);
-    cpuOpponentField.append(cpuOpponentLabel, cpuOpponentToggle);
     headToHeadField.append(headToHeadLabel, headToHeadToggle);
 
-    createForm.append(nameField, gameTypeField, maxPlayersField, cpuOpponentField, headToHeadField);
+    createForm.append(nameField, gameTypeField, maxPlayersField, headToHeadField);
     createForm.addEventListener("submit", (event) => {
       event.preventDefault();
       this.handleCreateGame();
@@ -613,7 +604,6 @@ export class LobbyScreen {
       name: this.gameNameInput.value.trim() || this.gameNameInput.placeholder || "New game",
       gameType: this.getSelectedGameType(),
       maxPlayers: this.getSelectedMaxPlayers(),
-      cpuOpponent: this.shouldUseCpuOpponent(),
       headToHeadMode: this.shouldUseHeadToHeadMode(),
     };
 
@@ -671,21 +661,12 @@ export class LobbyScreen {
       this.maxPlayersInput.append(option);
     }
 
-    const supportsCpuOpponent = this.supportsCpuOpponent(gameTypeOption.value);
-    if (!supportsCpuOpponent) {
-      this.cpuOpponentInput.checked = false;
-    }
-
     const supportsHeadToHeadMode = this.supportsHeadToHeadMode(gameTypeOption.value);
     if (!supportsHeadToHeadMode) {
       this.headToHeadInput.checked = false;
     }
 
     this.maxPlayersInput.disabled = this.isCreatePending || this.isTwoPlayerGameType(gameTypeOption.value);
-    this.cpuOpponentInput.disabled = this.isCreatePending || !supportsCpuOpponent;
-    this.cpuOpponentInput.title = supportsCpuOpponent
-      ? ""
-      : "CPU opponents are not available for this game type.";
     this.headToHeadInput.disabled = this.isCreatePending || !supportsHeadToHeadMode;
     this.headToHeadInput.title = supportsHeadToHeadMode
       ? ""
@@ -694,14 +675,6 @@ export class LobbyScreen {
 
   private isTwoPlayerGameType(gameType: string): boolean {
     return getGameTypeOption(gameType).selectablePlayerCounts.length === 1;
-  }
-
-  private supportsCpuOpponent(gameType: string): boolean {
-    return gameType === "checkers" || gameType === "backgammon" || gameType === "dominos";
-  }
-
-  private shouldUseCpuOpponent(): boolean {
-    return this.supportsCpuOpponent(this.getSelectedGameType()) && this.cpuOpponentInput.checked;
   }
 
   private supportsHeadToHeadMode(gameType: string): boolean {

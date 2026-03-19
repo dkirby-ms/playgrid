@@ -17,6 +17,8 @@ const { mockCreateRoom, mockGameRegistry, mockedCloseCode, sharedExports } = vi.
     LEAVE_GAME: "leave_game",
     START_GAME: "start_game",
     SET_READY: "set_ready",
+    ADD_CPU_PLAYER: "add_cpu_player",
+    REMOVE_CPU_PLAYER: "remove_cpu_player",
     GAME_LIST: "game_list",
     GAME_JOINED: "game_joined",
     GAME_UPDATED: "game_updated",

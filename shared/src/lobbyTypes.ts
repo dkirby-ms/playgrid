@@ -3,6 +3,8 @@ export const JOIN_GAME = "join_game" as const;
 export const LEAVE_GAME = "leave_game" as const;
 export const START_GAME = "start_game" as const;
 export const SET_READY = "set_ready" as const;
+export const ADD_CPU_PLAYER = "add_cpu_player" as const;
+export const REMOVE_CPU_PLAYER = "remove_cpu_player" as const;
 
 export const GAME_LIST = "game_list" as const;
 export const GAME_JOINED = "game_joined" as const;
@@ -52,6 +54,14 @@ export interface GameJoinedPayload {
 
 export interface SetReadyPayload {
   ready: boolean;
+}
+
+export interface AddCpuPlayerPayload {
+  gameId: string;
+}
+
+export interface RemoveCpuPlayerPayload {
+  gameId: string;
 }
 
 export interface PreGamePlayerInfo {
