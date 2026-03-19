@@ -723,3 +723,36 @@ npm run test   # ✅ 467 tests passed
 **Cross-agent coordination:** No other agents involved. Standalone renderer improvements.
 
 **Status:** P7 complete. Risk phase banner now matches Figma prominence. Dominos background already correct.
+
+## 2026-03-19: Click-and-Drag for Game Pieces (Issue #149, PR #160)
+
+### Deliverables:
+- **DragHelper** (`client/src/renderers/DragHelper.ts`): Reusable proxy-based drag utility with distance threshold (6px) to distinguish clicks from drags
+- **Checkers drag-to-move**: pointerdown on piece starts drag, proxy follows cursor at 1.15x scale, valid targets highlighted, drop sends move
+- **Dominos drag-to-play**: pointerdown on hand tile starts drag, valid board ends highlighted, closest end auto-resolved on drop
+- **DragHelper.test.ts**: 5 unit tests (threshold, promotion, drop accept/reject, cleanup)
+
+### Design decisions:
+- **Proxy-based (not target-based)**: Renderers draw all pieces in a single Graphics batch; DragHelper receives a pre-drawn proxy graphic instead of wrapping existing display objects. This avoids refactoring the piece rendering pipeline.
+- **Click fallback preserved**: The 6px threshold means quick taps still trigger the existing click-to-select/click-to-move flow. No regression to existing UX.
+- **Game logic stays in renderer**: DragHelper only handles pointer tracking and visual proxy. Validation (valid squares, valid ends) is entirely in renderer callbacks.
+
+### Key file paths:
+- `client/src/renderers/DragHelper.ts` (new, reusable utility)
+- `client/src/renderers/DragHelper.test.ts` (new, unit tests)
+- `client/src/renderers/CheckersRenderer.ts` (modified, drag integration)
+- `client/src/renderers/DominosRenderer.ts` (modified, drag integration)
+
+### Validation:
+```bash
+npm run build  # ✅ Passed
+npm run lint   # ✅ No new issues
+npm run test   # ✅ 472 tests passed (5 new)
+```
+
+## Learnings
+
+- Checkers pieces are rendered as a single `Graphics` batch in `piecesLayer` (eventMode "none"), so drag cannot be attached to individual piece containers. Proxy-based drag is the right pattern for this renderer architecture.
+- DominosRenderer recreates hand tile Graphics on every `redrawHand()` call, making registration-based drag impractical. Proxy approach works here too.
+- PixiJS `pointerdown` + `pointermove` + `pointerup` on a parent container handles both mouse and touch — no separate touch event handling needed.
+- The `container.eventMode = "static"` must be set on the renderer's root container for stage-level pointer events to propagate to the DragHelper.
