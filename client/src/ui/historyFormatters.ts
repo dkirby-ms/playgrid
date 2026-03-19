@@ -5,11 +5,18 @@ import { getTerritoryById } from "@eschaton/shared";
 // Types
 // ---------------------------------------------------------------------------
 
+export interface MoveDetailItem {
+  label: string;
+  value: string;
+}
+
 export interface MoveFormatter {
   /** Returns an HTML string describing the move */
   formatMove(entry: MoveEntry): string;
   /** Returns an emoji/icon for the move type */
   getMoveIcon(entry: MoveEntry): string;
+  /** Returns structured detail items for the expanded move view */
+  formatMoveDetails(entry: MoveEntry): MoveDetailItem[];
 }
 
 // ---------------------------------------------------------------------------
@@ -55,6 +62,20 @@ const checkersFormatter: MoveFormatter = {
     if (entry.actionType === "king" || entry.payload.kinged === true) return "👑";
     if (entry.actionType === "capture" || entry.payload.captured != null) return "⚔️";
     return "➡️";
+  },
+
+  formatMoveDetails(entry: MoveEntry): MoveDetailItem[] {
+    const p = entry.payload;
+    const items: MoveDetailItem[] = [];
+    items.push({ label: "Action", value: entry.actionType === "capture" ? "Capture" : entry.actionType === "king" ? "Kinged" : "Move" });
+    if (typeof p.from === "number") items.push({ label: "From", value: indexToNotation(p.from) });
+    if (typeof p.to === "number") items.push({ label: "To", value: indexToNotation(p.to) });
+    if (p.captured != null) {
+      const captured = typeof p.captured === "number" ? indexToNotation(p.captured) : String(p.captured);
+      items.push({ label: "Captured", value: captured });
+    }
+    if (p.kinged === true) items.push({ label: "Kinged", value: "Yes" });
+    return items;
   },
 };
 
@@ -104,6 +125,25 @@ const backgammonFormatter: MoveFormatter = {
     if (entry.payload.to === "off") return "🏁";
     if (entry.payload.from === "bar") return "↩️";
     return "🔘";
+  },
+
+  formatMoveDetails(entry: MoveEntry): MoveDetailItem[] {
+    const p = entry.payload;
+    const items: MoveDetailItem[] = [];
+    if (entry.actionType === "roll") {
+      if (typeof p.die1 === "number" && typeof p.die2 === "number") {
+        items.push({ label: "Dice", value: `🎲 ${p.die1}  🎲 ${p.die2}` });
+      }
+      if (p.doubles === true) items.push({ label: "Doubles", value: "Yes" });
+    } else if (entry.actionType === "move") {
+      items.push({ label: "From", value: formatBackgammonPoint(p.from) });
+      items.push({ label: "To", value: formatBackgammonPoint(p.to) });
+      if (typeof p.die === "number") items.push({ label: "Die Used", value: `🎲 ${p.die}` });
+      items.push({ label: "Hit", value: p.hit === true ? "Yes ⚔️" : "No" });
+    } else if (entry.actionType === "pass") {
+      items.push({ label: "Reason", value: "No valid moves available" });
+    }
+    return items;
   },
 };
 
@@ -158,6 +198,24 @@ const dominosFormatter: MoveFormatter = {
     if (entry.actionType === "draw") return "📥";
     if (entry.actionType === "pass") return "⏭️";
     return "🔹";
+  },
+
+  formatMoveDetails(entry: MoveEntry): MoveDetailItem[] {
+    const p = entry.payload;
+    const items: MoveDetailItem[] = [];
+    if (entry.actionType === "play") {
+      const pips = formatDominoPips(p);
+      if (pips) items.push({ label: "Tile", value: pips });
+      if (typeof p.end === "string") items.push({ label: "Placed On", value: p.end === "left" ? "Left end" : "Right end" });
+      if (typeof p.score === "number") items.push({ label: "Score", value: String(p.score) });
+    } else if (entry.actionType === "draw") {
+      const pips = formatDominoPips(p);
+      if (pips) items.push({ label: "Drew", value: pips });
+      else items.push({ label: "Action", value: "Drew from boneyard" });
+    } else if (entry.actionType === "pass") {
+      items.push({ label: "Action", value: "Passed turn" });
+    }
+    return items;
   },
 };
 
@@ -229,6 +287,42 @@ const riskFormatter: MoveFormatter = {
     if (entry.actionType === "endPhase") return "⏭️";
     return "🔹";
   },
+
+  formatMoveDetails(entry: MoveEntry): MoveDetailItem[] {
+    const p = entry.payload;
+    const items: MoveDetailItem[] = [];
+    if (entry.actionType === "pickTerritory") {
+      items.push({ label: "Territory", value: territoryName(p.territoryId) });
+    } else if (entry.actionType === "placeArmy") {
+      items.push({ label: "Territory", value: territoryName(p.territoryId) });
+      const count = typeof p.count === "number" ? p.count : 1;
+      items.push({ label: "Armies", value: `+${count}` });
+    } else if (entry.actionType === "attack") {
+      items.push({ label: "From", value: territoryName(p.from) });
+      items.push({ label: "To", value: territoryName(p.to) });
+      if (typeof p.attackerDice === "number") items.push({ label: "Attacker Dice", value: String(p.attackerDice) });
+      if (typeof p.defenderDice === "number") items.push({ label: "Defender Dice", value: String(p.defenderDice) });
+      if (Array.isArray(p.attackRolls)) items.push({ label: "Attack Rolls", value: p.attackRolls.map((d: unknown) => `🎲 ${d}`).join("  ") });
+      if (Array.isArray(p.defendRolls)) items.push({ label: "Defend Rolls", value: p.defendRolls.map((d: unknown) => `🎲 ${d}`).join("  ") });
+      if (typeof p.attackerLosses === "number") items.push({ label: "Attacker Lost", value: `${p.attackerLosses} army` });
+      if (typeof p.defenderLosses === "number") items.push({ label: "Defender Lost", value: `${p.defenderLosses} army` });
+      if (p.conquered === true) items.push({ label: "Result", value: "Territory conquered! 🚩" });
+    } else if (entry.actionType === "captureMove") {
+      const count = typeof p.count === "number" ? p.count : "?";
+      items.push({ label: "Armies Moved", value: String(count) });
+    } else if (entry.actionType === "fortify") {
+      items.push({ label: "From", value: territoryName(p.from) });
+      items.push({ label: "To", value: territoryName(p.to) });
+      if (typeof p.count === "number") items.push({ label: "Armies", value: String(p.count) });
+    } else if (entry.actionType === "tradeCards") {
+      const count = typeof p.cardCount === "number" ? p.cardCount : 3;
+      items.push({ label: "Cards Traded", value: String(count) });
+      if (typeof p.armiesReceived === "number") items.push({ label: "Armies Received", value: String(p.armiesReceived) });
+    } else if (entry.actionType === "endPhase") {
+      if (typeof p.phase === "string") items.push({ label: "Phase Ended", value: p.phase });
+    }
+    return items;
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -242,6 +336,20 @@ const defaultFormatter: MoveFormatter = {
 
   getMoveIcon(_entry: MoveEntry): string {
     return "🔹";
+  },
+
+  formatMoveDetails(entry: MoveEntry): MoveDetailItem[] {
+    const items: MoveDetailItem[] = [];
+    items.push({ label: "Action", value: entry.actionType });
+    const payload = entry.payload;
+    if (payload && typeof payload === "object") {
+      for (const [key, value] of Object.entries(payload)) {
+        if (value !== undefined && value !== null) {
+          items.push({ label: key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase()).trim(), value: String(value) });
+        }
+      }
+    }
+    return items;
   },
 };
 

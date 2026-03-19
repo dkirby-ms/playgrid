@@ -6,6 +6,7 @@ import {
   type ActionResult,
   type GamePlugin,
   type GameResult,
+  type MoveEntry,
 } from "@eschaton/shared";
 import {
   applyMove,
@@ -51,6 +52,87 @@ function replacePoints(state: BackgammonState, nextPoints: number[]) {
   }
 }
 
+function formatMoveEntries(
+  state: BackgammonState,
+  moves: MoveEntry[],
+): MoveEntry[] {
+  const formatted: MoveEntry[] = [];
+  const playerStats: Record<string, { doublesRolled: number; totalHits: number; bearOffs: number }> = {};
+
+  // Initialize stats for all players
+  for (const player of state.players.values()) {
+    if (!player.isSpectator) {
+      playerStats[player.sessionId] = { doublesRolled: 0, totalHits: 0, bearOffs: 0 };
+    }
+  }
+
+  for (const move of moves) {
+    const stats = playerStats[move.playerId];
+    
+    if (move.actionType === "roll") {
+      const die1 = move.payload.die1 as number | undefined;
+      const die2 = move.payload.die2 as number | undefined;
+      
+      if (typeof die1 === "number" && typeof die2 === "number") {
+        if (die1 === die2) {
+          formatted.push({
+            ...move,
+            description: `${move.playerName} rolled doubles: ${die1}`,
+          });
+          if (stats) stats.doublesRolled++;
+        } else {
+          formatted.push({
+            ...move,
+            description: `${move.playerName} rolled ${die1} and ${die2}`,
+          });
+        }
+      } else {
+        formatted.push({ ...move });
+      }
+    } else if (move.actionType === "move") {
+      const from = move.payload.from;
+      const to = move.payload.to;
+      const hit = move.payload.hit as boolean | undefined;
+      
+      if (from === "bar" && typeof to === "number") {
+        const hitSuffix = hit ? " (hit)" : "";
+        formatted.push({
+          ...move,
+          description: `${move.playerName} entered from bar to point ${to}${hitSuffix}`,
+        });
+        if (hit && stats) stats.totalHits++;
+      } else if (typeof from === "number" && to === "off") {
+        formatted.push({
+          ...move,
+          description: `${move.playerName} bore off from point ${from}`,
+        });
+        if (stats) stats.bearOffs++;
+      } else if (typeof from === "number" && typeof to === "number") {
+        const hitSuffix = hit ? " (hit)" : "";
+        formatted.push({
+          ...move,
+          description: `${move.playerName} moved from point ${from} to point ${to}${hitSuffix}`,
+        });
+        if (hit && stats) stats.totalHits++;
+      } else {
+        formatted.push({ ...move });
+      }
+    } else if (move.actionType === "pass") {
+      formatted.push({
+        ...move,
+        description: `${move.playerName} had no valid moves — passed`,
+      });
+    } else {
+      formatted.push({ ...move });
+    }
+  }
+
+  // Store stats in state metadata for use in buildGameResult
+  (state as BackgammonState & { _formattedStats?: typeof playerStats })._formattedStats = playerStats;
+
+  return formatted;
+}
+
 function buildGameResult(state: BackgammonState, winnerColor: BackgammonColor): GameResult | null {
   const players = Array.from(state.players.values()).filter((player) => !player.isSpectator);
   const winner = players.find((player) => getPlayerColor(player.playerIndex) === winnerColor);
@@ -66,12 +148,25 @@ function buildGameResult(state: BackgammonState, winnerColor: BackgammonColor): 
   const loserBorneOff = loserColor === BLACK ? state.blackBorneOff : state.redBorneOff;
   const loserBar = loserColor === BLACK ? state.blackBar : state.redBar;
 
+  // Retrieve stats from formatMoveHistory if available
+  const formattedStats = (state as BackgammonState & { _formattedStats?: Record<string, { doublesRolled: number; totalHits: number; bearOffs: number }> })._formattedStats;
+
   const metadata: Record<string, unknown> = {
     winnerColor,
-    [winner.sessionId]: { borneOff: winnerBorneOff, remaining: 15 - winnerBorneOff, bar: winnerBar },
+    [winner.sessionId]: { 
+      borneOff: winnerBorneOff, 
+      remaining: 15 - winnerBorneOff, 
+      bar: winnerBar,
+      ...(formattedStats?.[winner.sessionId] || {}),
+    },
   };
   if (loser) {
-    metadata[loser.sessionId] = { borneOff: loserBorneOff, remaining: 15 - loserBorneOff, bar: loserBar };
+    metadata[loser.sessionId] = { 
+      borneOff: loserBorneOff, 
+      remaining: 15 - loserBorneOff, 
+      bar: loserBar,
+      ...(formattedStats?.[loser.sessionId] || {}),
+    };
   }
 
   return {
@@ -380,5 +475,8 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
 
       return false;
     },
+  },
+  formatMoveHistory(state, moves) {
+    return formatMoveEntries(state, moves);
   },
 };

@@ -5,6 +5,7 @@ import {
   type ActionResult,
   type GamePlugin,
   type GameResult,
+  type MoveEntry,
 } from "@eschaton/shared";
 import {
   canPlayTile,
@@ -95,6 +96,75 @@ function resetPassFlags(state: DominosState): void {
   }
 }
 
+function formatMoveEntries(
+  state: DominosState,
+  moves: MoveEntry[],
+): MoveEntry[] {
+  const formatted: MoveEntry[] = [];
+  const playerStats: Record<string, { tilesPlayed: number; tilesDrawn: number; passCount: number }> = {};
+
+  // Initialize stats for all players
+  for (const [sessionId, ps] of state.playerStates.entries()) {
+    if (!ps) continue;
+    playerStats[sessionId] = { tilesPlayed: 0, tilesDrawn: 0, passCount: 0 };
+  }
+
+  for (const move of moves) {
+    const stats = playerStats[move.playerId];
+    
+    if (move.actionType === "play") {
+      const end = move.payload.end as string | undefined;
+      const tile = move.payload.tile as number[] | undefined;
+      
+      // Get pip values from payload.tile array [a, b]
+      let tileDisplay = "";
+      if (Array.isArray(tile) && tile.length === 2) {
+        tileDisplay = `[${tile[0]}|${tile[1]}]`;
+      }
+      
+      // Uppercase the end letter for display
+      const endDisplay = end ? end.toUpperCase() : end;
+      
+      if (endDisplay && tileDisplay) {
+        formatted.push({
+          ...move,
+          description: `${move.playerName} played ${tileDisplay} on ${endDisplay} end`,
+        });
+      } else if (endDisplay) {
+        formatted.push({
+          ...move,
+          description: `${move.playerName} played tile on ${endDisplay} end`,
+        });
+      } else {
+        formatted.push({
+          ...move,
+          description: `${move.playerName} played a tile`,
+        });
+      }
+      if (stats) stats.tilesPlayed++;
+    } else if (move.actionType === "draw") {
+      formatted.push({
+        ...move,
+        description: `${move.playerName} drew from boneyard`,
+      });
+      if (stats) stats.tilesDrawn++;
+    } else if (move.actionType === "pass") {
+      formatted.push({
+        ...move,
+        description: `${move.playerName} passed`,
+      });
+      if (stats) stats.passCount++;
+    } else {
+      formatted.push({ ...move });
+    }
+  }
+
+  // Store stats in state metadata for use in buildScoreResult
+  (state as DominosState & { _formattedStats?: typeof playerStats })._formattedStats = playerStats;
+
+  return formatted;
+}
+
 function buildScoreResult(
   state: DominosState,
   winnerId: string,
@@ -106,12 +176,16 @@ function buildScoreResult(
     if (ps) ps.score += points;
   }
 
+  // Retrieve stats from formatMoveHistory if available
+  const formattedStats = (state as DominosState & { _formattedStats?: Record<string, { tilesPlayed: number; tilesDrawn: number; passCount: number }> })._formattedStats;
+
   const playerStats: Record<string, unknown> = {};
   for (const [sessionId, ps] of state.playerStates.entries()) {
     const hand = getPlayerHand(state, sessionId);
     playerStats[sessionId] = {
       tilesRemaining: hand.length,
       score: ps.score,
+      ...(formattedStats?.[sessionId] || {}),
     };
   }
 
@@ -422,6 +496,10 @@ export const dominosPlugin: GamePlugin<DominosState> = {
 
       return false;
     },
+  },
+
+  formatMoveHistory(state, moves) {
+    return formatMoveEntries(state, moves);
   },
 
   stateFilter: {
