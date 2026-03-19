@@ -1,11 +1,11 @@
 # Squad Status: Current Phase
 
-**Last Updated:** 2026-03-18T19:51Z  
-**Phase:** Move History Implementation Ready — P0-P5, P7 Complete. Next: P6 (4-phase implementation)
+**Last Updated:** 2026-03-19T14:04:37Z  
+**Phase:** Move History Implementation — P6.1 & P6.2 Complete. Next: P6.3 Formatters
 
 ## Current Work: Move History Architecture Planning
 
-**Status:** 6 of 8 priority items complete (P0-P5, P7 finished; P6 architecture designed, ready for P6.1-P6.4)
+**Status:** 7 of 8 priority items complete (P0-P5, P7 finished; P6.1-P6.2 complete; P6.3 in progress)
 
 **Completed Phases:**
 - ✅ **P0** — Player Info Bars verification + pulse animation
@@ -16,42 +16,41 @@
 - ✅ **P5** — Victory screens (gradient stat cards, icons, View History button, metadata enrichment)
 - ✅ **P7** — Risk phase banner improvement + pulse animation
 
-**P6 Planning (4 Implementation Phases):**
-- ⏳ **P6.1** — Core infrastructure (MoveEntry, BaseGameRoom recording, delivery) — 2-3h
-- ⏳ **P6.2** — Checkers + HistoryScreen UI — 2h
-- ⏳ **P6.3** — Backgammon & Dominos formatters — 2-3h
-- ⏳ **P6.4** — Polish & refinements — 1h
+**P6 Implementation (4 Phases):**
+- ✅ **P6.1** — Core infrastructure (MoveEntry, BaseGameRoom recording, delivery)
+- ✅ **P6.2** — Checkers formatter + HistoryScreen UI
+- ⏳ **P6.3** — Backgammon & Dominos formatters
+- ⏳ **P6.4** — Polish & refinements
 
-### Session 2026-03-18 Summary
+### Session 2026-03-19 Summary (P6.1 + P6.2)
 
 | Focus | Agents | Status |
 |-------|--------|--------|
-| P4 Setup Screens | Ortho/Gately | ✅ Confirmed complete (high parity) |
-| P5 Victory Screen | Ortho/Gately | ✅ Complete (gradient cards, icons, button) |
-| P5 Server Metadata | Dev | ✅ GameResult enriched with metadata field |
-| P6 Architecture | Hal | ✅ Complete design (4-phase plan, MoveEntry interface) |
-| Build Status | Team | ✅ All passing, 0 lint errors |
+| P6.1 Infrastructure Validation | Pemulis | ✅ Confirmed complete (MoveEntry, delivery) |
+| P6.1 Test Cases | Steeply | ✅ 7 new tests (42 total), all passing |
+| PR #162 Merge Conflicts | Pemulis | ✅ 538 tests passing, UAT ready |
+| Post-Game Action Guard | Copilot | ✅ Bug fix (caught by Steeply's tests) |
+| Build Status | Team | ✅ All 538 tests passing, 0 lint errors |
 
-### Deliverables Completed (P5)
+### Deliverables Completed (P6.1 + P6.2)
 
-✅ **Victory Screen Polish**
-- Gradient stat cards with proper contrast and visual depth
-- Icons on stats (Wins, Losses, Turns, Resources)
-- View History button linking to P6 HistoryScreen overlay
-- Server-side metadata enrichment for move history delivery
+✅ **P6.1 Core Infrastructure**
+- MoveEntry interface implemented and tested
+- BaseGameRoom recording hooks in place
+- GameResult metadata delivery mechanism validated
+- 42 comprehensive test cases (7 new for stress, disconnect, forfeit, post-game safety, captures)
 
-✅ **P6 Architecture Decided**
-- Server-side in-memory MoveEntry[] storage (no schema changes)
-- GameResult.metadata delivery mechanism (no live updates overhead)
-- Plugin-based game-specific formatters (extensible)
-- HistoryScreen overlay pattern (consistent with VictoryScreen)
-- Clear scope boundaries (no replay, no undo, no persistence)
+✅ **P6.2 Checkers Implementation**
+- Checkers move formatter implemented
+- HistoryScreen UI component complete
+- Move history delivery tested end-to-end
+- All tests passing
 
-✅ **Component Quality**
-- VictoryScreen: Enriched with gradient presentation
-- GameResult interface: Extended with metadata field
-- BaseGameRoom: Ready for MoveEntry recording logic (P6.1)
+✅ **Quality & Stability**
+- Post-game action guard added (early return when phase === "ended")
+- No regressions in existing tests
+- PR #162 merge conflicts resolved (538 tests passing)
 
 ---
 
-**Team:** P0-P5, P7 complete (7 of 8 items). P6 architecture finalized; ready to start P6.1 (core infrastructure) next session. Decision document: .squad/decisions.md
+**Team:** P0-P5, P7, P6.1, P6.2 complete (8 of 9 items). P6.3 (Backgammon & Dominos formatters) in progress. Decision document: .squad/decisions.md
