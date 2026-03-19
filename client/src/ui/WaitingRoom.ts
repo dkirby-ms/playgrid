@@ -1,5 +1,6 @@
 import type { Room } from "@colyseus/sdk";
 import { buildJoinGameHref } from "../joinLinks";
+import type { ConsoleLog } from "./ConsoleLog";
 import {
   GAME_PLAYERS,
   GAME_STARTED,
@@ -80,6 +81,7 @@ export class WaitingRoom {
   private isHost = false;
   private isReady = false;
   private players: PreGamePlayerInfo[] = [];
+  private consoleLog: ConsoleLog | null = null;
   private eventCallback: WaitingRoomEventCallback | null = null;
   private copyFeedbackTimeoutId: number | null = null;
 
@@ -170,6 +172,10 @@ export class WaitingRoom {
     this.eventCallback = callback;
   }
 
+  setConsoleLog(log: ConsoleLog): void {
+    this.consoleLog = log;
+  }
+
   show(room: Room, gameId: string, gameInfo: GameSessionInfo | null, isHost: boolean): void {
     if (this.boundRoom !== room) {
       this.boundRoom = room;
@@ -208,7 +214,7 @@ export class WaitingRoom {
           return;
         }
 
-        this.showError(payload.message);
+        this.consoleLog?.error(payload.message);
       });
     }
 

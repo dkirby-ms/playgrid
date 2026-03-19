@@ -1,5 +1,6 @@
 import type { Room } from "@colyseus/sdk";
 import { buildJoinGameHref } from "../joinLinks";
+import type { ConsoleLog } from "./ConsoleLog";
 import {
   CREATE_GAME,
   GAME_JOINED,
@@ -686,6 +687,7 @@ export class SetupScreen {
   private isCreatePending = false;
   private players: PreGamePlayerInfo[] = [];
   private configPanel: SetupConfigPanel | null = null;
+  private consoleLog: ConsoleLog | null = null;
   private eventCallback: SetupScreenEventCallback | null = null;
   private createTimeoutId: number | null = null;
 
@@ -922,8 +924,12 @@ export class SetupScreen {
         this.isCreatePending = false;
         this.renderActions();
       }
-      this.showError(payload.message);
+      this.consoleLog?.error(payload.message);
     });
+  }
+
+  setConsoleLog(log: ConsoleLog): void {
+    this.consoleLog = log;
   }
 
   // ---------------------------------------------------------------------------
@@ -1110,7 +1116,7 @@ export class SetupScreen {
     // Auto-ready after creation (handled by server when host creates)
     this.createTimeoutId = window.setTimeout(() => {
       this.isCreatePending = false;
-      this.showError("Game creation timed out. Try again.");
+      this.consoleLog?.error("Game creation timed out. Try again.");
       this.renderActions();
     }, 30_000);
   }
