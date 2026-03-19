@@ -1,7 +1,7 @@
 {
   "name": "@eschaton/playgrid-server",
   "private": true,
-  "version": "0.1.36",
+  "version": "0.1.37",
   "type": "module",
   "scripts": {
     "dev": "node --watch --env-file-if-exists=../.env --import tsx src/index.ts",
