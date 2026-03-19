@@ -1037,16 +1037,6 @@ export class SetupScreen {
       return;
     }
 
-    if (this.players.length === 0) {
-      const placeholder = el("div", "setup-placeholder");
-      placeholder.append(
-        el("div", "setup-placeholder-icon", "⏳"),
-        el("div", "setup-placeholder-text", "Waiting for player updates…"),
-      );
-      this.playerListEl.append(placeholder);
-      return;
-    }
-
     const hostId = this.gameInfo?.hostId ?? "";
     const sorted = [...this.players].sort((a, b) => {
       const aHost = a.userId === hostId ? 1 : 0;
@@ -1058,7 +1048,7 @@ export class SetupScreen {
       this.playerListEl.append(this.buildPlayerCard(player, hostId));
     }
 
-    // Add CPU Player slot or empty slots
+    // Always show empty slots so the host can add CPU players
     const maxPlayers = this.gameInfo?.maxPlayers ?? 0;
     const emptySlots = Math.max(0, maxPlayers - this.players.length);
     const hasCpu = this.players.some((p) => p.isCPU);
