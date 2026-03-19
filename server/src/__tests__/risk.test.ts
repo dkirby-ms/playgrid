@@ -1724,8 +1724,7 @@ describe("Risk Game — Quickstart Mode", () => {
     for (let i = 0; i < playerCount; i++) {
       riskPlugin.lifecycle.onPlayerJoin?.(state, mockClient(`player-${i + 1}`), i);
     }
-    // Simulate BaseGameRoom setting currentTurn before onGameStart
-    state.currentTurn = "player-1";
+    // BaseGameRoom sets currentTurn AFTER onGameStart — don't pre-set it here
     riskPlugin.lifecycle.onGameStart?.(state);
     return state;
   }
@@ -1810,11 +1809,12 @@ describe("Risk Game — Quickstart Mode", () => {
       });
     });
 
-    it("sets armiesToPlace to 0 for all players except the current turn", () => {
+    it("sets armiesToPlace to 0 for all players except the first player", () => {
       const state = createQuickstartGame(3);
+      // First player (by playerIndex 0) should have reinforcements
       state.riskPlayers.forEach((rp) => {
-        if (rp.sessionId === state.currentTurn) {
-          // First player has reinforcements already granted
+        const playerInfo = state.players.get(rp.sessionId);
+        if (playerInfo && playerInfo.playerIndex === 0) {
           expect(rp.armiesToPlace).toBeGreaterThanOrEqual(3);
         } else {
           expect(rp.armiesToPlace).toBe(0);

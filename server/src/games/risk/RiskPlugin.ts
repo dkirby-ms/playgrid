@@ -204,15 +204,21 @@ export const riskPlugin: GamePlugin<RiskState> = {
         state.cardTradeInCount = 0;
         state.earnedCardThisTurn = false;
 
-        // Grant first player their initial reinforcements
-        const firstPlayer = state.riskPlayers.get(state.currentTurn);
-        if (firstPlayer) {
-          const ownedTerritories = getOwnedTerritories(state, state.currentTurn);
-          const reinforcements = calculateReinforcements(
-            firstPlayer.territoriesOwned,
-            ownedTerritories,
-          );
-          firstPlayer.armiesToPlace = reinforcements;
+        // Derive first player from sorted player list (currentTurn not set yet)
+        const sortedPlayers = Array.from(state.players.values()).sort(
+          (a, b) => a.playerIndex - b.playerIndex,
+        );
+        if (sortedPlayers.length > 0) {
+          const firstPlayerId = sortedPlayers[0].sessionId;
+          const firstPlayer = state.riskPlayers.get(firstPlayerId);
+          if (firstPlayer) {
+            const ownedTerritories = getOwnedTerritories(state, firstPlayerId);
+            const reinforcements = calculateReinforcements(
+              firstPlayer.territoriesOwned,
+              ownedTerritories,
+            );
+            firstPlayer.armiesToPlace = reinforcements;
+          }
         }
       } else {
         initializeSetup(state);
