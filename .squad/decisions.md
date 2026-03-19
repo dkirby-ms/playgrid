@@ -5024,3 +5024,36 @@ Never rely on server-initiated messages sent during `onJoin()` reaching the clie
 - `client/src/scenes/GameScene.ts`
 
 **Test Coverage:** No new tests required — the fix is a timing/ordering change. All 583 existing tests pass.
+
+---
+
+### Gately: Fix Domino Tile Placement Orientation
+
+**Status:** Implemented  
+**Date:** 2026-03-19  
+
+Fixed inverted `exposedEnd` field on `BoardTile` for arms B/D in server-side `placeTileOnBoard()` and client-side ghost preview.
+
+**Context:**
+The `exposedEnd` field tells the renderer which pip value to place on the left (horizontal) or top (vertical) side of a tile. The renderer does NOT use arm direction — it always puts `exposedEnd` on left/top.
+
+**Decision:**
+`exposedEnd` must be set per-arm:
+- **Arms A, C** (extend left/up): `exposedEnd = newEndValue` (outward pip faces left/top)
+- **Arms B, D** (extend right/down): `exposedEnd = endValue` (connecting pip faces left/top)
+
+This applies to both server-side `placeTileOnBoard()` and client-side `resolveGhostExposedEnd()`.
+
+**Rationale:**
+Previously all arms used `newEndValue`, which caused tiles on ends B/D to render flipped (the non-matching pip appeared adjacent to the chain instead of the matching pip).
+
+**Impact:**
+- Tiles now render with correct orientation on all four arms
+- Regression test added to prevent re-introduction
+- All 584 tests passing
+
+**Files Modified:**
+- `server/src/games/dominos/dominosLogic.ts` — `placeTileOnBoard()`
+- `client/src/renderers/DominosRenderer.ts` — `resolveGhostExposedEnd()`
+- `server/src/games/dominos/__tests__/dominosLogic.test.ts` — Regression test
+
