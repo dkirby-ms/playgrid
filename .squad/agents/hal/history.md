@@ -1288,3 +1288,58 @@ Phase breakdown:
 
 **Document created:** `.squad/decisions/inbox/hal-move-history-architecture.md`
 
+
+### PR Re-Review — Three Revisions Approved (2026-03-19)
+
+**Context:** Previously reviewed PRs #157, #159, and #160; requested changes on all three. Lockout protocol enforced — different agents (Gately, Ortho) revised original authors' work.
+
+**PR #157 (Risk Quickstart):**
+- **Original issue:** `onGameStart` read `state.currentTurn` before BaseGameRoom set it (L393 vs L395), causing first player to get 0 reinforcements.
+- **Revision by:** Gately
+- **Fix:** Derive first player from sorted player list (`playerIndex === 0`) instead of relying on `currentTurn`. Test helper updated to match real lifecycle.
+- **Verdict:** ✅ APPROVED — Logic sound, timing dependency eliminated.
+
+**PR #159 (Turn Timer):**
+- **Original issue:** TurnManager used native `setTimeout`/`clearTimeout`, violating project convention: "Don't use setTimeout/setInterval for game timers — use Colyseus clock."
+- **Revision by:** Gately
+- **Fix:** TurnManager constructor accepts `Clock`, uses `clock.setTimeout()` and `delayed.clear()`. BaseGameRoom passes `this.clock`. All tests updated with mock Clock.
+- **Verdict:** ✅ APPROVED — Proper Colyseus timer patterns followed.
+
+**PR #160 (Drag-and-Drop):**
+- **Original issue 1:** Undeclared `ghostLayer` property → runtime error.
+- **Original issue 2:** Memory leak in `redrawHand()` — `removeChildren()` without destroying Graphics (2 listeners/tile).
+- **Revision by:** Ortho
+- **Fix:** `ghostLayer` declared as `Container` property. All critical `removeChildren()` calls in gameplay methods (`redrawHand`, `redrawBoard`, `redrawEndMarkers`) now destroy children first: `for (const child of layer.removeChildren()) child.destroy()`
+- **Verdict:** ✅ APPROVED — Memory leak pattern fixed for all redraw methods.
+
+**Build & Test:** Final validation on PR #160 branch: build passed, 472/484 tests passed (12 todo), no new lint errors.
+
+**Learnings:**
+- **Lifecycle timing bugs:** When plugins read state properties set by BaseGameRoom lifecycle (e.g., `currentTurn`), derive from stable sources (sorted player list) instead of relying on initialization order.
+- **Memory leak pattern:** PixiJS Graphics with event listeners must be explicitly destroyed. Pattern: `for (const child of container.removeChildren()) child.destroy()` — especially critical in frequently-called redraw methods.
+- **Clock dependency injection:** TurnManager accepting Clock as constructor param (vs accessing room.clock) enables clean unit testing with mock Clock, following Colyseus patterns.
+- **Lockout protocol effectiveness:** Having different agents revise code forces fresh eyes on the problem, prevents defensive/incremental fixes that don't fully address root cause.
+
+### Issue #161 Triage: CI Build Failure on ab6fc5e (2026-03-19)
+
+**Summary:** Triaged CI failure reported on drag-and-drop commit (ab6fc5e). Root cause: pre-existing test regression from prior commit (0186c87).
+
+**Investigation:**
+- ✅ Build passes locally (`npm run build`)
+- ✅ Lint passes for new drag-and-drop code
+- ❌ 5 tests fail in `server/src/__tests__/BaseGameRoom.test.ts`
+
+**Test Failures (all in disconnect/forfeit lifecycle):**
+1. `ends the game when an action reports endsGame`
+2. `does not hold a seat for a consented disconnect and forfeits immediately when one player remains`
+3. `does not award a forfeit win to the shared-device opponent when the controller leaves`
+4. `releases the reserved seat after the reconnection window expires`
+5. `cleans up the shared-device opponent when the controller times out`
+
+All expect `room.disconnect()` to be called but it's not being invoked.
+
+**Root Cause:** Regression from commit `0186c87` (`feat: extensible turn timer system with configurable penalties`). Tests passed in prior commit (935217b), fail at 0186c87.
+
+**Assignment:** `squad:pemulis` — BaseGameRoom is core infrastructure. The disconnect/forfeit lifecycle belongs to Pemulis (Systems Dev), not the drag-and-drop feature author.
+
+**Key Finding:** The drag-and-drop PR (#160) itself is sound — no new test failures introduced. The CI blocker is unrelated to this feature; it's a pre-existing infrastructure bug that needs fixing before dev can move forward.

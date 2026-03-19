@@ -3,6 +3,305 @@
 Team decisions are recorded here. Append-only — never edit existing entries.
 
 
+## Session: P6.2 Drag-and-Drop, History, Lifecycle Testing (2026-03-19)
+
+### Gately: Proxy-Based Drag Pattern for Game Renderers
+
+**Status:** Implemented  
+**Date:** 2026-03-19  
+**PR:** #160 (Issue #149)
+
+Use a proxy-based drag system (`DragHelper`) rather than registering individual display objects as draggable. The helper receives a pre-drawn `Graphics` proxy from the renderer and manages pointer tracking, while game-specific validation stays in renderer callbacks.
+
+**Rationale:**
+- Both Checkers and Dominos renderers batch-draw pieces into shared Graphics objects (piecesLayer / handLayer) — individual piece containers don't exist as addressable display objects
+- Proxy approach is non-invasive: no changes to the existing rendering pipeline, piece drawing, or state management
+- 6px distance threshold cleanly separates click vs. drag, preserving the existing click-to-move UX
+- Pattern extends naturally to future games (Backgammon bearing-off, Risk army placement)
+
+**Impact:**
+- Checkers and Dominos both support drag-and-drop with click fallback
+- Reusable across any future game renderer
+- No regression to existing click interactions
+
+**Files:**
+- `client/src/renderers/DragHelper.ts` (new utility)
+- `client/src/renderers/DragHelper.test.ts` (new tests)
+- `client/src/renderers/CheckersRenderer.ts` (integrated)
+- `client/src/renderers/DominosRenderer.ts` (integrated)
+
+---
+
+### Gately: Dominos End-Position and Ghost Preview Pattern
+
+**Status:** Proposed  
+**Date:** 2026-03-16  
+**PR:** #158
+
+End-position markers and placement previews in dominos (and any future tile/card game) must use scale-aware offsets derived from layout constants (`BOARD_TILE_GAP * scale`), never fixed pixel values. Ghost tile previews should render at the exact computed placement position using the same coordinate system as the board layout.
+
+**Rationale:**
+- Fixed-pixel offsets (the previous `± 8px`) diverge from actual tile placement at any scale other than exactly 1.0, and even at scale=1 they're wrong (gap is 4px, not 8px). This causes the "tiles placed in wrong position" perception.
+- Storing layout state (scale, spinner center, arm end edges) as instance variables lets ghost preview and marker logic reuse the same coordinate math without re-deriving the entire layout.
+- The ghost tile preview (alpha 0.4) gives players immediate visual feedback on where a tile will land and how it will be oriented, replacing the ambiguous directional markers.
+
+**Impact:**
+- Pattern applies to any future renderer that shows placement previews or position indicators on a scaled board.
+- Ghost tiles are drawn in a dedicated `ghostLayer` between the board and markers in z-order, keeping render responsibilities separated.
+
+---
+
+### Pemulis: Move History Core Infrastructure
+
+**Status:** Approved  
+**Date:** 2026-03-18  
+**Context:** P6.1 — Build server-side move history recording system
+
+Implemented in-memory, server-side-only move history recording with delivery via `GameResult.metadata` at game end.
+
+**Architecture:**
+- **Storage:** Plain JS array `moveHistory: MoveEntry[]` in BaseGameRoom (NOT Colyseus schema)
+- **Recording:** Captured in `processAction()` after successful action execution
+- **Delivery:** Attached to `GameResult.metadata.moveHistory` during `endGame()` broadcast
+- **Formatting:** Optional plugin hook `formatMoveHistory()` for game-specific human-readable descriptions
+
+**Rationale:**
+- In-memory storage avoids schema sync overhead (no per-move network traffic)
+- Ephemeral history (dies with room) is acceptable — game results persist in DB
+- Recording after handler success ensures only valid moves are logged
+- CPU moves and spectators supported automatically (broadcast to all at game end)
+
+**Alternatives Considered:**
+- Colyseus `ArraySchema` — Rejected: Real-time sync not needed, adds network/CPU overhead
+- External logging service — Rejected: Overkill for MVP, adds latency
+- Client-side only — Rejected: Source of truth must be server
+
+**Impact:**
+- All 4 games (Checkers, Backgammon, Risk, Dominos) can use this infrastructure
+- Game plugins can opt-in to formatting via `formatMoveHistory()` hook
+- No breaking changes — optional feature, backward compatible
+
+**Implementation Files:**
+- `shared/src/MoveEntry.ts` — Interface definition
+- `shared/src/gamePlugin.ts` — Added formatMoveHistory optional method
+- `server/src/game/BaseGameRoom.ts` — Recording logic + delivery
+
+**Status:** ✅ Complete — Build clean, lint clean, ready for game-specific implementations (P6.2-P6.5)
+
+---
+
+### Pemulis: Checkers Move Formatter — Description Format Convention
+
+**Author:** Pemulis  
+**Date:** 2026-03-16  
+**Status:** Implemented
+
+P6.1 built the generic move history infrastructure (MoveEntry, recordMove, delivery via GameResult.metadata). The CheckersPlugin is the first game to implement `formatMoveHistory`, establishing the pattern other games will follow.
+
+Adopted a description format convention for Checkers move history:
+- **Regular move:** `"{PlayerName} moved from {from} to {to}"`
+- **Capture:** `"{PlayerName} captured at {to} (from {from})"`
+- **King promotion:** `"{PlayerName} kinged at {to}"`
+- **Capture + promotion:** `"{PlayerName} captured at {to} (from {from}), kinged at {to}"`
+- **Multi-jump chain:** `"{PlayerName} captured {N} pieces"` — all entries in the chain share the same description with the running count
+
+Coordinate notation: board index → algebraic (A1–H8), column = index % 8 → letter, row = floor(index / 8) + 1.
+
+**Rationale:**
+- Human-readable descriptions serve the game result screen and any future replay/export features.
+- Multi-jump chains consolidate into a single summary because individual hop descriptions would be noisy in the UI.
+- Move type detection is payload-based (row delta for captures, destination row for promotion) rather than replaying game state, which keeps the formatter stateless with respect to board evolution.
+- Unknown players and missing payload fields produce graceful fallbacks (no description) rather than errors.
+
+**Impact:**
+- Other game plugins (Backgammon, Risk, Dominoes) should follow this pattern: implement `formatMoveHistory` with game-appropriate description strings.
+- The formatter is pure — it doesn't mutate inputs and can be unit-tested without Colyseus room infrastructure.
+
+---
+
+### Pemulis: Risk Quickstart — Random Setup via onCreate Hook
+
+**Status:** Proposed  
+**Date:** 2026-03-16  
+**PR:** #157  
+**Issue:** #156
+
+Store game-specific room options (like `quickstart`) on the game state schema via the `onCreate` lifecycle hook, since `onGameStart` only receives state (not options).
+
+**Rationale:**
+- `BaseGameRoom.onCreate` passes options to `plugin.lifecycle.onCreate(state, options)`, but `onGameStart(state)` does not receive options
+- Storing the flag on the Colyseus schema (`RiskState.quickstart`) means it's synced to clients and available for conditional rendering
+- This is the first game plugin to use `onCreate`; establishes the pattern for future game-specific options
+- Alternative considered: storing options in a module-level variable — rejected because it wouldn't survive schema serialization or be visible to clients
+
+**Impact:**
+- Risk Quickstart mode fully implemented end-to-end
+- Pattern established for future game option flags (any plugin can use `onCreate` to extract custom options from room metadata)
+- `quickstart` field added to `RiskState` schema — clients can read it to adapt UI (e.g., hide setup phase indicators)
+
+**Files Modified:**
+- shared/src/games/risk/RiskState.ts
+- shared/src/lobbyTypes.ts
+- server/src/games/risk/RiskPlugin.ts
+- server/src/games/risk/riskLogic.ts
+- server/src/rooms/LobbyRoom.ts
+- client/src/ui/LobbyScreen.ts
+- client/src/ui/setup/RiskSetupConfig.ts
+- server/src/__tests__/risk.test.ts
+
+---
+
+### Pemulis: Extensible Turn Timer with Penalty Escalation
+
+**Status:** Proposed  
+**Date:** 2026-03-19  
+**PR:** #159  
+**Issue:** #148 (sub-item 2)
+
+Replace the hard instant-loss turn timeout with a configurable penalty escalation chain. Plugins opt in via `turnTimerConfig` on `TurnConfiguration`.
+
+**Design decisions:**
+
+1. **Penalty escalation is plugin-configured, not hardcoded.** Each game defines its own ordered `penalties[]` array. The framework applies them by index on successive timeouts, repeating the last penalty when exhausted. This keeps the timer system generic for any turn-based game.
+
+2. **`onAutoPass` returns boolean for control flow.** `false` = framework advances turn (default). `true` = plugin handled it, same player keeps turn with timer reset. This supports phased games like Risk where auto-pass may only skip a phase, not the whole turn.
+
+3. **Per-player timeout tracking with configurable reset scope.** `resetCountPerTurn: true` clears a player's timeout count when their turn ends, giving them fresh warnings each turn. Default (`false`) accumulates across the game for stricter escalation.
+
+4. **Client state via schema + broadcast messages.** `timerWarningActive` boolean on `BaseGameState` lets clients show warning indicators via schema sync. `turn-timer-warning` broadcast messages carry the specific warning text. No new schema classes needed.
+
+5. **`TurnManager.resetTimer()` added for warning penalties.** Restarts the timer for the current player without advancing turns. Keeps TurnManager's API clean and testable.
+
+**Risk configuration:** 90s turns, [warning, final warning, auto-pass]. Risk's `onAutoPass` auto-places remaining reinforcements, resolves pending capture-moves, and resets turn phase to reinforce.
+
+**Backward compatible:** Games without `turnTimerConfig` use the existing `turnTimeLimit` with instant-loss behavior unchanged.
+
+**Impact:**
+- Shared types: `TurnTimerConfig`, `TurnTimerPenalty`, `onAutoPass` lifecycle hook
+- Server: `BaseGameRoom` penalty engine, `TurnManager.resetTimer()`
+- Risk: Turn timer config + auto-pass handler
+- Client: Can consume `timerWarningActive` and `turn-timer-warning` messages (no client changes in this PR)
+
+---
+
+### Hal: PR Review Decisions (PRs #157–160)
+
+**Date:** 2026-03-16  
+**Author:** Hal (Lead)
+
+**Decision 1: BaseGameRoom lifecycle contract — plugins must not read currentTurn during onGameStart**
+
+**Context:** PR #157 exposed that `state.currentTurn` is empty during `onGameStart`. BaseGameRoom sets it after the call.
+
+**Decision:** Any turn-dependent initialization must happen in `onTurnStarted`, not `onGameStart`. Document this in the plugin lifecycle contract.
+
+**Impact:** All game plugins. Risk quickstart must move first-player reinforcement to `onTurnStarted`.
+
+---
+
+**Decision 2: Add tsc --noEmit to CI for client code**
+
+**Context:** PR #160 has an undeclared property (`ghostLayer`) that passes CI because Vite/esbuild doesn't type-check. This means TypeScript errors in client code are invisible in CI.
+
+**Decision:** Add `tsc --noEmit -p client/tsconfig.json` as a CI step alongside `npm run build`. File as a separate issue.
+
+**Impact:** CI pipeline. Will catch type errors that bundler-only builds miss.
+
+---
+
+**Decision 3: innerHTML XSS vector in HistoryScreen needs remediation**
+
+**Context:** PRs #157 and #158 both add `desc.innerHTML = formatter.formatMove(move)` where move descriptions contain unsanitized player displayNames.
+
+**Decision:** File a follow-up issue. Fix by either HTML-escaping player names server-side in formatMoveEntries, or switching to textContent client-side.
+
+**Impact:** Security. Low-severity in game context but should be fixed before any public deployment.
+
+---
+
+### Ortho: HistoryScreen Overlay Architecture
+
+**Date:** 2026-03-18  
+**Author:** Ortho (Frontend Dev)  
+**Status:** Implemented
+
+P6.1 delivered server-side move history recording. The VictoryScreen had a disabled "View History" button placeholder. Task was to build the HistoryScreen UI and wire it up.
+
+**Decisions:**
+
+1. **DOM overlay, not a scene** — HistoryScreen is a DOM overlay (same as VictoryScreen), not a PixiJS scene. This keeps it consistent with all other UI overlays and avoids canvas lifecycle complexity.
+
+2. **Round-trip navigation via callbacks** — VictoryScreen → HistoryScreen → VictoryScreen is handled by storing the victory data and re-calling `showVictoryScreenWithHistory()` on close. No scene transitions involved — both are DOM overlays that append/remove from `document.body`.
+
+3. **z-index layering** — HistoryScreen uses z-index 10001 (one above VictoryScreen at 10000). This ensures it stacks correctly when both exist momentarily.
+
+4. **Formatter registry pattern** — `historyFormatters.ts` uses a simple `Record<string, MoveFormatter>` registry with a `getFormatter()` lookup. New game formatters are added by inserting into the record. The checkers formatter demonstrates the pattern; other games can be added as needed.
+
+5. **Player color coding via appearance order** — Players are assigned color indices (0–3) based on order of first appearance in the move history, not by session ID. This ensures stable, deterministic colors regardless of Colyseus session IDs.
+
+**Impact:**
+- **Pemulis (Game Logic):** When adding formatters for backgammon/risk/dominos, add entries to the `formatters` record in `client/src/ui/historyFormatters.ts`.
+- **Server team:** No changes needed. Move history is read from `GameResult.metadata.moveHistory`.
+
+---
+
+### Steeply: P6.1 Move History Test Strategy
+
+**Agent:** Steeply  
+**Date:** 2026-03-17  
+**Context:** Writing tests for move history system being built by Pemulis in parallel
+
+**Decision: Test-Before-Implementation Pattern for Parallel Development**
+
+When writing tests for a feature being implemented in parallel by another agent:
+
+1. **Write comprehensive test stubs using `it.skip()`** for tests that depend on implementation
+   - Allows TypeScript compilation and validates test structure
+   - Serves as executable documentation of expected behavior
+   - Can be unskipped incrementally as implementation progresses
+
+2. **Keep passing tests for interface/type validation** that don't require runtime implementation
+   - MoveEntry type structure validation
+   - Import checks
+   - Contract validation with mock data
+
+3. **Follow existing test patterns** from the codebase
+   - Use same setup helpers (createStartedGame, performMove, etc.)
+   - Match import patterns (vi.mock + dynamic import)
+   - Use same assertion style
+
+4. **Test the contract, not the implementation**
+   - Don't assume internal implementation details
+   - Test through public plugin interfaces
+   - Focus on observable behavior (GameResult metadata, state changes)
+
+**Key Test Patterns Established:**
+
+- **For Move History Tests:** Test MoveEntry structure first (validates types compile), test move recording through game actions (integration style), test history delivery through GameResult, test edge cases (empty history, invalid moves, CPU moves), test plugin integration points (formatMoveHistory())
+
+- **For Game State Tests:** Use plugin actions as the entry point, validate state changes through schema properties, use helper functions to create controlled game states, test multi-step sequences (multi-jump moves)
+
+**Benefits:**
+1. Parallel efficiency — Tester and implementer work simultaneously
+2. Clear contract — Tests document expected behavior before implementation
+3. Early compilation — Catches type errors immediately
+4. Incremental validation — Unskip tests as implementation progresses
+5. Regression protection — Tests are ready when implementation merges
+
+**Applying This Pattern:**
+
+Use this pattern when:
+- Multiple agents working on related features
+- Architecture/spec is clear but implementation is in progress
+- Test coverage is critical for the feature
+- You want executable documentation of expected behavior
+
+Avoid when:
+- Architecture is still being explored
+- Spec is likely to change significantly
+- Implementation details will inform test design
+
+
 ## Session: Session Resilience — Client-Server Reconnection (2026-03-15)
 
 ### Pemulis: Presence-backed Reconnect Cleanup
