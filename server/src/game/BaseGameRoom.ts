@@ -322,6 +322,10 @@ export class BaseGameRoom extends Room {
     handler: ActionHandler<BaseGameState>,
     sendErrors: boolean,
   ) {
+    if (this.state.phase === "ended") {
+      return false;
+    }
+
     const player = this.state.players.get(client.sessionId);
     if (player?.isSpectator) {
       if (sendErrors) {
