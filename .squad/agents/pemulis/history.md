@@ -786,3 +786,55 @@ Implemented standard dominos spinner rules with 4-way branching:
 - Added 10 unit tests in `server/src/games/dominos/__tests__/cpuOpponent.test.ts` covering play/draw/pass decisions, double preference, high-pip preference, end selection, flexibility scoring, perpendicular arm handling.
 - Full test suite: 594 tests pass (up from 584), build clean, lint clean.
 - Key insight: Dominos CPU uses the same multi-action pattern as Backgammon because `draw` returns `endsTurn: false`, so the CPU re-queues after each draw until it can play or must pass.
+
+## Learnings
+
+### Server-side formatMoveHistory() implementation (2026-03-19, P6.4 polish phase)
+
+- Implemented `formatMoveHistory()` for Backgammon, Dominos, and Risk plugins, following the CheckersPlugin reference pattern.
+- **Pattern:** Each plugin's `formatMoveHistory(state, moves)` iterates through the raw moveHistory, adds a human-readable `description` field to each entry, and optionally computes game-specific stats that are stored in metadata for the HistoryScreen.
+
+**BackgammonPlugin (`server/src/games/backgammon/BackgammonPlugin.ts`):**
+- Roll descriptions: "Rolled {die1} and {die2}" or "Rolled doubles: {die}"
+- Move descriptions: "Moved from point {from} to point {to}", "Entered from bar to point {to}", "Bore off from point {from}" — with " (hit)" suffix when `payload.hit` is true
+- Pass description: "No valid moves — passed"
+- Stats: `doublesRolled`, `totalHits`, `bearOffs` per player, computed during formatting and attached to `buildGameResult` metadata
+
+**DominosPlugin (`server/src/games/dominos/DominosPlugin.ts`):**
+- Play descriptions: "Played [{a}|{b}] on {end} end" (uppercase end letter: A/B/C/D)
+  - Pip values extracted from `payload.tile` array (client-side formatters store tile data in payload for server enrichment)
+- Draw description: "Drew from boneyard"
+- Pass description: "Passed"
+- Stats: `tilesPlayed`, `tilesDrawn`, `passCount` per player, attached to `buildScoreResult` metadata
+
+**RiskPlugin (`server/src/games/risk/RiskPlugin.ts`):**
+- Territory pick: "Claimed {territory name}"
+- Reinforce: "Reinforced {territory} (+{count})"
+- Attack: "Attacked {target} from {source} (×{dice} dice)"
+- Capture move: "Moved {count} armies into captured territory"
+- Fortify: "Fortified {count} armies: {from} → {to}"
+- Trade cards: "Traded {count} cards for reinforcements"
+- End phase: "Ended phase"
+- Territory names resolved via `getTerritoryName(territoryId)` helper that looks up `TERRITORIES` by ID (e.g., "eastern-united-states" → "Eastern United States")
+- Stats: `totalAttacks`, `totalFortifies`, `territoriesControlled` per player, attached to `checkGameEnd` metadata
+
+**Stats enrichment pattern:**
+- During `formatMoveHistory()`, stats are tracked in a local `playerStats` object and stored in a temporary `state._formattedStats` property (using type assertion to avoid schema pollution).
+- The corresponding `buildGameResult()` / `checkGameEnd()` function retrieves `_formattedStats` and merges it into the `metadata` object for client consumption by the HistoryScreen.
+- This pattern keeps stats computation co-located with formatting while avoiding round-trips or state mutation.
+
+**Test corrections:**
+- Risk test file used incorrect territory IDs (`eastern_us` with underscores) — corrected to match actual TERRITORIES data (`eastern-united-states` with dashes).
+- Dominos tests had inconsistent end casing expectations — standardized all to uppercase (A/B/C/D) to match human-readable intent.
+
+**Validation:** All 672 tests pass (up from 660), build clean, lint warnings unchanged (pre-existing in docs/e2e).
+
+**Key file paths:**
+- BackgammonPlugin: `server/src/games/backgammon/BackgammonPlugin.ts` (`formatMoveEntries`, `buildGameResult`)
+- DominosPlugin: `server/src/games/dominos/DominosPlugin.ts` (`formatMoveEntries`, `buildScoreResult`)
+- RiskPlugin: `server/src/games/risk/RiskPlugin.ts` (`formatMoveEntries`, `checkGameEnd`, `getTerritoryName`)
+- Reference: `server/src/games/checkers/CheckersPlugin.ts` (multi-jump chain detection pattern)
+- Tests: `server/src/games/{game}/__tests__/formatMoveHistory.test.ts`
+
+**Pattern to remember:** When adding game-specific enrichment beyond simple `description` strings (like stats aggregation), use a temporary `_formattedStats` property on state to pass data to the `buildGameResult` function without polluting the schema or requiring additional traversals.
+

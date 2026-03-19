@@ -824,3 +824,6 @@ npm run test   # ✅ 472 tests passed (5 new)
 - **`exposedEnd` semantics:** Always set per-arm based on direction. A/C use outward pip (newEndValue); B/D use connecting pip (endValue). This applies to both server state and client preview.
 - **Consistent logic between server and client:** When both server and client compute the same value (tile orientation, pip visibility), they must use identical logic. Bug in one is usually a bug in both.
 
+- **MoveEntry.actionType vs payload fields:** Stats and detail rendering must use `entry.actionType` (top-level) for action type discrimination, not `entry.payload.action`. The payload holds game-specific data (coordinates, dice, etc), not the action type.
+- **Formatter registry owns detail rendering:** `MoveFormatter.formatMoveDetails()` returns structured `{label, value}` pairs. The HistoryScreen consumes these generically — no game-specific branching in the screen itself.
+- **Risk has 6+ action types:** pickTerritory, placeArmy, attack, captureMove, fortify, tradeCards, endPhase. Stats should count all meaningful ones, not just attack/fortify.

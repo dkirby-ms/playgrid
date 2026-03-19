@@ -5282,3 +5282,122 @@ Pemulis should export `selectCpuMove` from `dominosCpu.ts` matching this contrac
 
 24 tests written, all gated via `describe.skipIf`. Build/lint/test green.
 
+
+---
+
+## Session: P6.4 Polish — Move History Final Polish Pass (2026-03-19)
+
+### Gately: Structured Detail Rendering via MoveFormatter Extension
+
+**Status:** Implemented  
+**Date:** 2026-03-19  
+**Task:** P6.4 Polish — Move History
+
+**Context**
+
+HistoryScreen expanded move details were dumping raw payload keys as a JSON-like grid. Additionally, stats were checking `payload.action` instead of `entry.actionType`, causing zero stat counts for Dominos and Risk moves.
+
+**Decision**
+
+Extended `MoveFormatter` interface with `formatMoveDetails(entry): MoveDetailItem[]`. Each game formatter returns structured label/value pairs with human-readable content:
+- Checkers: source/dest coordinates + piece type
+- Backgammon: movement details + dice results
+- Dominos: played tile + pip count
+- Risk: reinforcements, territory, cards, bonus info
+- Default formatter: fallback to raw payload iteration for unknown games
+
+**Rationale**
+
+- Keeps game-specific knowledge in the formatter registry, not in the screen
+- Detail items use the same helpers as `formatMove` (indexToNotation, territoryName, formatDominoPips)
+- Default formatter falls back safely so unknown games still render
+- Pure additive change to existing interface — no breaking changes
+- Fixed actionType bugs in Dominos/Risk stats by reading `entry.actionType` instead of `payload.action`
+
+**Impact**
+
+- `client/src/ui/historyFormatters.ts` — Added `MoveDetailItem` type, `formatMoveDetails` to all formatters
+- `client/src/ui/HistoryScreen.ts` — Fixed stat bugs, replaced raw payload dump with structured formatter details
+- 671 tests passing
+
+**Files Changed**
+- `client/src/ui/historyFormatters.ts`
+- `client/src/ui/HistoryScreen.ts`
+
+---
+
+### Ortho: 6-Player Color Palette Extension
+
+**Status:** Implemented  
+**Date:** 2026-03-19  
+**Task:** P6.4 Polish — HistoryScreen CSS/Layout Polish
+
+**Context**
+
+HistoryScreen stat bars only supported 2 player colors (blue, amber), with `Math.min(playerIdx, 1)` clamping all players beyond index 1 to amber. Turn badges and player name labels supported 4 colors (indices 0–3). Risk supports up to 6 players, so visual differentiation was lost for 3–5 player Risk games.
+
+**Decision**
+
+Extended the player color system to 6 slots (indices 0–5):
+
+| Index | Color | CSS/RGB |
+|-------|-------|---------|
+| 0 | Blue | `--pg-blue-*` / `rgba(59,130,246)` |
+| 1 | Amber | `--pg-amber-*` / `rgba(234,179,8)` |
+| 2 | Purple | `rgba(168,85,247)` |
+| 3 | Green | `--pg-green-*` / `rgba(34,197,94)` |
+| 4 | Red | `rgba(239,68,68)` |
+| 5 | Cyan | `rgba(6,182,212)` |
+
+All three player-colored elements (turn badge, player name, stat bar fill) now use `Math.min(playerIdx, 5)` consistently.
+
+**Rationale**
+
+- Red and cyan complement the existing blue/amber/purple/green palette with good contrast on dark backgrounds
+- 6-color set covers Risk's maximum player count
+- Using `Math.min` with a single cap value keeps fallback safe for any future game with >6 players
+- CSS-based implementation — no dependencies added
+
+**Impact**
+
+- `client/src/ui/HistoryScreen.ts` — CSS color additions + JS clamping fix (all 3 color elements)
+- Mobile responsive verified (320px–768px)
+- 718 tests passing
+
+**Files Changed**
+- `client/src/ui/HistoryScreen.ts`
+
+---
+
+### Steeply: Exact-Output Formatter Test Coverage
+
+**Status:** Implemented  
+**Date:** 2026-03-19  
+**Task:** P6.4 Polish — Move History Formatter Tests
+
+**Context**
+
+The existing `historyFormatters.test.ts` had 35 tests + 3 todos. Checkers tests were solid, but backgammon/dominos/risk tests were written "anticipatorily" before the formatters landed. They used:
+- Conditional `describeIfRegistered` skip guards (no longer needed — all formatters registered)
+- Wrong payload shapes (e.g., `tile: [3, 5]` instead of `pips: [3, 5]`)
+- Loose `toBeTruthy()` assertions that would pass even if output was completely wrong
+
+**Decision**
+
+Replaced the entire test file with 82 tests that assert exact output strings against the actual formatter implementations. Every `formatMove` and `getMoveIcon` code path is now covered for all 4 games, the default formatter, and edge cases.
+
+**Rationale**
+
+- Weak assertions are worse than no tests — they give false confidence
+- Old tests would pass even if someone broke the output format
+- Exact string assertions catch regressions in emoji, territory names, pip format, and notation
+- Tests validate cross-game MoveEntry structure handling and fallback behavior
+
+**Impact**
+
+- `client/src/ui/__tests__/historyFormatters.test.ts` — 82 tests, 0 todos
+- Full build + lint + test suite green (718 total tests pass)
+- Zero false negatives in formatter coverage
+
+**Files Changed**
+- `client/src/ui/__tests__/historyFormatters.test.ts`
