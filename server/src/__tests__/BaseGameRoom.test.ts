@@ -323,6 +323,7 @@ describeRoom("BaseGameRoom", () => {
   });
 
   it("ends the game when an action reports endsGame", async () => {
+    vi.useFakeTimers();
     const room = createRoom();
     const gameResult = {
       type: "win",
@@ -357,6 +358,7 @@ describeRoom("BaseGameRoom", () => {
     expect(plugin.lifecycle.onGameEnd).toHaveBeenCalledWith(room.state, gameResult);
     expect(room.state.phase).toBe("ended");
     expect(room.broadcast).toHaveBeenCalledWith("game-end", gameResult);
+    await vi.advanceTimersByTimeAsync(6000);
     expect(room.disconnect).toHaveBeenCalledTimes(1);
   });
 
@@ -448,6 +450,7 @@ describeRoom("BaseGameRoom", () => {
   });
 
   it("does not hold a seat for a consented disconnect and forfeits immediately when one player remains", async () => {
+    vi.useFakeTimers();
     const room = createRoom();
     const plugin = createPlugin({
       lifecycle: {
@@ -482,10 +485,12 @@ describeRoom("BaseGameRoom", () => {
         }),
       }),
     );
+    await vi.advanceTimersByTimeAsync(6000);
     expect(room.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it("does not award a forfeit win to the shared-device opponent when the controller leaves", async () => {
+    vi.useFakeTimers();
     const room = createRoom();
     const plugin = createPlugin({
       lifecycle: {
@@ -519,10 +524,12 @@ describeRoom("BaseGameRoom", () => {
         }),
       }),
     );
+    await vi.advanceTimersByTimeAsync(6000);
     expect(room.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it("releases the reserved seat after the reconnection window expires", async () => {
+    vi.useFakeTimers();
     const room = createRoom();
     const plugin = createPlugin({
       lifecycle: {
@@ -557,11 +564,13 @@ describeRoom("BaseGameRoom", () => {
         }),
       }),
     );
+    await vi.advanceTimersByTimeAsync(6000);
     expect(room.disconnect).toHaveBeenCalledTimes(1);
     expect(room.state.phase).toBe("ended");
   });
 
   it("cleans up the shared-device opponent when the controller times out", async () => {
+    vi.useFakeTimers();
     const room = createRoom();
     const plugin = createPlugin({
       lifecycle: {
@@ -598,6 +607,7 @@ describeRoom("BaseGameRoom", () => {
         }),
       }),
     );
+    await vi.advanceTimersByTimeAsync(6000);
     expect(room.disconnect).toHaveBeenCalledTimes(1);
     expect(room.state.phase).toBe("ended");
   });
