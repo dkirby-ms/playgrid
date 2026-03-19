@@ -1,5 +1,23 @@
+import type { ClockTimer as Clock, Delayed } from "@colyseus/timer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TurnManager } from "../game/TurnManager";
+
+function createMockClock(): Clock {
+  return {
+    setTimeout(callback: (...args: unknown[]) => void, delayMs: number): Delayed {
+      const id = setTimeout(callback, delayMs);
+      return {
+        clear: () => clearTimeout(id),
+      } as Delayed;
+    },
+    setInterval(callback: (...args: unknown[]) => void, delayMs: number): Delayed {
+      const id = setInterval(callback, delayMs);
+      return {
+        clear: () => clearInterval(id),
+      } as Delayed;
+    },
+  } as Clock;
+}
 
 describe("TurnManager", () => {
   beforeEach(() => {
@@ -11,7 +29,7 @@ describe("TurnManager", () => {
   });
 
   it("starts with the first player and advances in round-robin order", () => {
-    const manager = new TurnManager(["player-1", "player-2", "player-3"]);
+    const manager = new TurnManager(["player-1", "player-2", "player-3"], createMockClock());
 
     manager.startTurns();
 
@@ -27,7 +45,7 @@ describe("TurnManager", () => {
   });
 
   it("advances immediately when removing the current player", () => {
-    const manager = new TurnManager(["player-1", "player-2", "player-3"]);
+    const manager = new TurnManager(["player-1", "player-2", "player-3"], createMockClock());
 
     manager.startTurns();
     manager.nextTurn();
@@ -39,7 +57,7 @@ describe("TurnManager", () => {
   });
 
   it("stops when the last remaining player is removed", () => {
-    const manager = new TurnManager(["solo"]);
+    const manager = new TurnManager(["solo"], createMockClock());
 
     manager.startTurns();
     manager.removePlayer("solo");
@@ -50,7 +68,7 @@ describe("TurnManager", () => {
 
   it("fires the timeout callback for the active player", () => {
     const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1", "player-2"], {
+    const manager = new TurnManager(["player-1", "player-2"], createMockClock(), {
       turnTimeLimit: 5,
       onTimeout,
     });
@@ -64,7 +82,7 @@ describe("TurnManager", () => {
 
   it("uses the default 60-second timeout when turnTimeLimit is provided without a value", () => {
     const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1"], {
+    const manager = new TurnManager(["player-1"], createMockClock(), {
       turnTimeLimit: undefined,
       onTimeout,
     });
@@ -79,7 +97,7 @@ describe("TurnManager", () => {
 
   it("does not start a timer unless turnTimeLimit is configured", () => {
     const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1"], { onTimeout });
+    const manager = new TurnManager(["player-1"], createMockClock(), { onTimeout });
 
     manager.startTurns();
     vi.advanceTimersByTime(120_000);
@@ -89,7 +107,7 @@ describe("TurnManager", () => {
 
   it("pauses and resumes the active turn timer", () => {
     const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1", "player-2"], {
+    const manager = new TurnManager(["player-1", "player-2"], createMockClock(), {
       turnTimeLimit: 5,
       onTimeout,
     });
@@ -113,7 +131,7 @@ describe("TurnManager", () => {
 
   it("clears the timer when stopped", () => {
     const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1"], {
+    const manager = new TurnManager(["player-1"], createMockClock(), {
       turnTimeLimit: 1,
       onTimeout,
     });
@@ -128,7 +146,7 @@ describe("TurnManager", () => {
 
   it("resets the timer for the current player without advancing turns", () => {
     const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1", "player-2"], {
+    const manager = new TurnManager(["player-1", "player-2"], createMockClock(), {
       turnTimeLimit: 5,
       onTimeout,
     });
@@ -151,7 +169,7 @@ describe("TurnManager", () => {
 
   it("does nothing when resetTimer is called on an inactive manager", () => {
     const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1"], {
+    const manager = new TurnManager(["player-1"], createMockClock(), {
       turnTimeLimit: 5,
       onTimeout,
     });

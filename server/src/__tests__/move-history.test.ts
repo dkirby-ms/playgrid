@@ -1,5 +1,23 @@
 import { BaseGameState, type GamePlugin, type MoveEntry } from "../../../shared/src/index.ts";
+import type { ClockTimer as Clock, Delayed } from "@colyseus/timer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+function createMockClock(): Clock {
+  return {
+    setTimeout(callback: (...args: unknown[]) => void, delayMs: number): Delayed {
+      const id = setTimeout(callback, delayMs);
+      return {
+        clear: () => clearTimeout(id),
+      } as Delayed;
+    },
+    setInterval(callback: (...args: unknown[]) => void, delayMs: number): Delayed {
+      const id = setInterval(callback, delayMs);
+      return {
+        clear: () => clearInterval(id),
+      } as Delayed;
+    },
+  } as Clock;
+}
 
 const { mockedCloseCode, mockGameRegistry } = vi.hoisted(() => ({
   mockedCloseCode: {
@@ -111,6 +129,7 @@ function createRoom(): TestRoom {
     roomId: "test-room",
     clients: [] as MockClient[],
     maxClients: 1,
+    clock: createMockClock(),
     messageHandlers,
     allowReconnection: vi.fn(),
     broadcast: vi.fn(),

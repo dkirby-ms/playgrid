@@ -393,7 +393,7 @@ export class BaseGameRoom extends Room {
       ? timerConfig.turnDurationMs / 1000
       : this.plugin.turnConfig.turnTimeLimit;
 
-    this.turnManager = new TurnManager(this.orderTurnPlayers(playerIds), {
+    this.turnManager = new TurnManager(this.orderTurnPlayers(playerIds), this.clock, {
       turnTimeLimit,
       onTimeout: (sessionId) => {
         void this.handleTurnTimeout(sessionId);

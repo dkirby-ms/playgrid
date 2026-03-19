@@ -1,3 +1,5 @@
+import type { ClockTimer as Clock, Delayed } from "@colyseus/timer";
+
 export interface TurnManagerOptions {
   turnTimeLimit?: number;
   onTimeout?: (sessionId: string) => void;
@@ -7,6 +9,7 @@ const DEFAULT_TURN_TIME_LIMIT_SECONDS = 60;
 
 export class TurnManager {
   private readonly playerIds: string[];
+  private readonly clock: Clock;
   private readonly onTimeout?: (sessionId: string) => void;
   private readonly turnTimeLimitMs?: number;
 
@@ -14,12 +17,13 @@ export class TurnManager {
   private turnNumber = 0;
   private active = false;
   private paused = false;
-  private timeoutId: ReturnType<typeof setTimeout> | null = null;
+  private timeoutDelayed: Delayed | null = null;
   private timerStartedAt: number | null = null;
   private remainingTurnTimeMs?: number;
 
-  constructor(playerIds: string[], options: TurnManagerOptions = {}) {
+  constructor(playerIds: string[], clock: Clock, options: TurnManagerOptions = {}) {
     this.playerIds = [...playerIds];
+    this.clock = clock;
     this.onTimeout = options.onTimeout;
 
     if (Object.hasOwn(options, "turnTimeLimit")) {
@@ -209,8 +213,8 @@ export class TurnManager {
     const sessionId = this.playerIds[this.currentIndex];
     this.remainingTurnTimeMs = delayMs;
     this.timerStartedAt = Date.now();
-    this.timeoutId = setTimeout(() => {
-      this.timeoutId = null;
+    this.timeoutDelayed = this.clock.setTimeout(() => {
+      this.timeoutDelayed = null;
       this.timerStartedAt = null;
       this.remainingTurnTimeMs = this.turnTimeLimitMs;
       this.onTimeout?.(sessionId);
@@ -218,13 +222,13 @@ export class TurnManager {
   }
 
   private stopTimer(): void {
-    if (!this.timeoutId) {
+    if (!this.timeoutDelayed) {
       this.timerStartedAt = null;
       return;
     }
 
-    clearTimeout(this.timeoutId);
-    this.timeoutId = null;
+    this.timeoutDelayed.clear();
+    this.timeoutDelayed = null;
     this.timerStartedAt = null;
   }
 }
