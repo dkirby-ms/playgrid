@@ -4929,3 +4929,61 @@ Never use `[skip ci]` in commit messages when workflows involve squash-merging. 
 **Files Modified:**
 - `.github/workflows/ci.yml`
 
+
+---
+
+### Ortho: P6.3 History Formatters (Backgammon, Dominos, Risk)
+
+**Status:** Implemented  
+**Date:** 2026-03-19  
+
+Added three game-specific `MoveFormatter` implementations to `client/src/ui/historyFormatters.ts`.
+
+**Formatters:**
+- **backgammonFormatter** — `roll`, `move` (point 1-24, Bar, Off), `pass`
+- **dominosFormatter** — `play` (graceful pip detection), `draw`, `pass`
+- **riskFormatter** — `pickTerritory`, `placeArmy`, `attack`, `captureMove`, `fortify`, `tradeCards`, `endPhase`; territory ID resolution via `getTerritoryById()`
+
+**Key Design Choices:**
+1. Dominos pip detection defers to server-side enrichment; falls back to `entry.description`
+2. Risk reuses existing `getTerritoryById()` (no data duplication); IDs gracefully fall back to raw string if not found
+3. Attack display limited to dice count (server-side results not in client payload; enrichment supported via future `formatMoveHistory`)
+
+**Team Impact:**
+- Server devs: Consider adding `formatMoveHistory` to Backgammon/Dominos/Risk plugins to enrich payloads
+- No breaking changes (additive only)
+
+**Files Modified:**
+- `client/src/ui/historyFormatters.ts`
+
+**Test Coverage:** 41 new test cases (Steeply); 580 total tests passing
+
+---
+
+### Gately: Preserve Drags Across Colyseus State Changes
+
+**Status:** Implemented  
+**Date:** 2026-03-19  
+
+Fixed drag-and-drop flakiness where pieces disappear when dragged slowly across grid.
+
+**Root Cause:**
+`CheckersRenderer.onStateChange()` and `DominosRenderer.onStateChange()` unconditionally called `dragHelper.cancel()` on every Colyseus state sync. In multiplayer games, state updates arrive frequently (timer ticks, opponent moves). If the user was mid-drag—even after crossing the 6px promotion threshold—the proxy was destroyed, making the piece vanish.
+
+**Solution:**
+1. **Renderers** — `onStateChange` now cancels drags only when the source is invalidated (piece captured, tile left hand, turn changed)
+2. **DragHelper.cancel()** — Always calls `onDragCancel` for both promoted and pending drags; previously silent for pending drags, leaving renderer state (`dragSourceIndex`/`dragTileId`) stale
+3. **Hover guard** — `handleSquareHover` in Checkers blocks during pending drags (not just promoted ones), preventing redraws during 6px build-up
+
+**Impact:**
+- All games using DragHelper benefit (Checkers, Dominos)
+- Existing click-vs-drag distinction (6px threshold) unchanged
+- 4 new regression tests added
+
+**Files Modified:**
+- `client/src/renderers/DragHelper.ts`
+- `client/src/renderers/DragHelper.test.ts`
+- `client/src/renderers/CheckersRenderer.ts`
+- `client/src/renderers/DominosRenderer.ts`
+
+**Test Coverage:** 4 regression tests added; 583 total tests passing

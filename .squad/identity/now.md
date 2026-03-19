@@ -1,11 +1,11 @@
 # Squad Status: Current Phase
 
-**Last Updated:** 2026-03-19T14:04:37Z  
-**Phase:** Move History Implementation — P6.1 & P6.2 Complete. Next: P6.3 Formatters
+**Last Updated:** 2026-03-19T14:23:20Z  
+**Phase:** Move History Implementation — P6.3 Complete. Next: P6.4 Polish
 
-## Current Work: Move History Architecture Planning
+## Current Work: Move History Polish Phase
 
-**Status:** 7 of 8 priority items complete (P0-P5, P7 finished; P6.1-P6.2 complete; P6.3 in progress)
+**Status:** 8 of 9 priority items complete (P0-P5, P7 finished; P6.1-P6.3 complete)
 
 **Completed Phases:**
 - ✅ **P0** — Player Info Bars verification + pulse animation
@@ -19,7 +19,7 @@
 **P6 Implementation (4 Phases):**
 - ✅ **P6.1** — Core infrastructure (MoveEntry, BaseGameRoom recording, delivery)
 - ✅ **P6.2** — Checkers formatter + HistoryScreen UI
-- ⏳ **P6.3** — Backgammon & Dominos formatters
+- ✅ **P6.3** — Backgammon, Dominos, Risk formatters + drag fix
 - ⏳ **P6.4** — Polish & refinements
 
 ### Session 2026-03-19 Summary (P6.1 + P6.2)
@@ -53,4 +53,4 @@
 
 ---
 
-**Team:** P0-P5, P7, P6.1, P6.2 complete (8 of 9 items). P6.3 (Backgammon & Dominos formatters) in progress. Decision document: .squad/decisions.md
+**Team:** P0-P5, P7, P6.1-P6.3 complete (8 of 9 items). P6.4 (Polish & refinements) remains. **Concurrent fix:** Drag flakiness resolved (pieces no longer disappear mid-drag). Decision document: .squad/decisions.md
