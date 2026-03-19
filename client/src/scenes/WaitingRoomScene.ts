@@ -1,5 +1,6 @@
 import type { Room } from "@colyseus/sdk";
 import { Container } from "pixi.js";
+import type { ConsoleLog } from "../ui/ConsoleLog";
 import type { GameSessionInfo } from "../ui/LobbyScreen";
 import { WaitingRoom } from "../ui/WaitingRoom";
 import type { Scene } from "./Scene";
@@ -25,6 +26,10 @@ export class WaitingRoomScene implements Scene {
 
   hideOverlay(): void {
     this.waitingRoom.hide();
+  }
+
+  setConsoleLog(log: ConsoleLog): void {
+    this.waitingRoom.setConsoleLog(log);
   }
 
   onEnter(data?: unknown): void {

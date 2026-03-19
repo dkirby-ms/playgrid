@@ -16,6 +16,7 @@ export class LobbyScene implements Scene {
   readonly container = new Container();
 
   private readonly lobbyScreen = new LobbyScreen();
+  private consoleLog: ConsoleLog | null = null;
 
   constructor(private readonly onEventCallback: (event: LobbyEvent) => void | Promise<void>) {}
 
@@ -28,11 +29,12 @@ export class LobbyScene implements Scene {
   }
 
   setConsoleLog(log: ConsoleLog): void {
+    this.consoleLog = log;
     this.lobbyScreen.setConsoleLog(log);
   }
 
   showNotice(message: string, tone: "info" | "error"): void {
-    this.lobbyScreen.showNotice(message, tone);
+    this.consoleLog?.log(message, tone === "error" ? "error" : "info");
   }
 
   showConnectionError(message: string): void {
@@ -47,7 +49,10 @@ export class LobbyScene implements Scene {
     this.lobbyScreen.show();
 
     if (enterData?.notice) {
-      this.lobbyScreen.showNotice(enterData.notice.message, enterData.notice.tone);
+      this.consoleLog?.log(
+        enterData.notice.message,
+        enterData.notice.tone === "error" ? "error" : "info",
+      );
       return;
     }
 

@@ -1820,8 +1820,39 @@ npm run test   # ✅ 472 tests passed (5 new)
 - **Dominos end position math:** The `endPositions` dictionary stores where the NEXT tile's connecting edge would be placed. It must use scale-aware offsets (`BOARD_TILE_GAP * scale`), never fixed pixel values, because the board scales down when arms grow long.
 - **Ghost tile rendering pattern:** Store layout state (scale, center positions, arm end edges) as instance variables during `redrawBoard*()` so ghost/preview computations use the same coordinate system without re-deriving everything.
 - **Board tile ordering:** The server stores tiles in chronological (play) order with arm assignments. Post-spinner tiles within each arm are correctly ordered (closest to spinner first). Pre-spinner retroactive tiles may not match spatial order — a known server-side limitation that doesn't affect the ghost preview.
-- **`exposedEnd` field:** Represents the pip value facing outward (away from spinner) after placement. For ghost tiles, compute it by checking which pip matches the arm's open end — the other pip faces outward.
+- **`exposedEnd` field:** Represents the pip value that faces the chain's left/top direction. For arms A/C (extending left/up), this is the outward pip (newEndValue). For arms B/D (extending right/down), this is the connecting pip (endValue). The renderer always places `exposedEnd` on the left/top side of the tile.
 - **Drag survival across state changes:** Never cancel DragHelper drags unconditionally in `onStateChange`. Colyseus state changes fire frequently in multiplayer games; cancelling the drag on every sync makes pieces "disappear" from the user's cursor. Only cancel if the drag source is invalidated (piece captured, turn changed). The DragHelper proxy lives in a separate layer and survives redraws.
 - **DragHelper.cancel() always notifies:** `cancel()` calls `onDragCancel` for both promoted and non-promoted (pending) drags. This prevents renderer state (`dragSourceIndex`/`dragTileId`) from going stale when external code aborts a drag.
 - **Colyseus `client.send()` during `onJoin` races with client handler registration.** Messages sent via `client.send("player-data", ...)` inside `onJoin()` or `startGame()` arrive before the client has called `room.onMessage()` to register its handler. The Colyseus SDK silently drops unhandled messages — no buffering. Fix: register a `"request-player-data"` message on the server and have the renderer re-request after subscribing.
 - **Async scene transitions create a Colyseus callback gap.** `SceneManager.transitionTo()` is async (awaits `onExit`/`onEnter`). During that await, Colyseus patches can arrive and update `room.state` without triggering `onStateChange` (no handler registered yet). Fix: after registering `onStateChange`, fire the handler once with `room.state` to catch any silently applied patches.
+
+## 2026-03-19: Fix Domino Tile Placement Orientation (#161)
+
+**From:** Gately
+**Task:** Fix domino tile placement orientation flip bug
+**Mode:** background
+
+**Problem diagnosed:**
+- Tiles on arms B/D were rendering with inverted pip orientation when placed on the board
+- The ghost preview showed the tile in the correct position but with flipped pips
+- Server-side `placeTileOnBoard()` was assigning `exposedEnd` incorrectly for arms B/D
+
+**Root cause:** The `exposedEnd` field represents the pip value visible on the left/top of the tile. For arms A/C (extending left/up), this is the outward pip (newEndValue). For arms B/D (extending right/down), this is the connecting pip (endValue). The code was using `newEndValue` for all arms, causing B/D tiles to render flipped.
+
+**Fix applied:**
+1. **Server-side `placeTileOnBoard()`:** Changed arm B/D logic to use `endValue` instead of `newEndValue` for `exposedEnd`
+2. **Client-side `resolveGhostExposedEnd()`:** Applied the same fix to ghost preview rendering
+3. **Regression test:** Added test to verify correct pip orientation for all four arm positions
+
+**Files modified:**
+- `server/src/games/dominos/dominosLogic.ts`
+- `client/src/renderers/DominosRenderer.ts`
+- `server/src/games/dominos/__tests__/dominosLogic.test.ts`
+
+**Validation:** All 584 tests passing. ✅
+
+## Learnings
+
+- **`exposedEnd` semantics:** Always set per-arm based on direction. A/C use outward pip (newEndValue); B/D use connecting pip (endValue). This applies to both server state and client preview.
+- **Consistent logic between server and client:** When both server and client compute the same value (tile orientation, pip visibility), they must use identical logic. Bug in one is usually a bug in both.
+

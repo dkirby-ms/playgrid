@@ -1,5 +1,6 @@
 import type { Room } from "@colyseus/sdk";
 import { Container } from "pixi.js";
+import type { ConsoleLog } from "../ui/ConsoleLog";
 import type { GameSessionInfo } from "../ui/LobbyScreen";
 import { SetupScreen, type SetupScreenEvent } from "../ui/SetupScreen";
 import type { Scene } from "./Scene";
@@ -27,6 +28,10 @@ export class SetupScene implements Scene {
 
   hideOverlay(): void {
     this.setupScreen.hide();
+  }
+
+  setConsoleLog(log: ConsoleLog): void {
+    this.setupScreen.setConsoleLog(log);
   }
 
   onEnter(data?: unknown): void {

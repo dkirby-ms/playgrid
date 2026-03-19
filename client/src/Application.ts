@@ -206,6 +206,8 @@ export class PlaygridApp {
     this.historyScreen = new HistoryScreen();
     this.consoleLog = new ConsoleLog();
     this.lobbyScene.setConsoleLog(this.consoleLog);
+    this.setupScene.setConsoleLog(this.consoleLog);
+    this.waitingRoomScene.setConsoleLog(this.consoleLog);
     window.addEventListener("beforeunload", () => this.persistSessionForRefresh());
     window.addEventListener("pagehide", () => this.persistSessionForRefresh());
     window.addEventListener("resize", () => this.scheduleViewportSync());
@@ -546,8 +548,7 @@ export class PlaygridApp {
   private handleGameRoomDrop(room: ColyseusRoom, code: number): void {
     console.log(`[playgrid] Dropped game room ${this.getRoomLabel(room)} (code: ${code})`);
     this.clearReconnectReturnTimeout();
-    this.reconnectOverlay.showReconnecting();
-    this.consoleLog?.warn("Connection dropped — attempting to reconnect…");
+    this.consoleLog?.warn("Trying to restore your game session…");
     this.setStatus("Reconnecting...", { persistent: true, visibleInGame: true });
   }
 
@@ -555,8 +556,7 @@ export class PlaygridApp {
     console.log(`[playgrid] Reconnected game room ${this.getRoomLabel(room)}`);
     this.persistActiveSession(room, gameType);
     this.clearReconnectReturnTimeout();
-    this.reconnectOverlay.showReconnected();
-    this.consoleLog?.success("Reconnected to game session.");
+    this.consoleLog?.success("You're back in the game.");
     this.setStatus("Reconnected!", { visibleInGame: true });
     this.scheduleReconnectOverlayHide();
   }
@@ -578,8 +578,7 @@ export class PlaygridApp {
     this.clearReconnectOverlayHideTimeout();
     this.activeGameType = null;
     this.gameRoom = null;
-    this.reconnectOverlay.showFailure();
-    this.consoleLog?.error("Connection to game lost. Returning to lobby…");
+    this.consoleLog?.error("Returning to lobby…");
     this.setStatus("Connection lost. Returning to lobby...", {
       tone: "error",
       persistent: true,
@@ -805,7 +804,7 @@ export class PlaygridApp {
       return { restored: false };
     }
 
-    this.reconnectOverlay.showReconnecting("Rejoining your active game...");
+    this.consoleLog?.warn("Rejoining your active game…");
     this.setStatus("Rejoining active game...", { persistent: true, visibleInGame: true });
 
     try {
@@ -881,7 +880,7 @@ export class PlaygridApp {
 
     try {
       if (displayName === this.displayName && this.lobbyRoom) {
-        this.lobbyScene.showNotice("Player name saved.", "info");
+        this.consoleLog?.success("Player name saved.");
         return;
       }
 
@@ -1056,7 +1055,7 @@ export class PlaygridApp {
     const { message, context } = event;
 
     if (context === "lobby" || context === "joinLobby") {
-      this.lobbyScene.showNotice(message, "error");
+      this.consoleLog?.error(message);
     }
 
     this.consoleLog?.error(`Connection error: ${message}`);

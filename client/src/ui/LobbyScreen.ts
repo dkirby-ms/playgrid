@@ -533,7 +533,7 @@ export class LobbyScreen {
     room.onMessage(LOBBY_ERROR, (payload: LobbyErrorPayload) => {
       this.pendingTransition = null;
       this.setCreatePending(false);
-      this.showNotice(payload.message, "error");
+      this.consoleLog?.error(payload.message);
       this.eventCallback?.({ type: "error", message: payload.message });
     });
 
@@ -596,7 +596,7 @@ export class LobbyScreen {
     this.playerNameInput.value = displayName;
 
     if (!displayName) {
-      this.showNotice("Player name is required.", "error");
+      this.consoleLog?.error("Player name is required.");
       return;
     }
 
@@ -605,7 +605,7 @@ export class LobbyScreen {
 
   private handleCreateGame(): void {
     if (!this.room) {
-      this.showNotice("Lobby is not connected yet.", "error");
+      this.consoleLog?.error("Lobby is not connected yet.");
       return;
     }
 
@@ -642,7 +642,7 @@ export class LobbyScreen {
     this.createTimeout = window.setTimeout(() => {
       this.pendingTransition = null;
       this.setCreatePending(false);
-      this.showNotice("Game creation timed out. Try again.", "error");
+      this.consoleLog?.error("Game creation timed out. Try again.");
     }, 30000);
   }
 
@@ -900,7 +900,7 @@ export class LobbyScreen {
       joinBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Join</span>';
       joinBtn.addEventListener("click", () => {
         if (!this.room) {
-          this.showNotice("Lobby is not connected yet.", "error");
+          this.consoleLog?.error("Lobby is not connected yet.");
           return;
         }
         const payload: JoinGamePayload = { gameId: game.id };
