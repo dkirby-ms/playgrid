@@ -1057,7 +1057,7 @@ export class DominosRenderer implements GameRenderer {
       if (!ghost) continue;
 
       const openEnd = this.getOpenEndForArm(end);
-      const exposedEnd = this.resolveGhostExposedEnd(tile, openEnd);
+      const exposedEnd = this.resolveGhostExposedEnd(tile, openEnd, end);
 
       const ghostTile: BoardTileSnapshot = {
         id: -1,
@@ -1162,13 +1162,19 @@ export class DominosRenderer implements GameRenderer {
     }
   }
 
-  /** Determine which pip value faces outward on the ghost tile */
-  private resolveGhostExposedEnd(tile: HandTile, openEnd: number): number {
+  /** Determine which pip value faces the chain's left/top on the ghost tile */
+  private resolveGhostExposedEnd(
+    tile: HandTile,
+    openEnd: number,
+    arm: "a" | "b" | "c" | "d",
+  ): number {
     if (tile.highPips === tile.lowPips) return tile.highPips;
     if (openEnd === -1) return tile.lowPips;
-    // The matching pip connects inward; the other pip faces outward
-    if (tile.highPips === openEnd) return tile.lowPips;
-    return tile.highPips;
+    const connectingPip = tile.highPips === openEnd ? tile.highPips : tile.lowPips;
+    const outwardPip = tile.highPips === openEnd ? tile.lowPips : tile.highPips;
+    // Arms A/C extend left/up: outward pip faces left/top.
+    // Arms B/D extend right/down: connecting pip faces left/top.
+    return (arm === "b" || arm === "d") ? connectingPip : outwardPip;
   }
 
   // ── Board tile drawing ─────────────────────────────────────────────────────

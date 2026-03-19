@@ -365,11 +365,11 @@ describe("dominosLogic", () => {
       placeTileOnBoard(state, tile(0, 5, 3), "a");
       
       // Play 4|5 on end B (where openEndB=5)
-      // Since highPips=5 matches the chain, lowPips=4 becomes the new exposed end
+      // highPips=5 matches the chain; on end B the connecting pip faces left
       placeTileOnBoard(state, tile(1, 5, 4), "b");
       
       const lastTile = state.board[state.board.length - 1];
-      expect(lastTile.exposedEnd).toBe(4); // lowPips is exposed
+      expect(lastTile.exposedEnd).toBe(5); // connecting pip faces left on end B
       expect(state.openEndB).toBe(4);
     });
 
@@ -399,6 +399,20 @@ describe("dominosLogic", () => {
       const lastTile = state.board[state.board.length - 1];
       expect(lastTile.exposedEnd).toBe(3); // double, so both sides are 3
       expect(state.openEndA).toBe(3);
+    });
+
+    it("regression: placing 6/4 next to 1/6 orients the 6-side toward the chain", () => {
+      const state = createState();
+      // First tile: 1|6 → openEndA=1, openEndB=6
+      placeTileOnBoard(state, tile(0, 6, 1), "a");
+
+      // Play 6|4 on end B (where openEndB=6)
+      // The 6-side should connect to the chain; on end B the connecting pip faces left
+      placeTileOnBoard(state, tile(1, 6, 4), "b");
+
+      const lastTile = state.board[state.board.length - 1];
+      expect(lastTile.exposedEnd).toBe(6); // connecting pip (6) faces left toward chain
+      expect(state.openEndB).toBe(4); // new open end is 4
     });
   });
 

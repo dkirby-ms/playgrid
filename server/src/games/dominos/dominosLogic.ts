@@ -230,7 +230,9 @@ export function placeTileOnBoard(
       state.openEndD = result.newEndValue;
     }
 
-    state.board.push(toBoardTile(raw, result.newEndValue, end));
+    // End C extends up: new open end faces top. End D extends down: connecting pip faces top.
+    const boardExposedEnd = end === "d" ? endValue : result.newEndValue;
+    state.board.push(toBoardTile(raw, boardExposedEnd, end));
     state.lastPlayedTileId = raw.id;
     state.lastPlayedEnd = end;
     return true;
@@ -241,6 +243,11 @@ export function placeTileOnBoard(
   if (!tileMatchesEnd(raw, endValue)) return false;
 
   const result = resolvePlay(raw, endValue);
+
+  // exposedEnd tells the renderer which pip faces the chain's left/top.
+  // End A extends left: the new open end faces left.
+  // End B extends right: the connecting pip faces left.
+  const boardExposedEnd = end === "b" ? endValue : result.newEndValue;
 
   if (end === "a") {
     state.openEndA = result.newEndValue;
@@ -253,10 +260,10 @@ export function placeTileOnBoard(
 
   if (state.spinnerTileId === -1 && !becomesSpinner) {
     // Pre-spinner linear play
-    state.board.push(toBoardTile(raw, result.newEndValue, ""));
+    state.board.push(toBoardTile(raw, boardExposedEnd, ""));
   } else if (becomesSpinner) {
     // This double becomes the spinner mid-chain
-    const spinnerBt = toBoardTile(raw, result.newEndValue, "spinner");
+    const spinnerBt = toBoardTile(raw, boardExposedEnd, "spinner");
     state.board.push(spinnerBt);
     state.spinnerTileId = raw.id;
 
@@ -283,7 +290,7 @@ export function placeTileOnBoard(
     }
   } else {
     // Post-spinner play on arm A or B
-    state.board.push(toBoardTile(raw, result.newEndValue, end));
+    state.board.push(toBoardTile(raw, boardExposedEnd, end));
     if (end === "a") {
       state.armACount++;
     } else {
