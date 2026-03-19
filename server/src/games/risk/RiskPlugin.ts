@@ -43,6 +43,7 @@ import {
   getNextPhase,
   initializeSetup,
   calculateInitialArmies,
+  performQuickstartSetup,
 } from "./riskLogic.js";
 
 type PickTerritoryPayload = {
@@ -185,6 +186,9 @@ export const riskPlugin: GamePlugin<RiskState> = {
         riskPlayer.armiesToPlace = reinforcements;
       }
     },
+    onCreate(state, options) {
+      state.quickstart = options.quickstart === true;
+    },
     onGameStart(state) {
       for (const territory of TERRITORIES) {
         const territoryState = new TerritoryState();
@@ -193,13 +197,31 @@ export const riskPlugin: GamePlugin<RiskState> = {
         state.territories.set(territory.id, territoryState);
       }
 
-      initializeSetup(state);
+      if (state.quickstart) {
+        performQuickstartSetup(state);
+        state.gamePhase = "playing";
+        state.turnPhase = "reinforce";
+        state.cardTradeInCount = 0;
+        state.earnedCardThisTurn = false;
 
-      state.gamePhase = "setup";
-      state.turnPhase = "setup-pick";
-      state.setupTerritoryIndex = 0;
-      state.cardTradeInCount = 0;
-      state.earnedCardThisTurn = false;
+        // Grant first player their initial reinforcements
+        const firstPlayer = state.riskPlayers.get(state.currentTurn);
+        if (firstPlayer) {
+          const ownedTerritories = getOwnedTerritories(state, state.currentTurn);
+          const reinforcements = calculateReinforcements(
+            firstPlayer.territoriesOwned,
+            ownedTerritories,
+          );
+          firstPlayer.armiesToPlace = reinforcements;
+        }
+      } else {
+        initializeSetup(state);
+        state.gamePhase = "setup";
+        state.turnPhase = "setup-pick";
+        state.setupTerritoryIndex = 0;
+        state.cardTradeInCount = 0;
+        state.earnedCardThisTurn = false;
+      }
     },
   },
   actions: {

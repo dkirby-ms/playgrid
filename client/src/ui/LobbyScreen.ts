@@ -45,6 +45,7 @@ export interface CreateGamePayload {
   cpuPlayers?: number;
   cpuOpponent?: boolean;
   headToHeadMode?: boolean;
+  quickstart?: boolean;
 }
 
 export interface JoinGamePayload {

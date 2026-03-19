@@ -4,6 +4,7 @@ import {
   createPanel,
   createOptionGroup,
   createStepper,
+  createToggleRow,
 } from "./configControls";
 
 type GameMode = "classic" | "quick" | "domination";
@@ -24,6 +25,16 @@ export function createRiskSetupConfig(): SetupConfigPanel {
   );
   modePanel.append(modeGroup.element);
   container.append(modePanel);
+
+  // Setup Options
+  const setupPanel = createPanel("Setup Options", "🎲");
+  const quickstartToggle = createToggleRow(
+    "Quickstart",
+    "Skip drafting — territories and armies assigned randomly",
+    false,
+  );
+  setupPanel.append(quickstartToggle.element);
+  container.append(setupPanel);
 
   // Advanced Settings
   const advPanel = createPanel("Advanced Settings");
@@ -50,10 +61,12 @@ export function createRiskSetupConfig(): SetupConfigPanel {
     getPayloadOverrides(): Partial<CreateGamePayload> {
       return {
         maxPlayers: maxPlayers.getValue(),
+        quickstart: quickstartToggle.getValue(),
       };
     },
     setReadOnly(readOnly: boolean) {
       modeGroup.setReadOnly(readOnly);
+      quickstartToggle.setReadOnly(readOnly);
       maxPlayers.setReadOnly(readOnly);
       turnTimer.setReadOnly(readOnly);
       startingArmies.setReadOnly(readOnly);

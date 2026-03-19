@@ -16,6 +16,7 @@ const {
   checkWinCondition,
   calculateInitialArmies,
   getOwnedTerritories,
+  performQuickstartSetup,
 } = await import("../games/risk/riskLogic");
 const {
   TERRITORIES,
@@ -1708,6 +1709,186 @@ describe("Risk Game — Integration", () => {
         expect(fromArmies).toBeGreaterThanOrEqual(1);
         expect(toArmies).toBeGreaterThanOrEqual(1);
       }
+    });
+  });
+});
+
+// ============================================================================
+// Quickstart Mode Tests
+// ============================================================================
+
+describe("Risk Game — Quickstart Mode", () => {
+  function createQuickstartGame(playerCount: number): RiskStateInstance {
+    const state = riskPlugin.createState();
+    riskPlugin.lifecycle.onCreate?.(state, { quickstart: true });
+    for (let i = 0; i < playerCount; i++) {
+      riskPlugin.lifecycle.onPlayerJoin?.(state, mockClient(`player-${i + 1}`), i);
+    }
+    // Simulate BaseGameRoom setting currentTurn before onGameStart
+    state.currentTurn = "player-1";
+    riskPlugin.lifecycle.onGameStart?.(state);
+    return state;
+  }
+
+  describe("state initialization", () => {
+    it("sets quickstart flag via onCreate", () => {
+      const state = riskPlugin.createState();
+      riskPlugin.lifecycle.onCreate?.(state, { quickstart: true });
+      expect(state.quickstart).toBe(true);
+    });
+
+    it("defaults quickstart to false when not specified", () => {
+      const state = riskPlugin.createState();
+      riskPlugin.lifecycle.onCreate?.(state, {});
+      expect(state.quickstart).toBe(false);
+    });
+  });
+
+  describe("territory distribution", () => {
+    it("assigns all 42 territories among players", () => {
+      const state = createQuickstartGame(3);
+      let assigned = 0;
+      state.territories.forEach((t) => {
+        if (t.owner !== "") assigned++;
+      });
+      expect(assigned).toBe(TERRITORY_COUNT);
+    });
+
+    it("distributes territories evenly (±1) among players", () => {
+      for (const playerCount of [2, 3, 4, 5, 6]) {
+        const state = createQuickstartGame(playerCount);
+        const counts = new Map<string, number>();
+        state.territories.forEach((t) => {
+          counts.set(t.owner, (counts.get(t.owner) ?? 0) + 1);
+        });
+
+        const expected = Math.floor(TERRITORY_COUNT / playerCount);
+        const remainder = TERRITORY_COUNT % playerCount;
+
+        for (const [, count] of counts) {
+          expect(count).toBeGreaterThanOrEqual(expected);
+          expect(count).toBeLessThanOrEqual(expected + (remainder > 0 ? 1 : 0));
+        }
+      }
+    });
+
+    it("tracks territory counts correctly in riskPlayers", () => {
+      const state = createQuickstartGame(4);
+      let totalFromPlayers = 0;
+      state.riskPlayers.forEach((rp) => {
+        const owned = getOwnedTerritories(state, rp.sessionId);
+        expect(rp.territoriesOwned).toBe(owned.length);
+        totalFromPlayers += rp.territoriesOwned;
+      });
+      expect(totalFromPlayers).toBe(TERRITORY_COUNT);
+    });
+  });
+
+  describe("army placement", () => {
+    it("places correct total armies per player based on player count", () => {
+      for (const playerCount of [2, 3, 4, 5, 6]) {
+        const state = createQuickstartGame(playerCount);
+        const expectedArmies = calculateInitialArmies(playerCount);
+
+        for (let i = 0; i < playerCount; i++) {
+          const sessionId = `player-${i + 1}`;
+          let totalArmies = 0;
+          state.territories.forEach((t) => {
+            if (t.owner === sessionId) {
+              totalArmies += t.armyCount;
+            }
+          });
+          expect(totalArmies).toBe(expectedArmies);
+        }
+      }
+    });
+
+    it("places at least 1 army on every owned territory", () => {
+      const state = createQuickstartGame(4);
+      state.territories.forEach((t) => {
+        expect(t.armyCount).toBeGreaterThanOrEqual(1);
+      });
+    });
+
+    it("sets armiesToPlace to 0 for all players except the current turn", () => {
+      const state = createQuickstartGame(3);
+      state.riskPlayers.forEach((rp) => {
+        if (rp.sessionId === state.currentTurn) {
+          // First player has reinforcements already granted
+          expect(rp.armiesToPlace).toBeGreaterThanOrEqual(3);
+        } else {
+          expect(rp.armiesToPlace).toBe(0);
+        }
+      });
+    });
+  });
+
+  describe("game phase", () => {
+    it("skips setup and goes directly to playing phase", () => {
+      const state = createQuickstartGame(3);
+      expect(state.gamePhase).toBe("playing");
+      expect(state.turnPhase).toBe("reinforce");
+    });
+
+    it("grants first player reinforcements", () => {
+      const state = createQuickstartGame(3);
+      const firstPlayer = state.riskPlayers.get("player-1");
+      expect(firstPlayer).toBeDefined();
+      expect(firstPlayer!.armiesToPlace).toBeGreaterThanOrEqual(3);
+    });
+
+    it("initializes card and combat state correctly", () => {
+      const state = createQuickstartGame(4);
+      expect(state.cardTradeInCount).toBe(0);
+      expect(state.earnedCardThisTurn).toBe(false);
+      state.riskPlayers.forEach((rp) => {
+        expect(rp.cardsHeld).toBe(0);
+      });
+    });
+  });
+
+  describe("normal flow is unchanged", () => {
+    it("starts in setup-pick when quickstart is false", () => {
+      const state = riskPlugin.createState();
+      riskPlugin.lifecycle.onCreate?.(state, { quickstart: false });
+      for (let i = 0; i < 3; i++) {
+        riskPlugin.lifecycle.onPlayerJoin?.(state, mockClient(`player-${i + 1}`), i);
+      }
+      state.currentTurn = "player-1";
+      riskPlugin.lifecycle.onGameStart?.(state);
+      expect(state.gamePhase).toBe("setup");
+      expect(state.turnPhase).toBe("setup-pick");
+    });
+
+    it("starts in setup-pick when onCreate is not called", () => {
+      const state = createStartedGame(3);
+      expect(state.gamePhase).toBe("setup");
+      expect(state.turnPhase).toBe("setup-pick");
+    });
+  });
+
+  describe("gameplay after quickstart", () => {
+    it("allows the first player to place reinforcement armies", () => {
+      const state = createQuickstartGame(3);
+      const ownedTerritories = getOwnedTerritories(state, "player-1");
+      expect(ownedTerritories.length).toBeGreaterThan(0);
+
+      const result = riskPlugin.actions.placeArmy(
+        state,
+        mockClient("player-1"),
+        { territoryId: ownedTerritories[0], count: 1 },
+      );
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects pickTerritory actions in quickstart playing phase", () => {
+      const state = createQuickstartGame(3);
+      const result = riskPlugin.actions.pickTerritory(
+        state,
+        mockClient("player-1"),
+        { territoryId: "alaska" },
+      );
+      expect(result.success).toBe(false);
     });
   });
 });
