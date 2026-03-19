@@ -99,6 +99,12 @@ export class GameScene implements Scene {
       this.updateHeadToHeadPrompt(state);
     };
     this.room.onStateChange(this.stateChangeHandler);
+
+    // Force an immediate state sync — the async scene transition may have
+    // allowed Colyseus patches to arrive before the handler was registered,
+    // silently updating room.state without triggering a callback.
+    this.stateChangeHandler(this.room.state);
+
     this.hud?.setSidebarActive(true);
 
     if (this.width > 0 && this.height > 0) {

@@ -412,6 +412,11 @@ export class DominosRenderer implements GameRenderer {
         this.redrawAll();
       }
     });
+
+    // The server sends player-data during onJoin/startGame, but our handler
+    // may not be registered yet at that point. Re-request it now that the
+    // listener is in place so the hand is never silently lost.
+    this.room.send("request-player-data");
   }
 
   private unsubscribeFromRoomEvents(): void {
