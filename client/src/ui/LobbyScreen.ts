@@ -204,6 +204,7 @@ export class LobbyScreen {
   private activeFilter: LobbyFilter = "all";
   private pendingTransition: "create" | "join" | null = null;
   private pendingSpectator = false;
+  private pendingCreatePayload: CreateGamePayload | null = null;
   private createTimeout: ReturnType<typeof window.setTimeout> | null = null;
   private noticeTimeout: ReturnType<typeof window.setTimeout> | null = null;
   private isCreatePending = false;
@@ -497,11 +498,31 @@ export class LobbyScreen {
     });
 
     room.onMessage(GAME_JOINED, (payload: GameJoinedPayload) => {
-      const joinedGame = this.games.get(payload.gameId) ?? null;
+      let joinedGame = this.games.get(payload.gameId) ?? null;
       const isHost = joinedGame?.hostId === room.sessionId || this.pendingTransition === "create";
+      const createPayload = this.pendingCreatePayload;
       this.pendingTransition = null;
+      this.pendingCreatePayload = null;
       this.setCreatePending(false);
       this.clearNotice();
+
+      // When GAME_JOINED arrives before GAME_UPDATED, build a fallback from
+      // the creation payload so downstream screens know maxPlayers, gameType, etc.
+      if (!joinedGame && isHost && createPayload) {
+        joinedGame = {
+          id: payload.gameId,
+          name: createPayload.name,
+          gameType: createPayload.gameType,
+          hostId: room.sessionId,
+          hostName: "",
+          status: "waiting",
+          playerCount: 1,
+          maxPlayers: createPayload.maxPlayers ?? 2,
+          createdAt: Date.now(),
+          cpuOpponent: createPayload.cpuOpponent,
+          headToHeadMode: createPayload.headToHeadMode,
+        };
+      }
 
       if (payload.roomId) {
         this.eventCallback?.({
@@ -523,6 +544,7 @@ export class LobbyScreen {
 
     room.onMessage(LOBBY_ERROR, (payload: LobbyErrorPayload) => {
       this.pendingTransition = null;
+      this.pendingCreatePayload = null;
       this.setCreatePending(false);
       this.consoleLog?.error(payload.message);
       this.eventCallback?.({ type: "error", message: payload.message });
@@ -608,6 +630,7 @@ export class LobbyScreen {
     };
 
     this.pendingTransition = "create";
+    this.pendingCreatePayload = payload;
     this.setCreatePending(true);
     this.room.send(CREATE_GAME, payload);
   }
@@ -631,6 +654,7 @@ export class LobbyScreen {
 
     this.createTimeout = window.setTimeout(() => {
       this.pendingTransition = null;
+      this.pendingCreatePayload = null;
       this.setCreatePending(false);
       this.consoleLog?.error("Game creation timed out. Try again.");
     }, 30000);

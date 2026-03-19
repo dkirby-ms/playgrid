@@ -145,13 +145,14 @@ async function savePlayerName(page: Page, displayName: string): Promise<void> {
   const playerNameInput = page.locator('input[name="player-name"]');
   await playerNameInput.fill(displayName);
   await playerNameInput.blur();
-  await expect(page.locator(".lobby-notice.visible")).toHaveText("Player name saved.");
-  await expect(page.locator(".lobby-notice.visible")).not.toBeVisible();
-  await expect(playerNameInput).toHaveValue(displayName.trim());
+  const trimmed = displayName.trim();
+  await expect(playerNameInput).toHaveValue(trimmed);
+  await expect(page.locator("#lobby-overlay.visible")).toBeVisible();
+  await expect(page.locator(".online-player-name", { hasText: trimmed })).toBeVisible();
 }
 
 async function createBackgammonGame(page: Page, gameName: string): Promise<void> {
-  await page.getByRole("button", { name: "Create Game", exact: true }).click();
+  await page.locator(".create-game-trigger").click();
 
   const createGameModal = page.locator("#create-game-modal.visible");
   await expect(createGameModal).toBeVisible();
