@@ -1,11 +1,11 @@
 # Squad Status: Current Phase
 
-**Last Updated:** 2026-03-19T14:23:20Z  
-**Phase:** Move History Implementation — P6.3 Complete. Next: P6.4 Polish
+**Last Updated:** 2026-03-19T19:17:12Z  
+**Phase:** Move History Implementation — ALL PRIORITY ITEMS COMPLETE
 
-## Current Work: Move History Polish Phase
+## Current Work: All Priority Items Complete
 
-**Status:** 8 of 9 priority items complete (P0-P5, P7 finished; P6.1-P6.3 complete)
+**Status:** 9 of 9 priority items complete (P0-P7 + P6.1-P6.4 finished)
 
 **Completed Phases:**
 - ✅ **P0** — Player Info Bars verification + pulse animation
@@ -20,7 +20,7 @@
 - ✅ **P6.1** — Core infrastructure (MoveEntry, BaseGameRoom recording, delivery)
 - ✅ **P6.2** — Checkers formatter + HistoryScreen UI
 - ✅ **P6.3** — Backgammon, Dominos, Risk formatters + drag fix
-- ⏳ **P6.4** — Polish & refinements
+- ✅ **P6.4** — Polish & refinements (structured detail rendering, 6-player colors, test coverage)
 
 ### Session 2026-03-19 Summary (P6.1 + P6.2)
 

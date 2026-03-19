@@ -5057,3 +5057,347 @@ Previously all arms used `newEndValue`, which caused tiles on ends B/D to render
 - `client/src/renderers/DominosRenderer.ts` — `resolveGhostExposedEnd()`
 - `server/src/games/dominos/__tests__/dominosLogic.test.ts` — Regression test
 
+
+---
+
+### Hal: CPU Opponents for Dominoes — Triage & Architectural Decision
+
+**Status:** Triaged, Ready for Sprint Planning  
+**Date:** 2026-03-19  
+**Issue:** #163 (Feature Request: Dominoes CPU Opponents)
+
+## Summary
+
+CPU opponent support for Dominoes leverages the existing BaseGameRoom framework (proven in Checkers & Backgammon). The main work is implementing Dominoes-specific move selection strategy; framework integration is straightforward.
+
+**Scope:** Medium (one new module + framework wiring)  
+**Effort:** ~6 hours (Pemulis 3-4h, Steeply 2-3h)  
+**Risk:** Low (framework pattern established, isolated AI module)
+
+### Architectural Approach
+
+**Framework Inheritance**
+The CPU opponent pattern established in PR #121 (Checkers) and refined in subsequent PRs (Backgammon) is reusable:
+- Synthetic client: `createSyntheticClient(CPU_OPPONENT_SESSION_ID)` — already exists
+- Turn scheduling: `pendingCpuTurn` delayed callback — already exists
+- Action dispatching: CPU actions routed through `processAction()` like human moves — already exists
+- Integration point: `onTurnStarted()` in BaseGameRoom triggers `executeDoominosCpuTurn()` when it's the CPU's turn
+
+No new framework patterns needed. Dominos fits the existing mold.
+
+**Move Selection Strategy**
+
+Dominoes CPU strategy differs from Checkers/Backgammon because:
+- Action space is ternary: play (if possible) → draw → pass, vs. Checkers' binary or Backgammon's complex phases
+- Decision criteria: Prefer plays > draws > pass (blocking enemy) vs. Checkers' piece advancement
+- Information asymmetry: CPU knows all hands (via server memory); human knows only hand count and board state
+
+Strategy recommendation:
+```
+selectCpuMove(state): CpuAction | null
+  1. Check if playable tiles exist
+     → If yes, score each and pick best
+     → If no, check if boneyard has tiles
+       → If yes, draw
+       → If no, pass
+
+  2. Play scoring (when tiles playable):
+     - Prefer plays that reduce hand size (lead to domino/scoring)
+     - Prefer plays on longer chains (reduce future draw risk)
+     - Break ties: domino pip count (higher = better position)
+     - Heuristic: score = (handSize reduction * 10) + (chainLength bonus) + (pip value bonus)
+
+  3. Tie-breaking: When multiple tiles score equally, choose lowest tile ID (deterministic)
+```
+
+Why this strategy is sound:
+- Dominos is about emptying your hand while opponents accumulate points. Reducing hand size = winning condition.
+- Playing > drawing > passing avoids boneyard drain (draws exhaust tiles, passes block you).
+- Simple heuristic avoids expensive minimax; game tree is already complex (4-player, hidden info).
+
+**Implementation Files**
+
+New Files:
+- `server/src/games/dominos/CpuOpponent.ts` — Strategy module (100-150 LOC), exports `selectCpuMove(state): CpuAction | null`
+- `server/src/games/dominos/__tests__/cpuOpponent.test.ts` — Unit tests (80-120 LOC)
+
+Modified Files:
+- `server/src/game/BaseGameRoom.ts` — Add import, `executeDoominosCpuTurn()` method, router in `onTurnStarted()`
+- `server/src/rooms/LobbyRoom.ts` — Update `shouldEnableCpuOpponent()`: add `|| gameType === "dominos"`
+
+No Client/Shared Changes: Dominoes renderer already renders synthetic players. Turn system treats CPU like any player.
+
+**Test Coverage**
+
+Unit Tests:
+- ✅ CPU selects valid plays when available
+- ✅ CPU scores plays correctly (hand reduction priority)
+- ✅ CPU draws when no plays, boneyard non-empty
+- ✅ CPU passes when boneyard empty, no plays
+- ✅ CPU breaks ties deterministically
+- ✅ Edge case: all players passed (blocked round)
+
+E2E Tests:
+- Reuse existing E2E Dominos suite
+- Add scenario: player vs. CPU
+- Validate: CPU doesn't cause hangs, game completes within timeout
+
+**Scope Boundaries**
+
+In Scope:
+- Single CPU opponent (2-player Dominos vs CPU)
+- Simple heuristic strategy (not game tree search)
+- Framework integration (LobbyRoom + BaseGameRoom wiring)
+
+Out of Scope (future):
+- Multi-CPU games (3–4 CPU players)
+- Machine learning / minimax / Monte Carlo tree search
+- Difficulty levels (easy/medium/hard)
+- CPU for Risk or Poker
+
+**Success Criteria**
+
+1. ✅ CPU opponent joinable in lobby (checkbox "Play vs CPU")
+2. ✅ CPU takes turns automatically (~200ms delay)
+3. ✅ CPU never takes invalid actions
+4. ✅ CPU avoids draw/pass when plays exist
+5. ✅ Game completes (no hangs, CPU doesn't time out)
+6. ✅ Tests pass (unit + E2E)
+7. ✅ No regressions in 2-player human or existing games
+
+---
+
+### Ortho: HistoryScreen Stats Sidebar Layout
+
+**Date:** 2025-01-27  
+**Status:** Implemented
+
+Added a right-side stats sidebar (280px) to HistoryScreen that displays game-specific statistics with visual comparison bars for P6.4 polish phase.
+
+**Implementation**
+
+- Desktop layout: Flex row — move list (flex: 1) + sidebar (280px fixed width)
+- Mobile layout (<768px): Flex column — move list first, sidebar below (max-height: 300px, scrollable)
+- Stats cards: General stats (moves, duration, avg) + game-specific stats (Checkers: captures, kings; Backgammon: hits, doubles; Dominos: tiles played, passes; Risk: attacks, fortifies)
+- Visual bars: Player comparison bars using gradient fills, player-0 (blue) and player-1 (amber) color coding
+
+**Rationale**
+
+- Responsive: Sidebar stacks below on mobile, doesn't obstruct move list
+- Extensible: Game-specific stat methods can be expanded as Pemulis adds metadata
+- Visual clarity: Bars show relative performance at a glance
+- Consistent with VictoryScreen: Similar stats panel pattern used in player comparison
+
+**Alternatives Considered**
+
+1. Horizontal stats bar above move list — Rejected (would push move list down)
+2. Tabbed interface (Moves / Stats) — Rejected (adds interaction cost)
+3. Single-column layout always — Rejected (wastes horizontal space on desktop)
+
+**Impact**
+
+- HistoryScreen max-width increased: 720px → 1200px
+- Mobile users see stats after scrolling past moves (acceptable tradeoff)
+- Game plugins should populate `GameResult.metadata` with stats for best UX
+
+---
+
+### Ortho: Route all transient status messages through ConsoleLog
+
+**Date:** 2025-07-25
+
+Unified notification system: all transient status messages (errors, warnings, success confirmations) now route through the ConsoleLog panel exclusively. Modal overlays reserved for full-screen interactive content only (VictoryScreen, HistoryScreen).
+
+**Implications**
+
+- ConsoleLog is the single notification channel for transient messages
+- ReconnectOverlay is effectively dead code (no longer called, can be removed in future cleanup)
+- showNotice on LobbyScreen/LobbyScene still exists for `showConnectionError` (connection loss banner)
+- SetupScreen and WaitingRoom now accept ConsoleLog via `setConsoleLog()` — same pattern used by LobbyScreen
+
+---
+
+### Pemulis: Dominos CPU Opponents Implementation
+
+**Status:** Implemented  
+**Date:** 2026-03-19  
+**Issue:** #163
+
+Dominos now supports CPU opponents using the same architecture established by Checkers and Backgammon.
+
+**Architecture**
+
+- New file: `server/src/games/dominos/CpuOpponent.ts`
+- Exports: `selectCpuAction(state: DominosState): CpuAction | null`
+- Action types: `play` (tile + end), `draw`, `pass`
+- Wired into `BaseGameRoom.executeDominosCpuTurn()` following the backgammon multi-action pattern
+
+**Decision: Backgammon-style multi-action CPU loop for Dominos**
+
+Dominos CPU follows the Backgammon pattern (not Checkers) because the `draw` action returns `endsTurn: false`. This means a single CPU "turn" may involve multiple actions: draw → draw → draw → play (or pass). The `queueCpuTurnIfNeeded()` loop handles this naturally — each action completes, then re-queues if the turn hasn't ended.
+
+**Heuristics**
+
+Simple rule-based scoring (not minimax):
+- Doubles bonus (+200): Doubles set up the spinner and maintain tempo
+- High pip weight (×10): Shed heavy tiles early to reduce blocked-round exposure
+- Flexibility (+50 per match): Prefer plays that keep more of your remaining tiles playable
+
+**Impact**
+
+- Client needs no changes — CPU uses existing action pipeline
+- 10 new unit tests added (594 total, all passing)
+- Lobby already handles CPU player creation generically; only the game-type gate was widened
+
+**Files Changed**
+
+- `server/src/games/dominos/CpuOpponent.ts` (new)
+- `server/src/games/dominos/__tests__/cpuOpponent.test.ts` (new)
+- `server/src/game/BaseGameRoom.ts` (import + dispatch + executor)
+- `server/src/rooms/LobbyRoom.ts` (gate widened)
+
+---
+
+### Steeply: Dominos CPU Test Contract
+
+**Date:** 2026-03-20  
+**Related:** Issue #163
+
+Writing anticipatory tests for Dominos CPU opponents before Pemulis lands the implementation.
+
+**Decision**
+
+The test file assumes `selectCpuMove` follows the same pattern as checkers and backgammon:
+- **Signature:** `selectCpuMove(state: DominosState, hand: RawTile[]): { tileId: number; end: PlayEnd } | null`
+- **Returns null** when no playable tile exists (caller handles draw/pass)
+- **Pure function** — no side effects, no state mutation
+- **Heuristics tested:** double preference, higher-pip-total preference, valid end selection
+- **File location:** `server/src/games/dominos/dominosCpu.ts`
+
+**Impact**
+
+Pemulis should export `selectCpuMove` from `dominosCpu.ts` matching this contract. If the signature differs, the tests will need adjustment — but the scenarios remain valid.
+
+**Status**
+
+24 tests written, all gated via `describe.skipIf`. Build/lint/test green.
+
+
+---
+
+## Session: P6.4 Polish — Move History Final Polish Pass (2026-03-19)
+
+### Gately: Structured Detail Rendering via MoveFormatter Extension
+
+**Status:** Implemented  
+**Date:** 2026-03-19  
+**Task:** P6.4 Polish — Move History
+
+**Context**
+
+HistoryScreen expanded move details were dumping raw payload keys as a JSON-like grid. Additionally, stats were checking `payload.action` instead of `entry.actionType`, causing zero stat counts for Dominos and Risk moves.
+
+**Decision**
+
+Extended `MoveFormatter` interface with `formatMoveDetails(entry): MoveDetailItem[]`. Each game formatter returns structured label/value pairs with human-readable content:
+- Checkers: source/dest coordinates + piece type
+- Backgammon: movement details + dice results
+- Dominos: played tile + pip count
+- Risk: reinforcements, territory, cards, bonus info
+- Default formatter: fallback to raw payload iteration for unknown games
+
+**Rationale**
+
+- Keeps game-specific knowledge in the formatter registry, not in the screen
+- Detail items use the same helpers as `formatMove` (indexToNotation, territoryName, formatDominoPips)
+- Default formatter falls back safely so unknown games still render
+- Pure additive change to existing interface — no breaking changes
+- Fixed actionType bugs in Dominos/Risk stats by reading `entry.actionType` instead of `payload.action`
+
+**Impact**
+
+- `client/src/ui/historyFormatters.ts` — Added `MoveDetailItem` type, `formatMoveDetails` to all formatters
+- `client/src/ui/HistoryScreen.ts` — Fixed stat bugs, replaced raw payload dump with structured formatter details
+- 671 tests passing
+
+**Files Changed**
+- `client/src/ui/historyFormatters.ts`
+- `client/src/ui/HistoryScreen.ts`
+
+---
+
+### Ortho: 6-Player Color Palette Extension
+
+**Status:** Implemented  
+**Date:** 2026-03-19  
+**Task:** P6.4 Polish — HistoryScreen CSS/Layout Polish
+
+**Context**
+
+HistoryScreen stat bars only supported 2 player colors (blue, amber), with `Math.min(playerIdx, 1)` clamping all players beyond index 1 to amber. Turn badges and player name labels supported 4 colors (indices 0–3). Risk supports up to 6 players, so visual differentiation was lost for 3–5 player Risk games.
+
+**Decision**
+
+Extended the player color system to 6 slots (indices 0–5):
+
+| Index | Color | CSS/RGB |
+|-------|-------|---------|
+| 0 | Blue | `--pg-blue-*` / `rgba(59,130,246)` |
+| 1 | Amber | `--pg-amber-*` / `rgba(234,179,8)` |
+| 2 | Purple | `rgba(168,85,247)` |
+| 3 | Green | `--pg-green-*` / `rgba(34,197,94)` |
+| 4 | Red | `rgba(239,68,68)` |
+| 5 | Cyan | `rgba(6,182,212)` |
+
+All three player-colored elements (turn badge, player name, stat bar fill) now use `Math.min(playerIdx, 5)` consistently.
+
+**Rationale**
+
+- Red and cyan complement the existing blue/amber/purple/green palette with good contrast on dark backgrounds
+- 6-color set covers Risk's maximum player count
+- Using `Math.min` with a single cap value keeps fallback safe for any future game with >6 players
+- CSS-based implementation — no dependencies added
+
+**Impact**
+
+- `client/src/ui/HistoryScreen.ts` — CSS color additions + JS clamping fix (all 3 color elements)
+- Mobile responsive verified (320px–768px)
+- 718 tests passing
+
+**Files Changed**
+- `client/src/ui/HistoryScreen.ts`
+
+---
+
+### Steeply: Exact-Output Formatter Test Coverage
+
+**Status:** Implemented  
+**Date:** 2026-03-19  
+**Task:** P6.4 Polish — Move History Formatter Tests
+
+**Context**
+
+The existing `historyFormatters.test.ts` had 35 tests + 3 todos. Checkers tests were solid, but backgammon/dominos/risk tests were written "anticipatorily" before the formatters landed. They used:
+- Conditional `describeIfRegistered` skip guards (no longer needed — all formatters registered)
+- Wrong payload shapes (e.g., `tile: [3, 5]` instead of `pips: [3, 5]`)
+- Loose `toBeTruthy()` assertions that would pass even if output was completely wrong
+
+**Decision**
+
+Replaced the entire test file with 82 tests that assert exact output strings against the actual formatter implementations. Every `formatMove` and `getMoveIcon` code path is now covered for all 4 games, the default formatter, and edge cases.
+
+**Rationale**
+
+- Weak assertions are worse than no tests — they give false confidence
+- Old tests would pass even if someone broke the output format
+- Exact string assertions catch regressions in emoji, territory names, pip format, and notation
+- Tests validate cross-game MoveEntry structure handling and fallback behavior
+
+**Impact**
+
+- `client/src/ui/__tests__/historyFormatters.test.ts` — 82 tests, 0 todos
+- Full build + lint + test suite green (718 total tests pass)
+- Zero false negatives in formatter coverage
+
+**Files Changed**
+- `client/src/ui/__tests__/historyFormatters.test.ts`

@@ -596,12 +596,18 @@ function injectStyles(): void {
     .vs-btn-history {
       background: var(--pg-slate-700);
       color: var(--text-secondary);
-      border: 1px solid var(--pg-slate-600);
+      border: 2px solid var(--pg-blue-500);
+      padding: var(--space-md) var(--space-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-xs);
     }
 
     .vs-btn-history:hover {
       background: var(--pg-slate-600);
       color: var(--text-primary);
+      border-color: var(--pg-blue-400);
     }
   `;
   document.head.appendChild(style);
@@ -722,7 +728,11 @@ export class VictoryScreen {
       this.eventCallback?.({ type: "back_to_lobby" });
     });
 
-    const historyBtn = el("button", "vs-btn vs-btn-history", "View History");
+    const historyBtn = el("button", "vs-btn vs-btn-history");
+    const historyIcon = el("span", undefined, "📜");
+    const historyText = el("span", undefined, "View History");
+    historyBtn.appendChild(historyIcon);
+    historyBtn.appendChild(historyText);
     historyBtn.addEventListener("click", () => {
       this.eventCallback?.({ type: "view_history", gameType });
     });

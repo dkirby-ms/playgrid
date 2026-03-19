@@ -35,6 +35,7 @@
 - **Player Info Bars (P0):** Verified working across all games. Already had data flow (GameScene → updatePlayerInfoBars), mount points (game-info-top/bottom), and visibility toggle. Added subtle pulse animation to "Your Turn" status badge (2s ease-in-out with box-shadow glow). The bars follow glass-morphism pattern: `var(--glass-bg)`, `var(--shadow-card)`, `var(--border-light)`.
 - **Game Header (P1):** Created new `GameHeader.ts` component for game scene chrome. Three-section layout: Back to Lobby (left) + Game Title (center) + Resign (right). Uses `var(--glass-bg-strong)` and `var(--glass-blur)` for header bar. Both actions trigger `leave_game` event (resign logic refinement deferred). Mount point `#game-header` added to game layout ABOVE `#game-info-top`. GameScene manages lifecycle: `initGameHeader()` / `destroyGameHeader()`. HUD's Leave button hidden when GameHeader is active (chat toggle stays visible).
 - **Game chrome architecture:** Layout order is now: GameHeader → Opponent Info Bar → Canvas → Player Info Bar. All chrome components use the same glass-morphism token system and lifecycle pattern (init on enter, destroy on exit, visibility toggle via `display: none/flex`).
+- **HistoryScreen P6.4 Polish:** Player color palette expanded from 4 to 6 (players 0–5) for Risk support. Colors: blue, amber, purple, green, red, cyan — applied consistently to turn badges (`.hs-player-N`), player name labels, and stat bar fills (`.player-N`). The stat bar `buildStatBar` was clamped at `Math.min(playerIdx, 1)` — fixed to `Math.min(playerIdx, 5)`. Move cards upgraded to `rounded-lg` with subtle borders and `rgba(15,23,42,0.5)` slate background matching Figma's `bg-slate-900/50` pattern. Stats cards got `box-shadow`, `border-bottom` separators on titles, uppercase letter-spacing. Turn badges show `#N` format (matching Figma) at 40×40px. Mobile responsive: sidebar stacks below move list at `<768px` with `max-height: 300px` and `order: 2`. Overall container upgraded to `border-radius: var(--radius-2xl)` with ring shadow.
 
 ---
 
@@ -374,3 +375,73 @@ Replaced 15 transient modal/notification-bar calls with ConsoleLog across 7 file
 - **ConsoleLog API:** `info()`, `success()`, `warn()`, `error()`, `log(msg, level)`. Singleton class, instantiated in Application.ts. Passed to scenes/screens via `setConsoleLog()` setter pattern.
 - **showNotice double-logging:** LobbyScreen.showNotice already logged to consoleLog internally (line 584). When replacing showNotice calls with direct consoleLog calls, the duplicate log path through showNotice is bypassed.
 - **ReconnectOverlay still exists:** The overlay has a spinner + text, so its DOM and scheduling infrastructure was left in place. After this migration it's never shown (show* calls removed), but hide() calls remain as harmless no-ops.
+
+
+### Task: P6.4 Polish HistoryScreen to Figma design parity
+
+**Commit:** `feat: polish HistoryScreen with stats sidebar and expandable moves`
+
+Implemented comprehensive design enhancements to HistoryScreen based on Figma design references:
+
+**1. Stats Sidebar (280px right panel)**
+- Responsive layout: Desktop = right sidebar, Mobile (<768px) = stacks below
+- General stats card: Total moves, Duration, Avg move time (extracted from metadata)
+- Game-specific stat cards with visual comparison bars:
+  - **Checkers**: Kings created, Captures comparison with per-player bars
+  - **Backgammon**: Doubles rolled, Hits comparison with per-player bars
+  - **Dominos**: Tiles played comparison, Total passes
+  - **Risk**: Total attacks, Total fortifies
+- Progress bar styling: Gradient fills, player-0 (blue) and player-1 (amber) color coding
+
+**2. Expandable Move Details**
+- Each move entry is now a collapsible card (button + details panel)
+- Chevron icon (▼) rotates 180° on expand/collapse
+- CSS transition: `max-height 0.3s ease-out` for smooth animation
+- First move starts expanded by default (nice UX touch from designs)
+- Details panel shows payload data in a responsive grid: `grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))`
+- Min-height 44px for touch targets on mobile
+
+**3. Enhanced "View History" Button (VictoryScreen)**
+- Added 📜 icon before text
+- Increased prominence: `border: 2px solid var(--pg-blue-500)` (was 1px slate)
+- Hover effect: border-color shifts to blue-400, background to slate-600
+- Button content uses flex layout with icon + text
+
+**4. Empty State**
+- Friendly message: "No moves were recorded for this game."
+- 📋 icon (3rem, 0.5 opacity) above text
+- Flex column layout, centered
+
+**5. Mobile Responsive Refinements**
+- @media (max-width: 768px): sidebar stacks below move list via flex-direction column
+- @media (max-width: 480px): Full-screen panel (border-radius: 0), reduced padding, single-column detail grid
+- Touch-friendly: min-height 44px on move headers, good tap targets
+- Scrollbar styling works on touch (webkit-scrollbar rules)
+
+**Modified:**
+- `client/src/ui/HistoryScreen.ts` (362 → 1061 lines)
+  - Widened container max-width: 720px → 1200px (accommodate sidebar)
+  - Replaced flat stats bar with sidebar + main content flex layout
+  - Refactored move list to use collapsible card pattern
+  - Added `buildStatsSidebar()`, `addCheckersStats()`, `addBackgammonStats()`, `addDominosStats()`, `addRiskStats()` methods
+  - Stats extraction from moveHistory payloads (e.g., `captured`, `hit`, `action` fields)
+  - `buildStatBar()` helper for visual comparison bars
+  - `formatLabel()` helper: camelCase → Title Case
+  - CSS: Added `.hs-content`, `.hs-main-section`, `.hs-stats-sidebar`, `.hs-move-header`, `.hs-move-details`, `.hs-chevron`, `.hs-stats-card`, `.hs-stat-bar-*` classes
+
+- `client/src/ui/VictoryScreen.ts`
+  - Enhanced `.vs-btn-history` CSS: 2px blue border, flex layout
+  - Refactored history button DOM creation to include icon + text
+
+### Learnings
+
+- **Flexbox layout for responsive sidebar:** Use `flex-direction: row` on desktop, `column` on mobile via media query. Sidebar has fixed width (280px) on desktop, 100% on mobile with max-height constraint.
+- **Expandable panel CSS pattern:** Use `max-height: 0` → `max-height: 500px` (large enough to fit content) with `overflow: hidden` and `transition: max-height 0.3s ease-out`. More reliable than `height: auto` transitions.
+- **Chevron rotation:** Simple `.expanded { transform: rotate(180deg); }` with transition on the base class.
+- **First item expanded by default:** Check index in loop, apply `expanded` class conditionally on first render.
+- **Stats from move payloads:** Iterate over moveHistory, cast payload to `Record<string, unknown>`, check for game-specific fields like `captured`, `hit`, `action`.
+- **Visual comparison bars:** Calculate max value across all players, compute percentage width for each. Use player-index CSS classes (`.player-0`, `.player-1`) for color coding.
+- **Grid auto-fit pattern:** `grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))` auto-collapses to single column on narrow screens without media query.
+- **Touch target sizing:** 44px minimum height for mobile tap targets (WCAG AA guideline).
+- **Unused parameter prefix:** ESLint `@typescript-eslint/no-unused-vars` requires unused params to start with `_` (e.g., `_meta`, `_playerIndexMap`).
+

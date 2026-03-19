@@ -613,3 +613,98 @@ Wrote comprehensive test coverage for P6.1 Move History Core Infrastructure befo
 - Invalid moves should NOT be recorded in history
 - formatMoveHistory is optional — plugins that don't provide it get raw history
 - Dominos CPU test file lives at `server/src/games/dominos/__tests__/dominosCpu.test.ts` (24 tests). Uses `describe.skipIf` gated on dynamic import of `../dominosCpu` — auto-activates when Pemulis lands `selectCpuMove`. Expected signature: `selectCpuMove(state: DominosState, hand: RawTile[]): { tileId: number; end: PlayEnd } | null`. Tests assume the CPU function is a pure move-selection algorithm (same pattern as checkers/backgammon), with BaseGameRoom handling draw/pass/delay integration.
+
+## P6.4 formatMoveHistory Tests (2026-03-16)
+
+**Task:** Write comprehensive test coverage for the P6.4 formatMoveHistory implementations across Backgammon, Dominos, and Risk game plugins.
+
+**Files Created:**
+- `server/src/games/backgammon/__tests__/formatMoveHistory.test.ts` (16 tests)
+- `server/src/games/dominos/__tests__/formatMoveHistory.test.ts` (15 tests)
+- `server/src/games/risk/__tests__/formatMoveHistory.test.ts` (23 tests)
+
+**Test Patterns Discovered:**
+- Each game plugin implements `formatMoveHistory(state, moves): MoveEntry[]` that adds `description` fields to move history entries
+- The method delegates to a private `formatMoveEntries` helper function that also tracks player stats
+- Tests follow the Checkers pattern: mock game state setup, `makeMoveEntry` helper, assertions on description strings
+- All implementations gracefully handle missing payload fields by returning moves without descriptions (not crashing)
+- Original move entries are preserved (no mutation) - implementations return new array with spread operator
+
+**Game-Specific Patterns:**
+
+**Backgammon:**
+- Roll actions: "rolled X and Y" or "rolled doubles: X"
+- Move actions: "moved from point X to point Y", "entered from bar to point X", "bore off from point X"
+- Hit suffix: " (hit)" appended when `payload.hit` is true
+- Pass: "had no valid moves — passed"
+- Does NOT require `die` field to format move descriptions
+
+**Dominos:**
+- Play actions: "played [A|B] on X end" (with tile values from board) or "played tile on X end" (fallback)
+- End letters are UPPERCASED in output: "A end", "B end", "C end", "D end"
+- Draw actions: "drew from boneyard"
+- Pass actions: "passed"
+- Tile values come from finding the tile in `state.board` by ID, not from payload
+
+**Risk:**
+- Territory names converted from IDs via `getTerritoryName()` helper (e.g., "eastern_us" → "Eastern United States")
+- Pick territory: "claimed {territory}"
+- Place army: "reinforced {territory} (+{count})"
+- Attack: "attacked {target} from {source} (×{dice} dice)" (always "dice" plural)
+- Capture move: "moved {count} armies into captured territory"
+- Fortify: "fortified {count} armies: {from} → {to}"
+- Trade cards: "traded {count} cards for reinforcements"
+- End phase: "ended phase" (no phase name included)
+
+**Key Testing Insights:**
+- Test both happy path (valid payloads) AND edge cases (missing fields, unknown players, empty history)
+- Always test that original array is not mutated (deep copy comparison)
+- Always test that MoveEntry fields are preserved (turnNumber, playerId, timestamp, etc.)
+- Test multiple moves in sequence to validate batch processing
+- Unknown action types should result in undefined description (graceful degradation)
+
+**Build/Test Status:**
+- `npm run build`: ✅ Passed
+- `npm run test -- formatMoveHistory`: ✅ All 68 tests passed
+- `npm run test`: ✅ 672 tests passed (full suite)
+
+**Notes:**
+- Pemulis was implementing formatMoveHistory in parallel - minor typo fixed in DominosPlugin (`.a`/`.b` → `.highPips`/`.lowPips`)
+- Tests are written to match actual implementations, not idealized specs
+- All three games now have complete formatMoveHistory test coverage matching the Checkers pattern
+
+## Learnings — P6.4 Client Formatter Tests
+
+**Date:** 2025-07-24
+
+**Task:** P6.4 Polish — comprehensive tests for `client/src/ui/historyFormatters.ts`
+
+**What was done:**
+- Replaced the 35-test skeleton (with 3 todos and weak `toBeTruthy()` assertions) with 82 precise tests covering all 4 game formatters + default + structure handling
+- Old backgammon/dominos/risk tests used wrong payload shapes and conditional skip guards — now they test exact output strings against the actual implementations
+
+**Key file paths:**
+- Test file: `client/src/ui/__tests__/historyFormatters.test.ts`
+- Source under test: `client/src/ui/historyFormatters.ts`
+- MoveEntry interface: `shared/src/MoveEntry.ts`
+- Territory data (used by Risk formatter): `shared/src/games/risk/territoryData.ts`
+
+**Test infrastructure notes:**
+- Client tests run via root `vitest.config.ts` — no separate client vitest config needed
+- Existing client test files: `client/src/games/checkers/checkersClientLogic.test.ts`, `client/src/renderers/DragHelper.test.ts`, `client/src/joinLinks.test.ts`, `client/src/Application.reconnect.test.ts`
+- `@eschaton/shared` path alias works in tests via tsconfig paths
+
+**Coverage breakdown (82 tests):**
+- Registry: 6 tests (all 4 games + default + interface check)
+- Default formatter: 3 tests
+- Checkers: 15 tests (10 formatMove + 5 getMoveIcon)
+- Backgammon: 15 tests (10 formatMove + 5 getMoveIcon)
+- Dominos: 14 tests (10 formatMove + 4 getMoveIcon)
+- Risk: 26 tests (18 formatMove + 8 getMoveIcon)
+- MoveEntry structure: 3 tests (cross-game robustness)
+
+**Patterns found:**
+- All formatters use `entry.description ?? "Move {actionType}"` as fallback for unknown action types
+- Risk formatter resolves territory IDs via `getTerritoryById()` — falls back to raw ID string if not found
+- Dominos formatter has 3 pip resolution paths: `pips` array > `a/b` fields > `tileA/tileB` fields
+- Backgammon uses "bar"/"off" string sentinels in from/to fields rather than numeric values

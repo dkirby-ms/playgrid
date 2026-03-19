@@ -26,21 +26,18 @@ import {
   PlayerInfo,
   type ActionResult,
   type GamePlugin,
-  type GameResult,
+  type MoveEntry,
   TERRITORIES,
-  areTerritoriesAdjacent,
 } from "@eschaton/shared";
 import {
   calculateReinforcements,
   getCardTradeInValue,
   resolveCombat,
-  canAttackFrom,
   canAttackTerritory,
   canFortifyBetween,
   getOwnedTerritories,
   updatePlayerTerritoryCount,
   checkWinCondition,
-  getNextPhase,
   initializeSetup,
   calculateInitialArmies,
   performQuickstartSetup,
@@ -122,6 +119,130 @@ function isCaptureMovePayload(payload: unknown): payload is CaptureMovePayload {
   if (typeof payload !== "object" || payload === null) return false;
   const candidate = payload as Record<string, unknown>;
   return typeof candidate.count === "number";
+}
+
+function getTerritoryName(territoryId: string): string {
+  const territory = TERRITORIES.find((t) => t.id === territoryId);
+  return territory?.name ?? territoryId;
+}
+
+function formatMoveEntries(
+  state: RiskState,
+  moves: MoveEntry[],
+): MoveEntry[] {
+  const formatted: MoveEntry[] = [];
+  const playerStats: Record<string, { totalAttacks: number; totalFortifies: number; territoriesControlled: number }> = {};
+
+  // Initialize stats for all players
+  for (const [sessionId, riskPlayer] of state.riskPlayers.entries()) {
+    if (!riskPlayer) continue;
+    playerStats[sessionId] = { 
+      totalAttacks: 0, 
+      totalFortifies: 0, 
+      territoriesControlled: riskPlayer.territoriesOwned,
+    };
+  }
+
+  for (const move of moves) {
+    const stats = playerStats[move.playerId];
+    
+    if (move.actionType === "pickTerritory") {
+      const territoryId = move.payload.territoryId as string | undefined;
+      if (territoryId) {
+        const territoryName = getTerritoryName(territoryId);
+        formatted.push({
+          ...move,
+          description: `${move.playerName} claimed ${territoryName}`,
+        });
+      } else {
+        formatted.push({ ...move });
+      }
+    } else if (move.actionType === "placeArmy") {
+      const territoryId = move.payload.territoryId as string | undefined;
+      const count = move.payload.count as number | undefined ?? 1;
+      if (territoryId) {
+        const territoryName = getTerritoryName(territoryId);
+        formatted.push({
+          ...move,
+          description: `${move.playerName} reinforced ${territoryName} (+${count})`,
+        });
+      } else {
+        formatted.push({ ...move });
+      }
+    } else if (move.actionType === "attack") {
+      const from = move.payload.from as string | undefined;
+      const to = move.payload.to as string | undefined;
+      const attackerDice = move.payload.attackerDice as number | undefined;
+      
+      if (from && to && typeof attackerDice === "number") {
+        const fromName = getTerritoryName(from);
+        const toName = getTerritoryName(to);
+        formatted.push({
+          ...move,
+          description: `${move.playerName} attacked ${toName} from ${fromName} (×${attackerDice} dice)`,
+        });
+        if (stats) stats.totalAttacks++;
+      } else {
+        formatted.push({ ...move });
+      }
+    } else if (move.actionType === "captureMove") {
+      const count = move.payload.count as number | undefined;
+      if (typeof count === "number") {
+        formatted.push({
+          ...move,
+          description: `${move.playerName} moved ${count} armies into captured territory`,
+        });
+      } else {
+        formatted.push({ ...move });
+      }
+    } else if (move.actionType === "fortify") {
+      const from = move.payload.from as string | undefined;
+      const to = move.payload.to as string | undefined;
+      const count = move.payload.count as number | undefined;
+      
+      if (from && to && typeof count === "number") {
+        const fromName = getTerritoryName(from);
+        const toName = getTerritoryName(to);
+        formatted.push({
+          ...move,
+          description: `${move.playerName} fortified ${count} armies: ${fromName} → ${toName}`,
+        });
+        if (stats) stats.totalFortifies++;
+      } else {
+        formatted.push({ ...move });
+      }
+    } else if (move.actionType === "tradeCards") {
+      const cardCount = move.payload.cardCount as number | undefined;
+      if (typeof cardCount === "number") {
+        formatted.push({
+          ...move,
+          description: `${move.playerName} traded ${cardCount} cards for reinforcements`,
+        });
+      } else {
+        formatted.push({ ...move });
+      }
+    } else if (move.actionType === "endPhase") {
+      // Determine which phase was ended based on context
+      formatted.push({
+        ...move,
+        description: `${move.playerName} ended phase`,
+      });
+    } else {
+      formatted.push({ ...move });
+    }
+  }
+
+  // Update final territory counts
+  for (const [sessionId, riskPlayer] of state.riskPlayers.entries()) {
+    if (playerStats[sessionId]) {
+      playerStats[sessionId].territoriesControlled = riskPlayer.territoriesOwned;
+    }
+  }
+
+  // Store stats in state metadata for use in buildGameResult
+  (state as RiskState & { _formattedStats?: typeof playerStats })._formattedStats = playerStats;
+
+  return formatted;
 }
 
 export const riskPlugin: GamePlugin<RiskState> = {
@@ -597,6 +718,9 @@ export const riskPlugin: GamePlugin<RiskState> = {
 
       const activePlayers = Array.from(state.players.values()).filter((p) => !p.isSpectator);
 
+      // Retrieve stats from formatMoveHistory if available
+      const formattedStats = (state as RiskState & { _formattedStats?: Record<string, { totalAttacks: number; totalFortifies: number; territoriesControlled: number }> })._formattedStats;
+
       const playerStats: Record<string, unknown> = {};
       for (const player of activePlayers) {
         const riskPlayer = state.riskPlayers.get(player.sessionId);
@@ -609,6 +733,7 @@ export const riskPlugin: GamePlugin<RiskState> = {
         playerStats[player.sessionId] = {
           territories: riskPlayer?.territoriesOwned ?? 0,
           armies,
+          ...(formattedStats?.[player.sessionId] || {}),
         };
       }
 
@@ -665,5 +790,8 @@ export const riskPlugin: GamePlugin<RiskState> = {
 
       return false;
     },
+  },
+  formatMoveHistory(state, moves) {
+    return formatMoveEntries(state, moves);
   },
 };
