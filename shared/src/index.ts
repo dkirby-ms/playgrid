@@ -34,6 +34,7 @@ defineTypes(GameState, {
 });
 
 export { BaseGameState, PlayerInfo } from "./BaseGameState.js";
+export type { MoveEntry } from "./MoveEntry.js";
 
 // Shared constants
 export const GAME_WIDTH = 800;
