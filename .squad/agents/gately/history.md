@@ -756,3 +756,36 @@ npm run test   # ✅ 472 tests passed (5 new)
 - DominosRenderer recreates hand tile Graphics on every `redrawHand()` call, making registration-based drag impractical. Proxy approach works here too.
 - PixiJS `pointerdown` + `pointermove` + `pointerup` on a parent container handles both mouse and touch — no separate touch event handling needed.
 - The `container.eventMode = "static"` must be set on the renderer's root container for stage-level pointer events to propagate to the DragHelper.
+---
+
+## 2026-03-16: Dominos Tile Placement Bug Fix & Ghost Preview (#155)
+
+**From:** Gately
+**PR:** #158 (branch: squad/155-dominos-placement)
+
+**Problem diagnosed:**
+- End position markers used a hardcoded 8px offset from the last tile on each arm, regardless of board scale
+- At scale=1, a regular tile is 56px wide with a 4px gap, so the actual placement was ~60px from the last tile — but the marker appeared only 8px away
+- Arms A/C (negative direction) were worst: the marker hovered near the last tile while the actual tile rendered far out past it
+- No visual preview existed to show where a tile would actually land
+
+**Root cause:** `endPositions` calculation in `redrawBoardCross()` and `redrawBoardLinear()` used `± 8` instead of `± BOARD_TILE_GAP * scale`
+
+**Fix applied:**
+1. Replaced all fixed 8px end-position offsets with `BOARD_TILE_GAP * scale` for correct, scale-aware positioning
+2. Added `ghostLayer` container (between board and markers in z-order) for semi-transparent preview tiles
+3. Implemented `drawGhostTiles()` — renders alpha-0.4 tiles at exact target positions for each valid end when `choosingEnd` is true
+4. Ghost tiles compute correct dimensions (regular vs double), orientation per arm direction, and pip layout via `resolveGhostExposedEnd()`
+5. Centered end markers (A/B/C/D labels) on ghost tile area instead of directional anchor offsets
+6. Stored layout state (boardScale, spinnerCenter, armEndEdges) as instance variables for ghost computation
+
+**Files modified:** `client/src/renderers/DominosRenderer.ts`
+
+**Validation:** Build ✅, Lint ✅, Tests ✅ (506 pass)
+
+## Learnings
+
+- **Dominos end position math:** The `endPositions` dictionary stores where the NEXT tile's connecting edge would be placed. It must use scale-aware offsets (`BOARD_TILE_GAP * scale`), never fixed pixel values, because the board scales down when arms grow long.
+- **Ghost tile rendering pattern:** Store layout state (scale, center positions, arm end edges) as instance variables during `redrawBoard*()` so ghost/preview computations use the same coordinate system without re-deriving everything.
+- **Board tile ordering:** The server stores tiles in chronological (play) order with arm assignments. Post-spinner tiles within each arm are correctly ordered (closest to spinner first). Pre-spinner retroactive tiles may not match spatial order — a known server-side limitation that doesn't affect the ghost preview.
+- **`exposedEnd` field:** Represents the pip value facing outward (away from spinner) after placement. For ghost tiles, compute it by checking which pip matches the arm's open end — the other pip faces outward.

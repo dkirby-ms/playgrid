@@ -9,6 +9,7 @@ import {
   type ActionResult,
   type GamePlugin,
   type GameResult,
+  type MoveEntry,
 } from "@eschaton/shared";
 import {
   applyMove,
@@ -64,6 +65,125 @@ function getCurrentPlayerColor(state: CheckersState): CheckersColor | null {
   }
 
   return getPlayerColor(currentPlayer.playerIndex);
+}
+
+const BOARD_WIDTH = 8;
+const COLUMN_LETTERS = "ABCDEFGH";
+
+function indexToNotation(index: number): string {
+  const col = index % BOARD_WIDTH;
+  const row = Math.floor(index / BOARD_WIDTH) + 1;
+  return `${COLUMN_LETTERS[col]}${row}`;
+}
+
+function isCapture(from: number, to: number): boolean {
+  const rowDelta = Math.abs(
+    Math.floor(to / BOARD_WIDTH) - Math.floor(from / BOARD_WIDTH),
+  );
+  return rowDelta === 2;
+}
+
+function isKingPromotion(playerIndex: number, to: number): boolean {
+  const row = Math.floor(to / BOARD_WIDTH);
+  // Player 0 = BLACK moves toward row 7, Player 1 = RED moves toward row 0
+  if (playerIndex === 0) return row === BOARD_WIDTH - 1;
+  if (playerIndex === 1) return row === 0;
+  return false;
+}
+
+function getPlayerIndexBySessionId(
+  state: CheckersState,
+  sessionId: string,
+): number | null {
+  const player = state.players.get(sessionId);
+  if (!player) return null;
+  return player.playerIndex;
+}
+
+function formatMoveEntries(
+  state: CheckersState,
+  moves: MoveEntry[],
+): MoveEntry[] {
+  const formatted: MoveEntry[] = [];
+
+  for (let i = 0; i < moves.length; i++) {
+    const move = moves[i];
+    const from = move.payload.from as number | undefined;
+    const to = move.payload.to as number | undefined;
+
+    if (typeof from !== "number" || typeof to !== "number") {
+      formatted.push({ ...move });
+      continue;
+    }
+
+    const playerIndex = getPlayerIndexBySessionId(state, move.playerId);
+    const name = move.playerName;
+    const fromNotation = indexToNotation(from);
+    const toNotation = indexToNotation(to);
+
+    // Detect multi-jump: consecutive captures by same player where prev.to === current.from
+    const prevFormatted = formatted[formatted.length - 1];
+    const isMultiJump =
+      prevFormatted &&
+      prevFormatted.playerId === move.playerId &&
+      isCapture(from, to) &&
+      isCapture(
+        prevFormatted.payload.from as number,
+        prevFormatted.payload.to as number,
+      ) &&
+      (prevFormatted.payload.to as number) === from;
+
+    if (isMultiJump && prevFormatted) {
+      // Count total captures in this chain
+      let chainStart = formatted.length - 1;
+      while (chainStart > 0) {
+        const prev = formatted[chainStart - 1];
+        if (
+          prev.playerId !== move.playerId ||
+          !isCapture(prev.payload.from as number, prev.payload.to as number) ||
+          (prev.payload.to as number) !==
+            (formatted[chainStart].payload.from as number)
+        ) {
+          break;
+        }
+        chainStart--;
+      }
+      const captureCount = formatted.length - chainStart + 1;
+      const description = `${name} captured ${captureCount} pieces`;
+
+      // Update all entries in the chain with the running count
+      for (let j = chainStart; j < formatted.length; j++) {
+        formatted[j] = { ...formatted[j], description };
+      }
+      formatted.push({ ...move, description });
+    } else if (
+      playerIndex !== null &&
+      isCapture(from, to) &&
+      isKingPromotion(playerIndex, to)
+    ) {
+      formatted.push({
+        ...move,
+        description: `${name} captured at ${toNotation} (from ${fromNotation}), kinged at ${toNotation}`,
+      });
+    } else if (playerIndex !== null && isKingPromotion(playerIndex, to)) {
+      formatted.push({
+        ...move,
+        description: `${name} kinged at ${toNotation}`,
+      });
+    } else if (isCapture(from, to)) {
+      formatted.push({
+        ...move,
+        description: `${name} captured at ${toNotation} (from ${fromNotation})`,
+      });
+    } else {
+      formatted.push({
+        ...move,
+        description: `${name} moved from ${fromNotation} to ${toNotation}`,
+      });
+    }
+  }
+
+  return formatted;
 }
 
 function countPlayerPieces(state: CheckersState, color: CheckersColor) {
@@ -247,5 +367,8 @@ export const checkersPlugin: GamePlugin<CheckersState> = {
 
       return validateMove(state, client.sessionId, payload);
     },
+  },
+  formatMoveHistory(state, moves) {
+    return formatMoveEntries(state, moves);
   },
 };

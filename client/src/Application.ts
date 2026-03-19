@@ -35,6 +35,7 @@ import { SandboxScene } from "./scenes/SandboxScene";
 import { ReconnectOverlay } from "./ui/ReconnectOverlay";
 import { GameOverOverlay } from "./ui/GameOverOverlay";
 import { VictoryScreen, type VictoryScreenEvent, type VictoryPlayerInfo } from "./ui/VictoryScreen";
+import { HistoryScreen, type HistoryScreenData } from "./ui/HistoryScreen";
 import { ConsoleLog } from "./ui/ConsoleLog";
 import { JOIN_GAME, type JoinGamePayload, type LobbyEvent } from "./ui/LobbyScreen";
 import { GAME_LAYOUT_CHANGE_EVENT } from "./ui/gameLayout";
@@ -98,6 +99,7 @@ export class PlaygridApp {
   private reconnectOverlay!: ReconnectOverlay;
   private gameOverOverlay!: GameOverOverlay;
   private victoryScreen!: VictoryScreen;
+  private historyScreen!: HistoryScreen;
   private consoleLog!: ConsoleLog;
   private statusHideTimeoutId: number | null = null;
   private reconnectOverlayHideTimeoutId: number | null = null;
@@ -201,6 +203,7 @@ export class PlaygridApp {
     this.reconnectOverlay = new ReconnectOverlay();
     this.gameOverOverlay = new GameOverOverlay();
     this.victoryScreen = new VictoryScreen();
+    this.historyScreen = new HistoryScreen();
     this.consoleLog = new ConsoleLog();
     this.lobbyScene.setConsoleLog(this.consoleLog);
     window.addEventListener("beforeunload", () => this.persistSessionForRefresh());
@@ -450,6 +453,7 @@ export class PlaygridApp {
     const sessionId = this.gameRoom?.sessionId ?? "";
     const gameType = this.activeGameType ?? this.gameRoom?.name ?? "checkers";
     const players = this.extractVictoryPlayers();
+    const victoryData = { result, sessionId, gameType, players };
 
     const endMsg = result.type === "win"
       ? (result.winnerId === sessionId ? "Victory! You won the game." : "Defeat — opponent wins.")
@@ -462,13 +466,31 @@ export class PlaygridApp {
             : "Game over.";
     this.consoleLog?.log(endMsg, result.winnerId === sessionId ? "success" : "info");
 
-    this.victoryScreen.show(
-      { result, sessionId, gameType, players },
-      (event: VictoryScreenEvent) => {
+    this.showVictoryScreenWithHistory(victoryData);
+  }
+
+  private showVictoryScreenWithHistory(
+    victoryData: { result: GameResult; sessionId: string; gameType: string; players: VictoryPlayerInfo[] },
+  ): void {
+    this.victoryScreen.show(victoryData, (event: VictoryScreenEvent) => {
+      if (event.type === "view_history") {
         this.victoryScreen.hide();
-        void this.handleVictoryEvent(event);
-      },
-    );
+        const meta = (victoryData.result.metadata ?? {}) as Record<string, unknown>;
+        const moveHistory = (Array.isArray(meta.moveHistory) ? meta.moveHistory : []) as import("@eschaton/shared").MoveEntry[];
+        const historyData: HistoryScreenData = {
+          moveHistory,
+          gameType: victoryData.gameType,
+          metadata: meta,
+        };
+        this.historyScreen.show(historyData, () => {
+          this.showVictoryScreenWithHistory(victoryData);
+        });
+        return;
+      }
+
+      this.victoryScreen.hide();
+      void this.handleVictoryEvent(event);
+    });
   }
 
   private async handleVictoryEvent(event: VictoryScreenEvent): Promise<void> {

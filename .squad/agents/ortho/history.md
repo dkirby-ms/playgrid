@@ -307,4 +307,50 @@
 - **Layer declaration pattern:** All layers in `DominosRenderer` are `private readonly {name}Layer = new Container()` properties. `ghostLayer` needed the same treatment.
 - **Cross-branch dependencies:** `ghostLayer` is likely from PR #158 (not yet merged), but it's already referenced in this PR's code. Declaring it locally prevents runtime errors until #158 merges.
 - **Gately lockout protocol:** When Gately is locked out of revisions, I (Ortho) handle PixiJS renderer fixes. This was a clean handoff since the issues were isolated to the renderer file.
+---
+
+## 2026-07-23: HistoryScreen + View History Button — Complete ✅
+
+**Status:** Complete
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass (506 tests)
+
+### What was built
+
+**Created (2 new files):**
+- `client/src/ui/HistoryScreen.ts` — Full-screen DOM overlay for move history review
+  - Glass-morphism panel matching VictoryScreen visual style
+  - Header with title, game badge, close button (×)
+  - Stats bar: total moves, duration, average move time
+  - Scrollable move list with per-player color coding (up to 4 players)
+  - Turn number badges, player names, formatted descriptions, timestamps
+  - Footer with "Back to Results" button
+  - Keyboard accessible (Escape to close, focus management)
+  - `hs-` CSS class prefix to avoid conflicts
+  - z-index 10001 (above VictoryScreen's 10000)
+
+- `client/src/ui/historyFormatters.ts` — Per-game move formatting system
+  - `MoveFormatter` interface: `formatMove()` + `getMoveIcon()`
+  - Checkers formatter: move (➡️), capture (⚔️), king (👑) with A1-H8 notation
+  - Default fallback formatter using `entry.description`
+  - `getFormatter(gameType)` registry lookup
+
+**Modified:**
+- `client/src/ui/VictoryScreen.ts`
+  - Extended `VictoryScreenEvent` union with `{ type: "view_history"; gameType: string }`
+  - Enabled "View History" button (removed disabled/title, added click handler)
+  - Updated CSS: removed disabled styles, added hover effect for active button
+
+- `client/src/Application.ts`
+  - Imported HistoryScreen + HistoryScreenData
+  - Added `historyScreen` instance variable, instantiated alongside VictoryScreen
+  - Extracted `showVictoryScreenWithHistory()` method for round-trip navigation
+  - `view_history` event: hides VictoryScreen, shows HistoryScreen with moveHistory from `GameResult.metadata`, onClose re-shows VictoryScreen
+
+### Learnings
+
+- **HistoryScreen pattern:** Same `injectStyles()` pattern as VictoryScreen/PlayerInfoBar. Uses `#history-overlay` appended to document.body. Shows/hides via DOM manipulation. Escape key handler attached on show, removed on hide.
+- **Round-trip overlay navigation:** VictoryScreen → HistoryScreen → back to VictoryScreen. Done by storing victory data and re-calling `showVictoryScreenWithHistory()` on close. No scene transition needed since both are DOM overlays.
+- **Move history data flow:** `GameResult.metadata.moveHistory` is the `MoveEntry[]` array. Extracted as `Record<string, unknown>` in Application.ts, then cast.
+- **Player color coding:** Up to 4 players supported via `hs-player-{0..3}` CSS classes, assigned by order of first appearance in move history.
+- **Formatter extensibility:** Add new game formatters to the `formatters` record in `historyFormatters.ts`. Each gets a `MoveFormatter` implementation.
 

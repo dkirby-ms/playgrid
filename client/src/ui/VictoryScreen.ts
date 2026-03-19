@@ -28,7 +28,8 @@ const SCORE_LABELS: Record<string, string> = {
 
 export type VictoryScreenEvent =
   | { type: "play_again"; gameType: string }
-  | { type: "back_to_lobby" };
+  | { type: "back_to_lobby" }
+  | { type: "view_history"; gameType: string };
 
 export interface VictoryPlayerInfo {
   sessionId: string;
@@ -598,13 +599,9 @@ function injectStyles(): void {
       border: 1px solid var(--pg-slate-600);
     }
 
-    .vs-btn-history:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .vs-btn-history:disabled:hover {
-      transform: none;
+    .vs-btn-history:hover {
+      background: var(--pg-slate-600);
+      color: var(--text-primary);
     }
   `;
   document.head.appendChild(style);
@@ -726,8 +723,9 @@ export class VictoryScreen {
     });
 
     const historyBtn = el("button", "vs-btn vs-btn-history", "View History");
-    historyBtn.disabled = true;
-    historyBtn.title = "Coming soon";
+    historyBtn.addEventListener("click", () => {
+      this.eventCallback?.({ type: "view_history", gameType });
+    });
 
     actions.appendChild(playAgainBtn);
     actions.appendChild(historyBtn);
