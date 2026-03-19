@@ -745,3 +745,11 @@ Implemented standard dominos spinner rules with 4-way branching:
 - State schema: `shared/src/games/risk/RiskState.ts` (`quickstart` field)
 - Client toggle: `client/src/ui/setup/RiskSetupConfig.ts`
 - Tests: `server/src/__tests__/risk.test.ts` (Quickstart Mode describe block)
+
+### Issue #161: BaseGameRoom disconnect/forfeit test failures (2026-03-19)
+
+- **Root cause:** PR #159 (commit 0186c87) introduced the extensible turn timer system, which added a 6-second deferred `this.disconnect()` in `endGame()` via `this.clock.setTimeout(...)`. Since `createRoom()` in tests now provides a mock clock, the deferred path is always taken. Five pre-existing tests that assert `room.disconnect()` were not using fake timers, so the native `setTimeout` callback never fired before assertions ran.
+- **Fix:** Added `vi.useFakeTimers()` at the start of each affected test and `await vi.advanceTimersByTimeAsync(6000)` before the disconnect assertion. The `afterEach` block already calls `vi.useRealTimers()` for cleanup.
+- **Pattern to remember:** Any test that asserts `room.disconnect()` after a game-ending action must use fake timers and advance past the 6-second disconnect delay introduced in the turn timer system.
+- **Affected tests:** "ends the game when an action reports endsGame", "does not hold a seat for a consented disconnect...", "does not award a forfeit win to the shared-device opponent...", "releases the reserved seat after the reconnection window expires", "cleans up the shared-device opponent when the controller times out".
+- **Commit:** 266e002
