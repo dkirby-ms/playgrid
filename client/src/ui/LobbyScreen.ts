@@ -697,7 +697,7 @@ export class LobbyScreen {
   }
 
   private supportsCpuOpponent(gameType: string): boolean {
-    return gameType === "checkers" || gameType === "backgammon";
+    return gameType === "checkers" || gameType === "backgammon" || gameType === "dominos";
   }
 
   private shouldUseCpuOpponent(): boolean {
