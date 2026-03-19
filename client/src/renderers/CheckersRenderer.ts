@@ -16,6 +16,7 @@ import {
   type CheckersMove,
 } from "../games/checkers/checkersClientLogic";
 import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
+import { DragHelper } from "./DragHelper";
 import {
   ACCENT_BLUE,
   AMBER_500,
@@ -80,6 +81,7 @@ const CAPTURED_PIECE_TOTAL = 12;
 const CAPTURED_PIECES_PER_ROW = 6;
 const HOVER_PIECE_SCALE = 1.05;
 const SELECTED_PIECE_SCALE = 0.95;
+const DRAG_PIECE_SCALE = 1.15;
 const VIEW_PADDING = 24;
 const TOP_HUD_SPACE = 104;
 const BOTTOM_HUD_SPACE = 96;
@@ -118,6 +120,7 @@ export class CheckersRenderer implements GameRenderer {
   private readonly boardLayer = new Container();
   private readonly boardFrame = new Graphics();
   private readonly piecesLayer = new Container();
+  private readonly dragLayer = new Container();
   private readonly overlayLayer = new Container();
   private readonly overlayBackground = new Graphics();
   private readonly blackCountText = new Text({
@@ -181,6 +184,8 @@ export class CheckersRenderer implements GameRenderer {
   private validTargetIndexes = new Set<number>();
   private moveHistory: string[] = [];
   private isFlipped = false;
+  private dragHelper: DragHelper | null = null;
+  private dragSourceIndex: number | null = null;
   private width = DEFAULT_WIDTH;
   private height = DEFAULT_HEIGHT;
   private squareSize = Math.min(DEFAULT_WIDTH, DEFAULT_HEIGHT - TOP_HUD_SPACE - BOTTOM_HUD_SPACE)
@@ -191,8 +196,10 @@ export class CheckersRenderer implements GameRenderer {
     + ((DEFAULT_HEIGHT - TOP_HUD_SPACE - BOTTOM_HUD_SPACE - this.boardSize) / 2);
 
   constructor() {
+    this.container.eventMode = "static";
     this.piecesLayer.eventMode = "none";
     this.capturedPiecesGraphics.eventMode = "none";
+    this.dragLayer.eventMode = "none";
     this.overlayLayer.eventMode = "none";
     this.overlayLayer.visible = false;
     this.blackCountText.anchor.set(0, 0);
@@ -205,8 +212,8 @@ export class CheckersRenderer implements GameRenderer {
     for (let index = 0; index < BOARD_CELL_COUNT; index += 1) {
       const square = new Graphics();
       square.eventMode = "static";
-      square.on("pointertap", () => {
-        this.handleSquareClick(index);
+      square.on("pointerdown", (e) => {
+        this.handleSquarePointerDown(index, e);
       });
       square.on("pointerover", () => {
         this.handleSquareHover(index);
@@ -222,11 +229,18 @@ export class CheckersRenderer implements GameRenderer {
       this.boardFrame,
       this.boardLayer,
       this.piecesLayer,
+      this.dragLayer,
       this.capturedPiecesGraphics,
       this.blackCountText,
       this.redCountText,
       this.overlayLayer,
     );
+
+    this.dragHelper = new DragHelper(this.container, this.dragLayer, {
+      onDragMove: (_id, x, y) => this.handleDragMove(x, y),
+      onDrop: (id, x, y) => this.handleDragDrop(id, x, y),
+      onDragCancel: () => this.handleDragCancel(),
+    });
   }
 
   init(state: unknown, context?: GameRendererContext): void {
@@ -237,6 +251,8 @@ export class CheckersRenderer implements GameRenderer {
     this.selectedIndex = null;
     this.hoveredIndex = null;
     this.validTargetIndexes.clear();
+    this.dragHelper?.cancel();
+    this.dragSourceIndex = null;
     this.moveHistory = [];
     this.turnClockSeconds = null;
     this.showTurnClock = false;
@@ -257,6 +273,8 @@ export class CheckersRenderer implements GameRenderer {
   }
 
   onStateChange(state: unknown): void {
+    this.dragHelper?.cancel();
+    this.dragSourceIndex = null;
     this.applyState(state);
     this.syncSelectionWithState();
     this.redrawBoard();
@@ -300,6 +318,9 @@ export class CheckersRenderer implements GameRenderer {
 
   destroy(): void {
     this.unsubscribeFromRoomEvents();
+    this.dragHelper?.destroy();
+    this.dragHelper = null;
+    this.dragSourceIndex = null;
     this.room = null;
     this.requestLeave = null;
     this.players.clear();
@@ -583,6 +604,8 @@ export class CheckersRenderer implements GameRenderer {
   }
 
   private handleSquareHover(displayIndex: number | null): void {
+    if (this.dragHelper?.isDragging) return;
+
     const hoveredIndex = displayIndex === null ? null : this.toBoardIndex(displayIndex);
     const nextHoveredIndex = hoveredIndex !== null && this.isHoverablePiece(hoveredIndex)
       ? hoveredIndex
@@ -594,6 +617,42 @@ export class CheckersRenderer implements GameRenderer {
 
     this.hoveredIndex = nextHoveredIndex;
     this.redrawPieces();
+  }
+
+  private handleSquarePointerDown(displayIndex: number, e: import("pixi.js").FederatedPointerEvent): void {
+    const boardIndex = this.toBoardIndex(displayIndex);
+
+    if (!this.isLocalPlayersTurn()) {
+      if (this.selectedIndex !== null) {
+        this.clearSelection();
+      }
+      return;
+    }
+
+    // If clicking on a selectable piece, start a potential drag
+    if (this.isSelectableSquare(boardIndex)) {
+      this.setSelection(boardIndex);
+      this.dragSourceIndex = boardIndex;
+      const pos = this.container.toLocal(e.global);
+      const proxy = this.createDragProxy(boardIndex);
+      this.dragHelper?.beginDrag(String(boardIndex), proxy, pos.x, pos.y);
+      return;
+    }
+
+    // If a piece is selected and we click a valid target, execute the move
+    if (this.selectedIndex !== null && this.validTargetIndexes.has(boardIndex)) {
+      this.room?.send("move", { from: this.selectedIndex, to: boardIndex });
+      this.clearSelection();
+      return;
+    }
+
+    // Toggle selection off if clicking the same piece
+    if (this.selectedIndex === boardIndex) {
+      this.clearSelection();
+      return;
+    }
+
+    this.clearSelection();
   }
 
   private handleSquareClick(displayIndex: number): void {
@@ -624,6 +683,94 @@ export class CheckersRenderer implements GameRenderer {
     }
 
     this.clearSelection();
+  }
+
+  private createDragProxy(boardIndex: number): Graphics {
+    const piece = this.board[boardIndex];
+    const isBlackPiece = piece === BLACK || piece === BLACK_KING;
+    const radius = this.squareSize * 0.32 * DRAG_PIECE_SCALE;
+    const outlineWidth = Math.max(1, this.squareSize * 0.04);
+    const gradient = createPieceBodyGradient(isBlackPiece ? "black" : "red");
+    const border = isBlackPiece ? PIECE_BLACK_BORDER : PIECE_RED_BORDER;
+    const glow = isBlackPiece ? PIECE_BLACK_GLOW : PIECE_RED_GLOW;
+    const highlight = createPieceHighlightGradient();
+
+    const g = new Graphics();
+    g.circle(0, 0, radius * 1.08).fill({ color: glow, alpha: 0.3 });
+    g.circle(0, 0, radius).fill(gradient).stroke({ color: border, width: outlineWidth });
+    g.circle(-(radius * 0.15), -(radius * 0.2), radius * 0.38).fill(highlight);
+
+    if (piece === BLACK_KING || piece === RED_KING) {
+      g.circle(0, 0, radius * 0.64).stroke({
+        color: KING_CROWN_SHADOW,
+        alpha: KING_CROWN_SHADOW_ALPHA,
+        width: Math.max(4, outlineWidth + 3),
+      });
+      g.circle(0, 0, radius * 0.58).stroke({
+        color: KING_MARKER_COLOR,
+        alpha: KING_CROWN_RING_ALPHA,
+        width: Math.max(3, this.squareSize * 0.05),
+      });
+    }
+
+    return g;
+  }
+
+  private handleDragMove(x: number, y: number): void {
+    // Highlight the square under the cursor if it's a valid target
+    const displayIndex = this.getDisplayIndexAtPoint(x, y);
+    if (displayIndex !== null) {
+      const boardIndex = this.toBoardIndex(displayIndex);
+      if (this.validTargetIndexes.has(boardIndex)) {
+        this.hoveredIndex = boardIndex;
+        this.redrawBoard();
+        return;
+      }
+    }
+    if (this.hoveredIndex !== null) {
+      this.hoveredIndex = null;
+      this.redrawBoard();
+    }
+  }
+
+  private handleDragDrop(id: string, x: number, y: number): boolean {
+    const fromIndex = Number(id);
+    const displayIndex = this.getDisplayIndexAtPoint(x, y);
+
+    this.hoveredIndex = null;
+    this.dragSourceIndex = null;
+
+    if (displayIndex !== null) {
+      const targetIndex = this.toBoardIndex(displayIndex);
+      if (this.validTargetIndexes.has(targetIndex)) {
+        this.room?.send("move", { from: fromIndex, to: targetIndex });
+        this.clearSelection();
+        this.redrawBoard();
+        this.redrawPieces();
+        return true;
+      }
+    }
+
+    // Invalid drop — selection stays so player can click a target instead
+    this.redrawBoard();
+    this.redrawPieces();
+    return false;
+  }
+
+  private handleDragCancel(): void {
+    this.hoveredIndex = null;
+    this.dragSourceIndex = null;
+    this.redrawBoard();
+    this.redrawPieces();
+  }
+
+  private getDisplayIndexAtPoint(x: number, y: number): number | null {
+    const col = Math.floor((x - this.boardOffsetX) / this.squareSize);
+    const row = Math.floor((y - this.boardOffsetY) / this.squareSize);
+    if (col < 0 || col >= BOARD_DIMENSION || row < 0 || row >= BOARD_DIMENSION) {
+      return null;
+    }
+    return row * BOARD_DIMENSION + col;
   }
 
   private subscribeToRoomEvents(): void {

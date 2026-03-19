@@ -1,5 +1,23 @@
 import { BaseGameState, type GamePlugin } from "../../../shared/src/index.ts";
+import type { ClockTimer as Clock, Delayed } from "@colyseus/timer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+function createMockClock(): Clock {
+  return {
+    setTimeout(callback: (...args: unknown[]) => void, delayMs: number): Delayed {
+      const id = setTimeout(callback, delayMs);
+      return {
+        clear: () => clearTimeout(id),
+      } as Delayed;
+    },
+    setInterval(callback: (...args: unknown[]) => void, delayMs: number): Delayed {
+      const id = setInterval(callback, delayMs);
+      return {
+        clear: () => clearInterval(id),
+      } as Delayed;
+    },
+  } as Clock;
+}
 
 const { mockedCloseCode, mockGameRegistry } = vi.hoisted(() => ({
   mockedCloseCode: {
@@ -103,6 +121,7 @@ function createRoom(): TestRoom {
     roomId: "test-room",
     clients: [] as MockClient[],
     maxClients: 1,
+    clock: createMockClock(),
     messageHandlers,
     allowReconnection: vi.fn(),
     broadcast: vi.fn(),
@@ -304,6 +323,7 @@ describeRoom("BaseGameRoom", () => {
   });
 
   it("ends the game when an action reports endsGame", async () => {
+    vi.useFakeTimers();
     const room = createRoom();
     const gameResult = {
       type: "win",
@@ -338,6 +358,7 @@ describeRoom("BaseGameRoom", () => {
     expect(plugin.lifecycle.onGameEnd).toHaveBeenCalledWith(room.state, gameResult);
     expect(room.state.phase).toBe("ended");
     expect(room.broadcast).toHaveBeenCalledWith("game-end", gameResult);
+    await vi.advanceTimersByTimeAsync(6000);
     expect(room.disconnect).toHaveBeenCalledTimes(1);
   });
 
@@ -429,6 +450,7 @@ describeRoom("BaseGameRoom", () => {
   });
 
   it("does not hold a seat for a consented disconnect and forfeits immediately when one player remains", async () => {
+    vi.useFakeTimers();
     const room = createRoom();
     const plugin = createPlugin({
       lifecycle: {
@@ -463,10 +485,12 @@ describeRoom("BaseGameRoom", () => {
         }),
       }),
     );
+    await vi.advanceTimersByTimeAsync(6000);
     expect(room.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it("does not award a forfeit win to the shared-device opponent when the controller leaves", async () => {
+    vi.useFakeTimers();
     const room = createRoom();
     const plugin = createPlugin({
       lifecycle: {
@@ -500,10 +524,12 @@ describeRoom("BaseGameRoom", () => {
         }),
       }),
     );
+    await vi.advanceTimersByTimeAsync(6000);
     expect(room.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it("releases the reserved seat after the reconnection window expires", async () => {
+    vi.useFakeTimers();
     const room = createRoom();
     const plugin = createPlugin({
       lifecycle: {
@@ -538,11 +564,13 @@ describeRoom("BaseGameRoom", () => {
         }),
       }),
     );
+    await vi.advanceTimersByTimeAsync(6000);
     expect(room.disconnect).toHaveBeenCalledTimes(1);
     expect(room.state.phase).toBe("ended");
   });
 
   it("cleans up the shared-device opponent when the controller times out", async () => {
+    vi.useFakeTimers();
     const room = createRoom();
     const plugin = createPlugin({
       lifecycle: {
@@ -579,6 +607,7 @@ describeRoom("BaseGameRoom", () => {
         }),
       }),
     );
+    await vi.advanceTimersByTimeAsync(6000);
     expect(room.disconnect).toHaveBeenCalledTimes(1);
     expect(room.state.phase).toBe("ended");
   });
@@ -680,4 +709,333 @@ describeRoom("BaseGameRoom", () => {
     );
   });
   it.todo("resolves simultaneous disconnects during the reconnect window without awarding a premature forfeit");
+
+  describe("turn timer penalty system", () => {
+    it("applies warning penalties in order, resetting the timer each time", async () => {
+      vi.useFakeTimers();
+      const room = createRoom();
+      const plugin = createPlugin({
+        lifecycle: {
+          onCreate: vi.fn(),
+          onGameStart: vi.fn(),
+          onGameEnd: vi.fn(),
+        },
+        turnConfig: {
+          mode: "sequential",
+          turnOrder: { type: "round-robin" },
+          allowPass: false,
+          turnTimerConfig: {
+            enabled: true,
+            turnDurationMs: 10_000,
+            penalties: [
+              { type: "warning", message: "First warning!" },
+              { type: "warning", message: "Final warning!" },
+              { type: "auto-pass" },
+            ],
+          },
+        },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+      const firstPlayer = createClient("player-1");
+      const secondPlayer = createClient("player-2");
+      room.clients.push(firstPlayer, secondPlayer);
+      room.onJoin(firstPlayer);
+      room.onJoin(secondPlayer);
+
+      expect(room.state.currentTurn).toBe("player-1");
+
+      // First timeout → warning
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(room.broadcast).toHaveBeenCalledWith(
+        "turn-timer-warning",
+        expect.objectContaining({
+          playerId: "player-1",
+          message: "First warning!",
+        }),
+      );
+      expect(room.state.timerWarningActive).toBe(true);
+      expect(room.state.currentTurn).toBe("player-1");
+
+      // Second timeout → final warning
+      room.broadcast.mockClear();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(room.broadcast).toHaveBeenCalledWith(
+        "turn-timer-warning",
+        expect.objectContaining({
+          playerId: "player-1",
+          message: "Final warning!",
+        }),
+      );
+      expect(room.state.currentTurn).toBe("player-1");
+
+      // Third timeout → auto-pass, turn advances
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(room.state.currentTurn).toBe("player-2");
+      expect(room.state.timerWarningActive).toBe(false);
+    });
+
+    it("calls plugin onAutoPass when auto-pass penalty fires", async () => {
+      vi.useFakeTimers();
+      const room = createRoom();
+      const onAutoPass = vi.fn().mockReturnValue(false);
+      const plugin = createPlugin({
+        lifecycle: {
+          onCreate: vi.fn(),
+          onGameStart: vi.fn(),
+          onAutoPass,
+        },
+        turnConfig: {
+          mode: "sequential",
+          turnOrder: { type: "round-robin" },
+          allowPass: false,
+          turnTimerConfig: {
+            enabled: true,
+            turnDurationMs: 5_000,
+            penalties: [{ type: "auto-pass" }],
+          },
+        },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+      const firstPlayer = createClient("player-1");
+      const secondPlayer = createClient("player-2");
+      room.clients.push(firstPlayer, secondPlayer);
+      room.onJoin(firstPlayer);
+      room.onJoin(secondPlayer);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(onAutoPass).toHaveBeenCalledWith(room.state, "player-1");
+      expect(room.state.currentTurn).toBe("player-2");
+    });
+
+    it("forfeits the game when forfeit penalty fires", async () => {
+      vi.useFakeTimers();
+      const room = createRoom();
+      const plugin = createPlugin({
+        lifecycle: {
+          onCreate: vi.fn(),
+          onGameStart: vi.fn(),
+          onGameEnd: vi.fn(),
+        },
+        turnConfig: {
+          mode: "sequential",
+          turnOrder: { type: "round-robin" },
+          allowPass: false,
+          turnTimerConfig: {
+            enabled: true,
+            turnDurationMs: 5_000,
+            penalties: [{ type: "forfeit" }],
+          },
+        },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+      const firstPlayer = createClient("player-1");
+      const secondPlayer = createClient("player-2");
+      room.clients.push(firstPlayer, secondPlayer);
+      room.onJoin(firstPlayer);
+      room.onJoin(secondPlayer);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(plugin.lifecycle.onGameEnd).toHaveBeenCalledWith(
+        room.state,
+        expect.objectContaining({
+          type: "forfeit",
+          winnerId: "player-2",
+          metadata: expect.objectContaining({
+            timedOutPlayerId: "player-1",
+            penalty: "forfeit",
+          }),
+        }),
+      );
+    });
+
+    it("repeats the last penalty after exhausting the penalty list", async () => {
+      vi.useFakeTimers();
+      const room = createRoom();
+      const onAutoPass = vi.fn().mockReturnValue(false);
+      const plugin = createPlugin({
+        lifecycle: {
+          onCreate: vi.fn(),
+          onGameStart: vi.fn(),
+          onAutoPass,
+        },
+        turnConfig: {
+          mode: "sequential",
+          turnOrder: { type: "round-robin" },
+          allowPass: false,
+          turnTimerConfig: {
+            enabled: true,
+            turnDurationMs: 5_000,
+            penalties: [
+              { type: "warning", message: "Warning!" },
+              { type: "auto-pass" },
+            ],
+          },
+        },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+      const firstPlayer = createClient("player-1");
+      const secondPlayer = createClient("player-2");
+      room.clients.push(firstPlayer, secondPlayer);
+      room.onJoin(firstPlayer);
+      room.onJoin(secondPlayer);
+
+      // First timeout → warning (penalty[0])
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(room.state.currentTurn).toBe("player-1");
+
+      // Second timeout → auto-pass (penalty[1])
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(room.state.currentTurn).toBe("player-2");
+      expect(onAutoPass).toHaveBeenCalledTimes(1);
+
+      // Now it's player-2's turn; they timeout twice too
+      await vi.advanceTimersByTimeAsync(5_000); // warning
+      await vi.advanceTimersByTimeAsync(5_000); // auto-pass
+      expect(room.state.currentTurn).toBe("player-1");
+      expect(onAutoPass).toHaveBeenCalledTimes(2);
+
+      // player-1 still has 2 past timeouts; third → auto-pass (repeats last penalty)
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(room.state.currentTurn).toBe("player-2");
+      expect(onAutoPass).toHaveBeenCalledTimes(3);
+    });
+
+    it("resets timeout counts per turn when resetCountPerTurn is true", async () => {
+      vi.useFakeTimers();
+      const room = createRoom();
+      const plugin = createPlugin({
+        lifecycle: {
+          onCreate: vi.fn(),
+          onGameStart: vi.fn(),
+        },
+        turnConfig: {
+          mode: "sequential",
+          turnOrder: { type: "round-robin" },
+          allowPass: false,
+          turnTimerConfig: {
+            enabled: true,
+            turnDurationMs: 5_000,
+            resetCountPerTurn: true,
+            penalties: [
+              { type: "warning", message: "Warning!" },
+              { type: "auto-pass" },
+            ],
+          },
+        },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+      const firstPlayer = createClient("player-1");
+      const secondPlayer = createClient("player-2");
+      room.clients.push(firstPlayer, secondPlayer);
+      room.onJoin(firstPlayer);
+      room.onJoin(secondPlayer);
+
+      // player-1: warning → auto-pass
+      await vi.advanceTimersByTimeAsync(5_000); // warning
+      await vi.advanceTimersByTimeAsync(5_000); // auto-pass → player-2
+      expect(room.state.currentTurn).toBe("player-2");
+
+      // player-2: warning → auto-pass
+      await vi.advanceTimersByTimeAsync(5_000); // warning
+      await vi.advanceTimersByTimeAsync(5_000); // auto-pass → player-1
+      expect(room.state.currentTurn).toBe("player-1");
+
+      // player-1's count was reset — so first timeout is warning again
+      room.broadcast.mockClear();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(room.broadcast).toHaveBeenCalledWith(
+        "turn-timer-warning",
+        expect.objectContaining({ message: "Warning!" }),
+      );
+      expect(room.state.currentTurn).toBe("player-1");
+    });
+
+    it("falls back to legacy instant-loss when no turnTimerConfig is provided", async () => {
+      vi.useFakeTimers();
+      const room = createRoom();
+      const plugin = createPlugin({
+        lifecycle: {
+          onCreate: vi.fn(),
+          onGameStart: vi.fn(),
+          onGameEnd: vi.fn(),
+        },
+        turnConfig: {
+          mode: "sequential",
+          turnOrder: { type: "round-robin" },
+          allowPass: false,
+          turnTimeLimit: 5,
+        },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+      const firstPlayer = createClient("player-1");
+      const secondPlayer = createClient("player-2");
+      room.clients.push(firstPlayer, secondPlayer);
+      room.onJoin(firstPlayer);
+      room.onJoin(secondPlayer);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(plugin.lifecycle.onGameEnd).toHaveBeenCalledWith(
+        room.state,
+        expect.objectContaining({
+          type: "timeout",
+          winnerId: "player-2",
+        }),
+      );
+    });
+
+    it("resets timer without advancing turn when onAutoPass returns true", async () => {
+      vi.useFakeTimers();
+      const room = createRoom();
+      const onAutoPass = vi.fn().mockReturnValue(true);
+      const plugin = createPlugin({
+        lifecycle: {
+          onCreate: vi.fn(),
+          onGameStart: vi.fn(),
+          onAutoPass,
+        },
+        turnConfig: {
+          mode: "sequential",
+          turnOrder: { type: "round-robin" },
+          allowPass: false,
+          turnTimerConfig: {
+            enabled: true,
+            turnDurationMs: 5_000,
+            penalties: [{ type: "auto-pass" }],
+          },
+        },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+      const firstPlayer = createClient("player-1");
+      const secondPlayer = createClient("player-2");
+      room.clients.push(firstPlayer, secondPlayer);
+      room.onJoin(firstPlayer);
+      room.onJoin(secondPlayer);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(onAutoPass).toHaveBeenCalledWith(room.state, "player-1");
+      // Plugin returned true → same player keeps the turn, timer resets
+      expect(room.state.currentTurn).toBe("player-1");
+    });
+  });
 });

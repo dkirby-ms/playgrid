@@ -50,6 +50,7 @@ interface LobbyGameEntry extends GameSessionInfo {
   roomId?: string;
   cpuOpponent?: boolean;
   headToHeadMode?: boolean;
+  quickstart?: boolean;
 }
 
 export class LobbyRoom extends Room {
@@ -246,6 +247,7 @@ export class LobbyRoom extends Room {
       createdAt: Date.now(),
       cpuOpponent,
       headToHeadMode,
+      quickstart: gameType === "risk" && payload.quickstart === true,
     };
 
     const waitingPlayers = new Map<string, PreGamePlayerInfo>([
@@ -456,6 +458,7 @@ export class LobbyRoom extends Room {
         gameId: game.id,
         gameType: game.gameType,
         ...(game.headToHeadMode ? { headToHeadMode: true } : {}),
+        ...(game.quickstart ? { quickstart: true } : {}),
         maxPlayers: game.maxPlayers,
         expectedPlayers: players.size,
         cpuOpponent: game.cpuOpponent === true,

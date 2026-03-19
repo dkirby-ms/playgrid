@@ -53,6 +53,7 @@ export class RiskState extends BaseGameState {
   declare captureFromId: string;
   declare captureToId: string;
   declare captureDiceCount: number;
+  declare quickstart: boolean;
 
   constructor() {
     super();
@@ -66,6 +67,7 @@ export class RiskState extends BaseGameState {
     this.captureFromId = "";
     this.captureToId = "";
     this.captureDiceCount = 0;
+    this.quickstart = false;
   }
 }
 
@@ -80,4 +82,5 @@ defineTypes(RiskState, {
   captureFromId: "string",
   captureToId: "string",
   captureDiceCount: "number",
+  quickstart: "boolean",
 });

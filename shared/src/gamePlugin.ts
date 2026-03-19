@@ -1,5 +1,6 @@
 import type { Schema } from "@colyseus/schema";
 import type { Client } from "colyseus";
+import type { MoveEntry } from "./MoveEntry.js";
 
 /**
  * The main interface that every game plugin must implement.
@@ -32,6 +33,9 @@ export interface GamePlugin<TState extends Schema = Schema> {
 
   /** State filtering for hidden information (optional) */
   stateFilter?: StateFilter<TState>;
+
+  /** Optional: format raw move entries into human-readable descriptions */
+  formatMoveHistory?(state: TState, moves: MoveEntry[]): MoveEntry[];
 }
 
 export interface GameMetadata {
@@ -98,6 +102,13 @@ export interface GameLifecycle<TState extends Schema> {
   onGameEnd?(state: TState, result: GameResult): void;
 
   /**
+   * Called when a player's turn is automatically passed due to timer penalty.
+   * The plugin should handle any state cleanup (e.g., auto-placing armies, clearing phases).
+   * Return true to keep the same player's turn (timer resets); false to advance to next player.
+   */
+  onAutoPass?(state: TState, sessionId: string): boolean;
+
+  /**
    * Called every tick (optional, for time-based mechanics).
    * Update timers, check for timeouts, etc.
    */
@@ -131,6 +142,41 @@ export interface GameResult {
 
 export type TurnMode = "sequential" | "simultaneous" | "phased";
 
+/** Penalty applied when a player's turn timer expires. Penalties are applied in order. */
+export type TurnTimerPenalty =
+  | { type: "warning"; message: string }
+  | { type: "auto-pass" }
+  | { type: "forfeit" }
+  | { type: "skip-and-penalty"; penaltyType: string };
+
+/**
+ * Configures the extensible turn timer system.
+ * When provided, overrides the simple turnTimeLimit behavior with a penalty escalation chain.
+ */
+export interface TurnTimerConfig {
+  /** Whether the turn timer is active */
+  enabled: boolean;
+
+  /** Base turn duration in milliseconds */
+  turnDurationMs: number;
+
+  /** When to show a "time running low" warning (ms before turn end) */
+  warningThresholdMs?: number;
+
+  /**
+   * Ordered list of penalties applied on successive timeouts.
+   * First timeout → penalties[0], second → penalties[1], etc.
+   * After exhausting all penalties, the last one repeats.
+   */
+  penalties: TurnTimerPenalty[];
+
+  /**
+   * If true, a player's timeout count resets at the start of each new turn.
+   * If false (default), the count persists for the entire game.
+   */
+  resetCountPerTurn?: boolean;
+}
+
 export interface TurnConfiguration {
   /** How turns are managed */
   mode: TurnMode;
@@ -138,7 +184,7 @@ export interface TurnConfiguration {
   /** Turn order strategy */
   turnOrder: TurnOrderStrategy;
 
-  /** Optional turn timer (seconds) */
+  /** Optional turn timer (seconds). Used when turnTimerConfig is not provided. */
   turnTimeLimit?: number;
 
   /** Whether players can pass/skip */
@@ -146,6 +192,9 @@ export interface TurnConfiguration {
 
   /** For phased games (like Risk), define the phases */
   phases?: TurnPhase[];
+
+  /** Extensible turn timer with penalty escalation. Overrides turnTimeLimit when provided. */
+  turnTimerConfig?: TurnTimerConfig;
 }
 
 export type TurnOrderStrategy =

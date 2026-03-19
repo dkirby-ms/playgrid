@@ -1035,3 +1035,90 @@ Implemented standard dominos spinner rules with 4-way branching:
 **Build/Lint/Test:** ✅ All green (446 tests pass)
 
 ---
+
+## Learnings
+
+### 2026-03-18T20:30:00Z: Move History Core Infrastructure (P6.1)
+
+**Task:** Built server-side move history recording system for all games.
+
+**Architecture decisions implemented:**
+- **Storage:** Server-side only, in-memory plain array (`private moveHistory: MoveEntry[]`), NOT in Colyseus schema
+- **Delivery:** Attached to `GameResult.metadata.moveHistory` at game end (broadcast to all clients including spectators)
+- **No schema modification:** History is ephemeral, dies with room, no network sync during game
+- **CPU moves recorded:** CPU opponent actions tracked like player actions
+- **Spectator visibility:** History broadcast in game result event
+
+**Files created:**
+- `shared/src/MoveEntry.ts` — Generic move entry interface with turnNumber, playerId, playerName, actionType, payload, timestamp, optional description
+
+**Files modified:**
+- `shared/src/gamePlugin.ts` — Added optional `formatMoveHistory?(state: TState, moves: MoveEntry[]): MoveEntry[]` to GamePlugin interface
+- `shared/src/index.ts` — Exported MoveEntry type
+- `server/src/game/BaseGameRoom.ts`:
+  - Added `moveHistory: MoveEntry[]` private field
+  - Added `recordMove(actionType, sessionId, payload)` private method
+  - Added `getGameElapsedTime(): number` helper
+  - Call `recordMove()` in `processAction()` after successful action execution
+  - Reset `moveHistory = []` in `startGame()` alongside `gameStartTime`
+  - Format and attach history to `GameResult.metadata.moveHistory` in `endGame()`
+
+**Implementation patterns:**
+- Move recording happens AFTER handler success, BEFORE game end check (line ~351 in processAction)
+- Timestamp is ms since game start (using existing `this.gameStartTime`)
+- Plugin can optionally format moves via `formatMoveHistory()` hook for human-readable descriptions
+- Player name resolved from `this.state.players.get(sessionId)?.displayName ?? "Unknown"`
+
+**Build/Lint/Test:** ✅ Build clean, lint clean (0 new errors)
+
+**Key file paths:**
+- Move entry interface: `shared/src/MoveEntry.ts`
+- Plugin extension: `shared/src/gamePlugin.ts` (line ~37)
+- Recording logic: `server/src/game/BaseGameRoom.ts` (recordMove ~line 719, processAction ~line 351, endGame ~line 476)
+
+### Checkers formatMoveHistory implementation (2026-03-16)
+
+- Implemented `formatMoveHistory` on `checkersPlugin` — the first game-specific move formatter. It annotates each `MoveEntry.description` with human-readable text based on move type.
+- Description format:
+  - Regular move: `"{Name} moved from {from} to {to}"`
+  - Capture: `"{Name} captured at {to} (from {from})"`
+  - King promotion: `"{Name} kinged at {to}"`
+  - Capture + king: `"{Name} captured at {to} (from {from}), kinged at {to}"`
+  - Multi-jump chain: `"{Name} captured {N} pieces"` (updates all entries in chain with running count)
+- Coordinate notation converts board index to algebraic: col → A-H, row → 1-8 (index 0 = A1, index 63 = H8).
+- Capture detection uses row delta (abs delta === 2). King promotion checks playerIndex: BLACK (0) → row 7, RED (1) → row 0.
+- Multi-jump detection: consecutive captures by same player where prev entry's `to === current from`.
+- Edge cases: missing payload fields produce no description; unknown player IDs skip king detection; original moves array is never mutated.
+- 14 new unit tests in `server/src/games/checkers/__tests__/formatMoveHistory.test.ts`.
+- All 506 tests pass, build and lint green.
+
+**Key file paths:**
+- Formatter logic: `server/src/games/checkers/CheckersPlugin.ts` (formatMoveEntries helper + formatMoveHistory method)
+- Tests: `server/src/games/checkers/__tests__/formatMoveHistory.test.ts`
+
+### Risk Quickstart mode (#156, PR #157) (2026-03-16)
+
+- Implemented quickstart toggle for Risk that skips the tedious setup-pick and setup-place phases by randomly distributing territories and armies.
+- **Option flow:** `quickstart` boolean passes through `CreateGamePayload` → `LobbyGameEntry` → `matchMaker.createRoom` options → `plugin.lifecycle.onCreate` → stored on `RiskState.quickstart`.
+- **Core logic** in `performQuickstartSetup()` (`riskLogic.ts`): Fisher-Yates shuffle of all 42 territory IDs, round-robin assignment to players, 1 army per territory, remaining armies (using existing `calculateInitialArmies` formula) distributed randomly across each player's owned territories.
+- **Phase transition:** When quickstart is enabled, `onGameStart` sets `gamePhase="playing"` and `turnPhase="reinforce"` immediately, grants first player reinforcements. No setup-pick or setup-place phases occur.
+- **Plugin lifecycle pattern:** First use of `onCreate` hook in a game plugin. Used to extract `quickstart` from room options and persist on state before `onGameStart` runs (since `onGameStart` doesn't receive options).
+- **UI:** Added `createToggleRow` for quickstart in `RiskSetupConfig.ts` with label "Quickstart" and description "Skip drafting — territories and armies assigned randomly".
+- **Schema change:** Added `quickstart: boolean` to `RiskState` (Colyseus Schema v4, synced to clients).
+- **Tests:** 15 new unit tests covering territory distribution evenness (2-6 players), army count correctness per player count, phase transitions, card/combat state initialization, first-player reinforcements, gameplay after quickstart, and backward compatibility of normal setup flow.
+- All 521 tests pass, build and lint clean.
+
+**Key file paths:**
+- Quickstart logic: `server/src/games/risk/riskLogic.ts` (`performQuickstartSetup`, line ~208)
+- Plugin hooks: `server/src/games/risk/RiskPlugin.ts` (`onCreate` and `onGameStart`)
+- State schema: `shared/src/games/risk/RiskState.ts` (`quickstart` field)
+- Client toggle: `client/src/ui/setup/RiskSetupConfig.ts`
+- Tests: `server/src/__tests__/risk.test.ts` (Quickstart Mode describe block)
+
+### Issue #161: BaseGameRoom disconnect/forfeit test failures (2026-03-19)
+
+- **Root cause:** PR #159 (commit 0186c87) introduced the extensible turn timer system, which added a 6-second deferred `this.disconnect()` in `endGame()` via `this.clock.setTimeout(...)`. Since `createRoom()` in tests now provides a mock clock, the deferred path is always taken. Five pre-existing tests that assert `room.disconnect()` were not using fake timers, so the native `setTimeout` callback never fired before assertions ran.
+- **Fix:** Added `vi.useFakeTimers()` at the start of each affected test and `await vi.advanceTimersByTimeAsync(6000)` before the disconnect assertion. The `afterEach` block already calls `vi.useRealTimers()` for cleanup.
+- **Pattern to remember:** Any test that asserts `room.disconnect()` after a game-ending action must use fake timers and advance past the 6-second disconnect delay introduced in the turn timer system.
+- **Affected tests:** "ends the game when an action reports endsGame", "does not hold a seat for a consented disconnect...", "does not award a forfeit win to the shared-device opponent...", "releases the reserved seat after the reconnection window expires", "cleans up the shared-device opponent when the controller times out".
+- **Commit:** 266e002

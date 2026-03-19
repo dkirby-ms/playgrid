@@ -34,6 +34,7 @@ defineTypes(GameState, {
 });
 
 export { BaseGameState, PlayerInfo } from "./BaseGameState.js";
+export type { MoveEntry } from "./MoveEntry.js";
 
 // Shared constants
 export const GAME_WIDTH = 800;
@@ -56,6 +57,8 @@ export type {
   TurnMode,
   TurnOrderStrategy,
   TurnPhase,
+  TurnTimerConfig,
+  TurnTimerPenalty,
 } from "./gamePlugin.js";
 export * from "./games/checkers/index.js";
 export { BackgammonState } from "./games/backgammon/index.js";

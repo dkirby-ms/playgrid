@@ -43,6 +43,7 @@ import {
   getNextPhase,
   initializeSetup,
   calculateInitialArmies,
+  performQuickstartSetup,
 } from "./riskLogic.js";
 
 type PickTerritoryPayload = {
@@ -146,6 +147,16 @@ export const riskPlugin: GamePlugin<RiskState> = {
       { id: "capture-move", name: "Capture Move", allowedActions: ["captureMove"], optional: true },
       { id: "fortify", name: "Fortify", allowedActions: ["fortify", "endPhase"], optional: true },
     ],
+    turnTimerConfig: {
+      enabled: true,
+      turnDurationMs: 90_000,
+      warningThresholdMs: 15_000,
+      penalties: [
+        { type: "warning", message: "Time's up! This is your first warning — timer reset." },
+        { type: "warning", message: "Final warning! Timer reset one last time." },
+        { type: "auto-pass" },
+      ],
+    },
   },
   lifecycle: {
     onPlayerJoin(state, client, playerIndex) {
@@ -185,6 +196,9 @@ export const riskPlugin: GamePlugin<RiskState> = {
         riskPlayer.armiesToPlace = reinforcements;
       }
     },
+    onCreate(state, options) {
+      state.quickstart = options.quickstart === true;
+    },
     onGameStart(state) {
       for (const territory of TERRITORIES) {
         const territoryState = new TerritoryState();
@@ -193,13 +207,75 @@ export const riskPlugin: GamePlugin<RiskState> = {
         state.territories.set(territory.id, territoryState);
       }
 
-      initializeSetup(state);
+      if (state.quickstart) {
+        performQuickstartSetup(state);
+        state.gamePhase = "playing";
+        state.turnPhase = "reinforce";
+        state.cardTradeInCount = 0;
+        state.earnedCardThisTurn = false;
 
-      state.gamePhase = "setup";
-      state.turnPhase = "setup-pick";
-      state.setupTerritoryIndex = 0;
-      state.cardTradeInCount = 0;
-      state.earnedCardThisTurn = false;
+        // Derive first player from sorted player list (currentTurn not set yet)
+        const sortedPlayers = Array.from(state.players.values()).sort(
+          (a, b) => a.playerIndex - b.playerIndex,
+        );
+        if (sortedPlayers.length > 0) {
+          const firstPlayerId = sortedPlayers[0].sessionId;
+          const firstPlayer = state.riskPlayers.get(firstPlayerId);
+          if (firstPlayer) {
+            const ownedTerritories = getOwnedTerritories(state, firstPlayerId);
+            const reinforcements = calculateReinforcements(
+              firstPlayer.territoriesOwned,
+              ownedTerritories,
+            );
+            firstPlayer.armiesToPlace = reinforcements;
+          }
+        }
+      } else {
+        initializeSetup(state);
+        state.gamePhase = "setup";
+        state.turnPhase = "setup-pick";
+        state.setupTerritoryIndex = 0;
+        state.cardTradeInCount = 0;
+        state.earnedCardThisTurn = false;
+      }
+    },
+    onAutoPass(state, sessionId) {
+      if (state.gamePhase === "setup") {
+        // During setup, auto-pass just advances to the next player
+        return false;
+      }
+
+      // During playing phase: auto-place remaining armies if in reinforce,
+      // then skip attack/fortify and end the turn.
+      const riskPlayer = state.riskPlayers.get(sessionId);
+      if (riskPlayer && riskPlayer.armiesToPlace > 0) {
+        // Auto-place remaining armies on the first owned territory
+        for (const territory of state.territories.values()) {
+          if (territory.owner === sessionId) {
+            territory.armyCount += riskPlayer.armiesToPlace;
+            riskPlayer.armiesToPlace = 0;
+            break;
+          }
+        }
+      }
+
+      // Clear any in-progress capture-move state
+      if (state.turnPhase === "capture-move") {
+        const fromTerritory = state.territories.get(state.captureFromId);
+        const toTerritory = state.territories.get(state.captureToId);
+        if (fromTerritory && toTerritory) {
+          // Auto-move minimum armies
+          const minMove = state.captureDiceCount;
+          toTerritory.armyCount = minMove;
+          fromTerritory.armyCount -= minMove;
+        }
+        state.captureFromId = "";
+        state.captureToId = "";
+        state.captureDiceCount = 0;
+      }
+
+      state.turnPhase = "reinforce";
+      return false;
     },
   },
   actions: {

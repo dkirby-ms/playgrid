@@ -1755,3 +1755,69 @@ npm run test   # ✅ 467 tests passed
 **Cross-agent coordination:** No other agents involved. Standalone renderer improvements.
 
 **Status:** P7 complete. Risk phase banner now matches Figma prominence. Dominos background already correct.
+
+## 2026-03-19: Click-and-Drag for Game Pieces (Issue #149, PR #160)
+
+### Deliverables:
+- **DragHelper** (`client/src/renderers/DragHelper.ts`): Reusable proxy-based drag utility with distance threshold (6px) to distinguish clicks from drags
+- **Checkers drag-to-move**: pointerdown on piece starts drag, proxy follows cursor at 1.15x scale, valid targets highlighted, drop sends move
+- **Dominos drag-to-play**: pointerdown on hand tile starts drag, valid board ends highlighted, closest end auto-resolved on drop
+- **DragHelper.test.ts**: 5 unit tests (threshold, promotion, drop accept/reject, cleanup)
+
+### Design decisions:
+- **Proxy-based (not target-based)**: Renderers draw all pieces in a single Graphics batch; DragHelper receives a pre-drawn proxy graphic instead of wrapping existing display objects. This avoids refactoring the piece rendering pipeline.
+- **Click fallback preserved**: The 6px threshold means quick taps still trigger the existing click-to-select/click-to-move flow. No regression to existing UX.
+- **Game logic stays in renderer**: DragHelper only handles pointer tracking and visual proxy. Validation (valid squares, valid ends) is entirely in renderer callbacks.
+
+### Key file paths:
+- `client/src/renderers/DragHelper.ts` (new, reusable utility)
+- `client/src/renderers/DragHelper.test.ts` (new, unit tests)
+- `client/src/renderers/CheckersRenderer.ts` (modified, drag integration)
+- `client/src/renderers/DominosRenderer.ts` (modified, drag integration)
+
+### Validation:
+```bash
+npm run build  # ✅ Passed
+npm run lint   # ✅ No new issues
+npm run test   # ✅ 472 tests passed (5 new)
+```
+
+## Learnings
+
+- Checkers pieces are rendered as a single `Graphics` batch in `piecesLayer` (eventMode "none"), so drag cannot be attached to individual piece containers. Proxy-based drag is the right pattern for this renderer architecture.
+- DominosRenderer recreates hand tile Graphics on every `redrawHand()` call, making registration-based drag impractical. Proxy approach works here too.
+- PixiJS `pointerdown` + `pointermove` + `pointerup` on a parent container handles both mouse and touch — no separate touch event handling needed.
+- The `container.eventMode = "static"` must be set on the renderer's root container for stage-level pointer events to propagate to the DragHelper.
+---
+
+## 2026-03-16: Dominos Tile Placement Bug Fix & Ghost Preview (#155)
+
+**From:** Gately
+**PR:** #158 (branch: squad/155-dominos-placement)
+
+**Problem diagnosed:**
+- End position markers used a hardcoded 8px offset from the last tile on each arm, regardless of board scale
+- At scale=1, a regular tile is 56px wide with a 4px gap, so the actual placement was ~60px from the last tile — but the marker appeared only 8px away
+- Arms A/C (negative direction) were worst: the marker hovered near the last tile while the actual tile rendered far out past it
+- No visual preview existed to show where a tile would actually land
+
+**Root cause:** `endPositions` calculation in `redrawBoardCross()` and `redrawBoardLinear()` used `± 8` instead of `± BOARD_TILE_GAP * scale`
+
+**Fix applied:**
+1. Replaced all fixed 8px end-position offsets with `BOARD_TILE_GAP * scale` for correct, scale-aware positioning
+2. Added `ghostLayer` container (between board and markers in z-order) for semi-transparent preview tiles
+3. Implemented `drawGhostTiles()` — renders alpha-0.4 tiles at exact target positions for each valid end when `choosingEnd` is true
+4. Ghost tiles compute correct dimensions (regular vs double), orientation per arm direction, and pip layout via `resolveGhostExposedEnd()`
+5. Centered end markers (A/B/C/D labels) on ghost tile area instead of directional anchor offsets
+6. Stored layout state (boardScale, spinnerCenter, armEndEdges) as instance variables for ghost computation
+
+**Files modified:** `client/src/renderers/DominosRenderer.ts`
+
+**Validation:** Build ✅, Lint ✅, Tests ✅ (506 pass)
+
+## Learnings
+
+- **Dominos end position math:** The `endPositions` dictionary stores where the NEXT tile's connecting edge would be placed. It must use scale-aware offsets (`BOARD_TILE_GAP * scale`), never fixed pixel values, because the board scales down when arms grow long.
+- **Ghost tile rendering pattern:** Store layout state (scale, center positions, arm end edges) as instance variables during `redrawBoard*()` so ghost/preview computations use the same coordinate system without re-deriving everything.
+- **Board tile ordering:** The server stores tiles in chronological (play) order with arm assignments. Post-spinner tiles within each arm are correctly ordered (closest to spinner first). Pre-spinner retroactive tiles may not match spatial order — a known server-side limitation that doesn't affect the ghost preview.
+- **`exposedEnd` field:** Represents the pip value facing outward (away from spinner) after placement. For ghost tiles, compute it by checking which pip matches the arm's open end — the other pip faces outward.
