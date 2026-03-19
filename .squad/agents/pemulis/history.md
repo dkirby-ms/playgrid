@@ -706,3 +706,23 @@ Implemented standard dominos spinner rules with 4-way branching:
 - Move entry interface: `shared/src/MoveEntry.ts`
 - Plugin extension: `shared/src/gamePlugin.ts` (line ~37)
 - Recording logic: `server/src/game/BaseGameRoom.ts` (recordMove ~line 719, processAction ~line 351, endGame ~line 476)
+
+### Checkers formatMoveHistory implementation (2026-03-16)
+
+- Implemented `formatMoveHistory` on `checkersPlugin` — the first game-specific move formatter. It annotates each `MoveEntry.description` with human-readable text based on move type.
+- Description format:
+  - Regular move: `"{Name} moved from {from} to {to}"`
+  - Capture: `"{Name} captured at {to} (from {from})"`
+  - King promotion: `"{Name} kinged at {to}"`
+  - Capture + king: `"{Name} captured at {to} (from {from}), kinged at {to}"`
+  - Multi-jump chain: `"{Name} captured {N} pieces"` (updates all entries in chain with running count)
+- Coordinate notation converts board index to algebraic: col → A-H, row → 1-8 (index 0 = A1, index 63 = H8).
+- Capture detection uses row delta (abs delta === 2). King promotion checks playerIndex: BLACK (0) → row 7, RED (1) → row 0.
+- Multi-jump detection: consecutive captures by same player where prev entry's `to === current from`.
+- Edge cases: missing payload fields produce no description; unknown player IDs skip king detection; original moves array is never mutated.
+- 14 new unit tests in `server/src/games/checkers/__tests__/formatMoveHistory.test.ts`.
+- All 506 tests pass, build and lint green.
+
+**Key file paths:**
+- Formatter logic: `server/src/games/checkers/CheckersPlugin.ts` (formatMoveEntries helper + formatMoveHistory method)
+- Tests: `server/src/games/checkers/__tests__/formatMoveHistory.test.ts`
