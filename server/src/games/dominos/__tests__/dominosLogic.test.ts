@@ -358,6 +358,48 @@ describe("dominosLogic", () => {
 
       expect(state.board.length).toBe(3);
     });
+
+    it("sets exposedEnd correctly when highPips matches the chain end", () => {
+      const state = createState();
+      // First tile: 5|3 → openEndA=3, openEndB=5
+      placeTileOnBoard(state, tile(0, 5, 3), "a");
+      
+      // Play 4|5 on end B (where openEndB=5)
+      // Since highPips=5 matches the chain, lowPips=4 becomes the new exposed end
+      placeTileOnBoard(state, tile(1, 5, 4), "b");
+      
+      const lastTile = state.board[state.board.length - 1];
+      expect(lastTile.exposedEnd).toBe(4); // lowPips is exposed
+      expect(state.openEndB).toBe(4);
+    });
+
+    it("sets exposedEnd correctly when lowPips matches the chain end", () => {
+      const state = createState();
+      // First tile: 5|3 → openEndA=3, openEndB=5
+      placeTileOnBoard(state, tile(0, 5, 3), "a");
+      
+      // Play 4|3 on end A (where openEndA=3)
+      // Since lowPips=3 matches the chain, highPips=4 becomes the new exposed end
+      placeTileOnBoard(state, tile(1, 4, 3), "a");
+      
+      const lastTile = state.board[state.board.length - 1];
+      expect(lastTile.exposedEnd).toBe(4); // highPips is exposed
+      expect(state.openEndA).toBe(4);
+    });
+
+    it("sets exposedEnd correctly for a double tile", () => {
+      const state = createState();
+      // First tile: 5|3 → openEndA=3, openEndB=5
+      placeTileOnBoard(state, tile(0, 5, 3), "a");
+      
+      // Play 3|3 on end A (where openEndA=3)
+      // Double matches with highPips, exposedEnd becomes lowPips=3 (same value)
+      placeTileOnBoard(state, tile(1, 3, 3), "a");
+      
+      const lastTile = state.board[state.board.length - 1];
+      expect(lastTile.exposedEnd).toBe(3); // double, so both sides are 3
+      expect(state.openEndA).toBe(3);
+    });
   });
 
   // ── 5. Drawing from boneyard ────────────────────────────────────────

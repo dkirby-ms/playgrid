@@ -999,14 +999,20 @@ export class DominosRenderer implements GameRenderer {
       // Vertical divider
       g.moveTo(x + w / 2, y + 1).lineTo(x + w / 2, y + h - 1).stroke({ color: TILE_DIVIDER_COLOR, width: 1 });
       const halfW = w / 2;
-      this.drawPipsHorizontal(g, tile.highPips, x, y, halfW, h, scale);
-      this.drawPipsHorizontal(g, tile.lowPips, x + halfW, y, halfW, h, scale);
+      // Draw pips based on exposedEnd: the exposed end faces the chain's left/start
+      const leftPips = tile.exposedEnd === tile.highPips ? tile.highPips : tile.lowPips;
+      const rightPips = tile.exposedEnd === tile.highPips ? tile.lowPips : tile.highPips;
+      this.drawPipsHorizontal(g, leftPips, x, y, halfW, h, scale);
+      this.drawPipsHorizontal(g, rightPips, x + halfW, y, halfW, h, scale);
     } else {
       // Horizontal divider
       g.moveTo(x + 1, y + h / 2).lineTo(x + w - 1, y + h / 2).stroke({ color: TILE_DIVIDER_COLOR, width: 1 });
       const halfH = h / 2;
-      this.drawBoardPipsVertical(g, tile.highPips, x, y, w, halfH, scale);
-      this.drawBoardPipsVertical(g, tile.lowPips, x, y + halfH, w, halfH, scale);
+      // Draw pips based on exposedEnd: the exposed end faces the chain's top/start
+      const topPips = tile.exposedEnd === tile.highPips ? tile.highPips : tile.lowPips;
+      const bottomPips = tile.exposedEnd === tile.highPips ? tile.lowPips : tile.highPips;
+      this.drawBoardPipsVertical(g, topPips, x, y, w, halfH, scale);
+      this.drawBoardPipsVertical(g, bottomPips, x, y + halfH, w, halfH, scale);
     }
   }
 
