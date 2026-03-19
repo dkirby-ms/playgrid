@@ -934,12 +934,30 @@ export class SetupScreen {
         return;
       }
 
+      // Build gameInfo from form values so waiting mode knows maxPlayers, etc.
+      const overrides = this.configPanel?.getPayloadOverrides() ?? {};
+      this.gameInfo = {
+        id: payload.gameId,
+        name: this.gameNameInput.value.trim() || this.gameNameInput.placeholder || "New game",
+        gameType: this.gameType,
+        hostId: room.sessionId,
+        hostName: "",
+        status: "waiting",
+        playerCount: 1,
+        maxPlayers: overrides.maxPlayers ?? 2,
+        createdAt: Date.now(),
+        cpuOpponent: overrides.cpuOpponent,
+        headToHeadMode: overrides.headToHeadMode,
+      };
+
       // Transition to waiting mode
       this.mode = "waiting";
       this.configPanel?.setReadOnly(true);
       this.gameNameInput.disabled = true;
       this.updateJoinLink();
       this.updateInviteVisibility();
+      this.updatePlayerCountHeader();
+      this.renderPlayerList();
       this.renderActions();
     });
 
