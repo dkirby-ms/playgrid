@@ -139,6 +139,7 @@ export class DominosRenderer implements GameRenderer {
   // ── Layers ──────────────────────────────────────────────────────────────
   private readonly boardBackground = new Graphics();
   private readonly boardLayer = new Container();
+  private readonly ghostLayer = new Container();
   private readonly handLayer = new Container();
   private readonly dragLayer = new Container();
   private readonly overlayLayer = new Container();
@@ -777,7 +778,9 @@ export class DominosRenderer implements GameRenderer {
   // ═══════════════════════════════════════════════════════════════════════════
 
   private redrawBoard(): void {
-    this.boardLayer.removeChildren();
+    for (const child of this.boardLayer.removeChildren()) {
+      child.destroy();
+    }
 
     if (this.boardTiles.length === 0) {
       const emptyText = new Text({
@@ -1065,10 +1068,18 @@ export class DominosRenderer implements GameRenderer {
     this.endMarkerB.clear();
     this.endMarkerC.clear();
     this.endMarkerD.clear();
-    this.endMarkerA.removeChildren();
-    this.endMarkerB.removeChildren();
-    this.endMarkerC.removeChildren();
-    this.endMarkerD.removeChildren();
+    for (const child of this.endMarkerA.removeChildren()) {
+      child.destroy();
+    }
+    for (const child of this.endMarkerB.removeChildren()) {
+      child.destroy();
+    }
+    for (const child of this.endMarkerC.removeChildren()) {
+      child.destroy();
+    }
+    for (const child of this.endMarkerD.removeChildren()) {
+      child.destroy();
+    }
     this.endMarkerA.visible = false;
     this.endMarkerB.visible = false;
     this.endMarkerC.visible = false;
@@ -1162,7 +1173,9 @@ export class DominosRenderer implements GameRenderer {
   // ═══════════════════════════════════════════════════════════════════════════
 
   private redrawHand(): void {
-    this.handLayer.removeChildren();
+    for (const child of this.handLayer.removeChildren()) {
+      child.destroy();
+    }
 
     const hand = this.getMyHand();
     const handY = this.height - HAND_AREA_HEIGHT;
