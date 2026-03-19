@@ -740,7 +740,7 @@ export class LobbyRoom extends Room {
   }
 
   private shouldEnableCpuOpponent(gameType: string, cpuOpponent: unknown) {
-    return cpuOpponent === true && (gameType === "checkers" || gameType === "backgammon");
+    return cpuOpponent === true && (gameType === "checkers" || gameType === "backgammon" || gameType === "dominos");
   }
 
   private shouldEnableHeadToHeadMode(gameType: string, headToHeadMode: unknown) {

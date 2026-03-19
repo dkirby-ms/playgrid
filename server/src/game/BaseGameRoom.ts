@@ -6,6 +6,7 @@ import {
   type ActionHandler,
   type BackgammonState,
   type CheckersState,
+  type DominosState,
   type GameOptions,
   type GamePlugin,
   type GameResult,
@@ -16,6 +17,7 @@ import * as gameRepository from "../db/gameRepository.js";
 import { getPool } from "../db.js";
 import { selectCpuAction } from "../games/backgammon/CpuOpponent.js";
 import { selectCpuMove } from "../games/checkers/CpuOpponent.js";
+import { selectCpuAction as selectDominosCpuAction } from "../games/dominos/CpuOpponent.js";
 import { GAME_ROOM_DISPOSED_TOPIC } from "../rooms/lobbyPresence.js";
 import { trackEvent } from "../telemetry.js";
 import { gameRegistry } from "./GameRegistry.js";
@@ -67,7 +69,7 @@ export class BaseGameRoom extends Room {
 
     this.plugin = gameRegistry.get(gameType) as unknown as GamePlugin<BaseGameState>;
     this.cpuOpponentEnabled = options.cpuOpponent === true
-      && (gameType === "checkers" || gameType === "backgammon");
+      && (gameType === "checkers" || gameType === "backgammon" || gameType === "dominos");
     this.headToHeadMode = options.headToHeadMode === true && gameType === "checkers";
 
     const [minPlayers, maxPlayers] = this.plugin.metadata.playerCount;
@@ -755,6 +757,11 @@ export class BaseGameRoom extends Room {
       return;
     }
 
+    if (this.plugin.id === "dominos") {
+      await this.executeDominosCpuTurn();
+      return;
+    }
+
     await this.executeCheckersCpuTurn();
   }
 
@@ -799,6 +806,35 @@ export class BaseGameRoom extends Room {
     }
 
     const payload = action.actionType === "move" ? action.payload : undefined;
+    const didProcessAction = await this.processAction(
+      this.createSyntheticClient(CPU_OPPONENT_SESSION_ID),
+      action.actionType,
+      payload,
+      handler as ActionHandler<BaseGameState>,
+      false,
+    );
+
+    if (!didProcessAction) {
+      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      return;
+    }
+
+    this.queueCpuTurnIfNeeded();
+  }
+
+  private async executeDominosCpuTurn() {
+    const action = selectDominosCpuAction(this.state as DominosState);
+    if (!action) {
+      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      return;
+    }
+
+    const handler = this.plugin.actions[action.actionType];
+    if (!handler) {
+      return;
+    }
+
+    const payload = action.actionType === "play" ? action.payload : undefined;
     const didProcessAction = await this.processAction(
       this.createSyntheticClient(CPU_OPPONENT_SESSION_ID),
       action.actionType,
