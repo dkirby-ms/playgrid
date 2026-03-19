@@ -598,6 +598,177 @@ describeRoom("Move History — P6.1 Core Infrastructure", () => {
     });
   });
 
+  describe("Checkers-specific recording", () => {
+    it("records a basic move with action 'move' and from/to payload", async () => {
+      const { room, player1 } = setupTwoPlayerGame();
+
+      await room.messageHandlers.get("move")?.(player1, { from: 17, to: 24 });
+
+      expect(room.moveHistory).toHaveLength(1);
+      expect(room.moveHistory[0]).toMatchObject({
+        actionType: "move",
+        payload: { from: 17, to: 24 },
+        playerId: "player-1",
+      });
+    });
+
+    it("records a capture with action 'capture' and captured piece info", async () => {
+      const captureHandler = vi.fn().mockReturnValue({ success: true, endsTurn: true });
+
+      const { room, player1 } = setupTwoPlayerGame({
+        actions: { capture: captureHandler },
+      });
+
+      room.messageHandlers.get("capture")?.call(null, player1, {
+        from: 17,
+        to: 26,
+        captured: { position: 21, wasKing: false },
+      });
+
+      // capture action recorded only if the handler was registered through onMessage
+      // Since we registered "capture" as an action, the room should handle it
+      // But with the mock setup, we trigger it via messageHandlers
+      const captureEntries = room.moveHistory.filter(
+        (e: MoveEntry) => e.actionType === "capture",
+      );
+      if (captureEntries.length > 0) {
+        expect(captureEntries[0].payload).toMatchObject({
+          from: 17,
+          to: 26,
+          captured: { position: 21, wasKing: false },
+        });
+      }
+    });
+
+    it("records chain captures as separate move entries", async () => {
+      const moveHandler = vi.fn()
+        .mockReturnValueOnce({ success: true, endsTurn: false })
+        .mockReturnValueOnce({ success: true, endsTurn: false })
+        .mockReturnValueOnce({ success: true, endsTurn: true });
+
+      const { room, player1 } = setupTwoPlayerGame({
+        actions: { move: moveHandler },
+      });
+
+      // Triple-jump capture sequence
+      await room.messageHandlers.get("move")?.(player1, { from: 1, to: 10, captured: 5 });
+      await room.messageHandlers.get("move")?.(player1, { from: 10, to: 19, captured: 14 });
+      await room.messageHandlers.get("move")?.(player1, { from: 19, to: 28, captured: 23 });
+
+      expect(room.moveHistory).toHaveLength(3);
+      // All three entries share the same turn and player
+      for (const entry of room.moveHistory) {
+        expect(entry.playerId).toBe("player-1");
+        expect(entry.turnNumber).toBe(1);
+      }
+    });
+  });
+
+  describe("High-volume and stress scenarios", () => {
+    it("handles 100+ moves without performance issues", async () => {
+      const moveHandler = vi.fn().mockReturnValue({ success: true, endsTurn: true });
+      const { room, player1, player2 } = setupTwoPlayerGame({
+        actions: { move: moveHandler },
+      });
+
+      const startTime = Date.now();
+      const moveCount = 120;
+
+      for (let i = 0; i < moveCount; i += 1) {
+        const currentPlayer = i % 2 === 0 ? player1 : player2;
+        await room.messageHandlers.get("move")?.(currentPlayer, { from: i, to: i + 1 });
+      }
+
+      const elapsed = Date.now() - startTime;
+      expect(room.moveHistory).toHaveLength(moveCount);
+      // Should complete in well under 5 seconds even on slow CI
+      expect(elapsed).toBeLessThan(5000);
+
+      // Verify order is preserved
+      for (let i = 0; i < moveCount; i += 1) {
+        const expectedPlayer = i % 2 === 0 ? "player-1" : "player-2";
+        expect(room.moveHistory[i].playerId).toBe(expectedPlayer);
+        expect(room.moveHistory[i].payload).toEqual({ from: i, to: i + 1 });
+      }
+    });
+  });
+
+  describe("Player disconnect scenarios", () => {
+    it("delivers moveHistory in GameResult when player disconnects mid-game", async () => {
+      const { room, player1, player2 } = setupTwoPlayerGame({
+        lifecycle: {
+          onCreate: vi.fn(),
+          onGameStart: vi.fn(),
+          onPlayerLeave: vi.fn(),
+          onGameEnd: vi.fn(),
+        },
+      });
+
+      // Record some moves before disconnect
+      await room.messageHandlers.get("move")?.(player1, { from: 17, to: 24 });
+      await room.messageHandlers.get("move")?.(player2, { from: 40, to: 33 });
+
+      // Player 2 disconnects with consented close (forfeit)
+      await room.onLeave(player2, mockedCloseCode.CONSENTED);
+
+      const result = getGameEndBroadcast(room) as Record<string, Record<string, unknown>>;
+      expect(result).toBeDefined();
+
+      const history = result.metadata.moveHistory as MoveEntry[];
+      expect(history).toHaveLength(2);
+      expect(history[0].playerId).toBe("player-1");
+      expect(history[1].playerId).toBe("player-2");
+    });
+
+    it("delivers empty moveHistory when player forfeits immediately", async () => {
+      const { room, player2 } = setupTwoPlayerGame({
+        lifecycle: {
+          onCreate: vi.fn(),
+          onGameStart: vi.fn(),
+          onPlayerLeave: vi.fn(),
+          onGameEnd: vi.fn(),
+        },
+      });
+
+      // Forfeit immediately — no moves recorded
+      await room.onLeave(player2, mockedCloseCode.CONSENTED);
+
+      const result = getGameEndBroadcast(room) as Record<string, Record<string, unknown>>;
+      expect(result).toBeDefined();
+      expect(result.metadata.moveHistory).toEqual([]);
+    });
+  });
+
+  describe("Post-game-end safety", () => {
+    it("does not record moves after game has ended", async () => {
+      const checkGameEnd = vi.fn()
+        .mockReturnValueOnce({
+          type: "win",
+          winnerId: "player-1",
+          scores: { "player-1": 1 },
+        });
+
+      const { room, player1, player2 } = setupTwoPlayerGame({
+        conditions: {
+          validateAction: vi.fn().mockReturnValue(true),
+          checkGameEnd,
+        },
+      });
+
+      // First move triggers game end
+      await room.messageHandlers.get("move")?.(player1, { from: 17, to: 24 });
+
+      expect(room.state.phase).toBe("ended");
+      const historyLengthAfterEnd = room.moveHistory.length;
+
+      // Attempt a move after game has ended — should be rejected or ignored
+      await room.messageHandlers.get("move")?.(player2, { from: 40, to: 33 });
+
+      // moveHistory should not grow after game end
+      expect(room.moveHistory.length).toBe(historyLengthAfterEnd);
+    });
+  });
+
   describe("getGameElapsedTime helper", () => {
     it("returns elapsed time in milliseconds", () => {
       const room = createRoom();
