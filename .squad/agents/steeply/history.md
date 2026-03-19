@@ -563,3 +563,48 @@ Use `getByRole("button", { name: /^✓ Ready$/ })` to avoid false matches with "
 
 **Test results:** 33/40 passing. 7 failures are pre-existing game logic issues (Backgammon state sync, Risk UI text) unrelated to setup screen migration.
 
+
+## 2026-03-17 — Move History Test Coverage (P6.1)
+
+**Status:** Complete ✅  
+**Parallel to:** Pemulis (building implementation)
+
+Wrote comprehensive test coverage for P6.1 Move History Core Infrastructure before implementation exists. Tests validate the behavior contract — once Pemulis implements the spec, they should pass.
+
+**Test file:** `server/src/__tests__/move-history.test.ts` (25 tests, 3 passing compile checks, 22 skipped pending implementation)
+
+**Test categories:**
+1. MoveEntry interface validation (3 tests) — validates type structure, optional fields, import from @eschaton/shared
+2. Move recording in game flow (5 tests) — history growth, field correctness, timestamp monotonicity, multi-jump handling, player names
+3. History delivery in GameResult (3 tests) — metadata.moveHistory presence, totalMoves count, complete history at game end
+4. History reset on new game (2 tests) — empty on start, cleared between games
+5. Plugin formatMoveHistory integration (4 tests) — formatter called, formatted vs raw history, description addition
+6. CPU move recording (2 tests) — CPU moves tracked, distinguished from human moves
+7. Edge cases (5 tests) — empty history, payload immutability, invalid moves not recorded
+8. getGameElapsedTime helper (2 tests) — elapsed time calculation, 0 before start
+
+**Architecture validated:**
+- Storage: Server-side only, in-memory (NOT Colyseus schema)
+- Delivery: via GameResult.metadata at game end
+- CPU moves ARE recorded
+- History is ephemeral — dies with room
+- Plugin can optionally format history before delivery via `formatMoveHistory()`
+
+**Key test patterns identified:**
+- Use `it.skip()` for tests that depend on implementation not yet complete
+- Follow existing `checkers-e2e.test.ts` pattern for game setup
+- Mock Colyseus Client objects with `{ sessionId } as Client`
+- Use Vitest (`describe`, `it`, `expect`, `vi` for mocks)
+- Import from `@eschaton/shared` via vi.mock() → dynamic import pattern
+- Test through plugin actions, not BaseGameRoom internals
+
+**Build status:** ✅ All tests compile, 3 passing (interface validation), 22 skipped awaiting implementation
+
+**Learnings:**
+- Test-driven approach works well for parallel development — tests define the contract, implementation fills it in
+- Skipped tests serve as executable documentation of expected behavior
+- MoveEntry timestamp should be monotonically increasing (not strictly increasing) to handle fast CPU moves
+- Multi-jump moves in Checkers create multiple history entries with same turnNumber
+- Payload immutability is important — history should deep-copy payloads, not store references
+- Invalid moves should NOT be recorded in history
+- formatMoveHistory is optional — plugins that don't provide it get raw history

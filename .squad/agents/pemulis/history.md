@@ -666,3 +666,63 @@ Implemented standard dominos spinner rules with 4-way branching:
 **Build/Lint/Test:** ✅ All green (446 tests pass)
 
 ---
+
+## Learnings
+
+### 2026-03-18T20:30:00Z: Move History Core Infrastructure (P6.1)
+
+**Task:** Built server-side move history recording system for all games.
+
+**Architecture decisions implemented:**
+- **Storage:** Server-side only, in-memory plain array (`private moveHistory: MoveEntry[]`), NOT in Colyseus schema
+- **Delivery:** Attached to `GameResult.metadata.moveHistory` at game end (broadcast to all clients including spectators)
+- **No schema modification:** History is ephemeral, dies with room, no network sync during game
+- **CPU moves recorded:** CPU opponent actions tracked like player actions
+- **Spectator visibility:** History broadcast in game result event
+
+**Files created:**
+- `shared/src/MoveEntry.ts` — Generic move entry interface with turnNumber, playerId, playerName, actionType, payload, timestamp, optional description
+
+**Files modified:**
+- `shared/src/gamePlugin.ts` — Added optional `formatMoveHistory?(state: TState, moves: MoveEntry[]): MoveEntry[]` to GamePlugin interface
+- `shared/src/index.ts` — Exported MoveEntry type
+- `server/src/game/BaseGameRoom.ts`:
+  - Added `moveHistory: MoveEntry[]` private field
+  - Added `recordMove(actionType, sessionId, payload)` private method
+  - Added `getGameElapsedTime(): number` helper
+  - Call `recordMove()` in `processAction()` after successful action execution
+  - Reset `moveHistory = []` in `startGame()` alongside `gameStartTime`
+  - Format and attach history to `GameResult.metadata.moveHistory` in `endGame()`
+
+**Implementation patterns:**
+- Move recording happens AFTER handler success, BEFORE game end check (line ~351 in processAction)
+- Timestamp is ms since game start (using existing `this.gameStartTime`)
+- Plugin can optionally format moves via `formatMoveHistory()` hook for human-readable descriptions
+- Player name resolved from `this.state.players.get(sessionId)?.displayName ?? "Unknown"`
+
+**Build/Lint/Test:** ✅ Build clean, lint clean (0 new errors)
+
+**Key file paths:**
+- Move entry interface: `shared/src/MoveEntry.ts`
+- Plugin extension: `shared/src/gamePlugin.ts` (line ~37)
+- Recording logic: `server/src/game/BaseGameRoom.ts` (recordMove ~line 719, processAction ~line 351, endGame ~line 476)
+
+### Checkers formatMoveHistory implementation (2026-03-16)
+
+- Implemented `formatMoveHistory` on `checkersPlugin` — the first game-specific move formatter. It annotates each `MoveEntry.description` with human-readable text based on move type.
+- Description format:
+  - Regular move: `"{Name} moved from {from} to {to}"`
+  - Capture: `"{Name} captured at {to} (from {from})"`
+  - King promotion: `"{Name} kinged at {to}"`
+  - Capture + king: `"{Name} captured at {to} (from {from}), kinged at {to}"`
+  - Multi-jump chain: `"{Name} captured {N} pieces"` (updates all entries in chain with running count)
+- Coordinate notation converts board index to algebraic: col → A-H, row → 1-8 (index 0 = A1, index 63 = H8).
+- Capture detection uses row delta (abs delta === 2). King promotion checks playerIndex: BLACK (0) → row 7, RED (1) → row 0.
+- Multi-jump detection: consecutive captures by same player where prev entry's `to === current from`.
+- Edge cases: missing payload fields produce no description; unknown player IDs skip king detection; original moves array is never mutated.
+- 14 new unit tests in `server/src/games/checkers/__tests__/formatMoveHistory.test.ts`.
+- All 506 tests pass, build and lint green.
+
+**Key file paths:**
+- Formatter logic: `server/src/games/checkers/CheckersPlugin.ts` (formatMoveEntries helper + formatMoveHistory method)
+- Tests: `server/src/games/checkers/__tests__/formatMoveHistory.test.ts`

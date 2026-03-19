@@ -1,5 +1,6 @@
 import type { Schema } from "@colyseus/schema";
 import type { Client } from "colyseus";
+import type { MoveEntry } from "./MoveEntry.js";
 
 /**
  * The main interface that every game plugin must implement.
@@ -32,6 +33,9 @@ export interface GamePlugin<TState extends Schema = Schema> {
 
   /** State filtering for hidden information (optional) */
   stateFilter?: StateFilter<TState>;
+
+  /** Optional: format raw move entries into human-readable descriptions */
+  formatMoveHistory?(state: TState, moves: MoveEntry[]): MoveEntry[];
 }
 
 export interface GameMetadata {

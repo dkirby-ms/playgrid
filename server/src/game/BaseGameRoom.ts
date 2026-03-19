@@ -9,6 +9,7 @@ import {
   type GameOptions,
   type GamePlugin,
   type GameResult,
+  type MoveEntry,
 } from "@eschaton/shared";
 import * as gameRepository from "../db/gameRepository.js";
 import { getPool } from "../db.js";
@@ -53,6 +54,7 @@ export class BaseGameRoom extends Room {
   private cpuOpponentEnabled = false;
   private pendingCpuTurn?: Delayed;
   private headToHeadMode = false;
+  private moveHistory: MoveEntry[] = [];
 
   override async onCreate(options: BaseGameRoomOptions = {}) {
     const gameType = typeof options.gameType === "string" ? options.gameType.trim() : "";
@@ -348,6 +350,8 @@ export class BaseGameRoom extends Room {
       return false;
     }
 
+    this.recordMove(actionType, actingClient.sessionId, payload);
+
     this.broadcastPlayerMessages();
 
     const gameResult = this.plugin.conditions.checkGameEnd(this.state);
@@ -378,6 +382,7 @@ export class BaseGameRoom extends Room {
 
     this.state.phase = "playing";
     this.gameStartTime = Date.now();
+    this.moveHistory = [];
     this.turnManager = new TurnManager(this.orderTurnPlayers(playerIds), {
       turnTimeLimit: this.plugin.turnConfig.turnTimeLimit,
       onTimeout: (sessionId) => {
@@ -477,10 +482,16 @@ export class BaseGameRoom extends Room {
     const durationSeconds = this.gameStartTime
       ? Math.floor((Date.now() - this.gameStartTime) / 1000)
       : 0;
+
+    const formattedHistory = this.plugin.formatMoveHistory
+      ? this.plugin.formatMoveHistory(this.state, this.moveHistory)
+      : this.moveHistory;
+
     result.metadata = {
       ...result.metadata,
       durationSeconds,
       totalMoves: this.state.turnNumber ?? 0,
+      moveHistory: formattedHistory,
     };
 
     this.plugin.lifecycle.onGameEnd?.(this.state, result);
@@ -702,6 +713,24 @@ export class BaseGameRoom extends Room {
       sessionId,
       send: () => undefined,
     } as unknown as Client;
+  }
+
+  private recordMove(actionType: string, sessionId: string, payload: unknown) {
+    const player = this.state.players.get(sessionId);
+    const playerName = player?.displayName ?? "Unknown";
+
+    this.moveHistory.push({
+      turnNumber: this.state.turnNumber ?? 0,
+      playerId: sessionId,
+      playerName,
+      actionType,
+      payload: payload as Record<string, unknown>,
+      timestamp: this.getGameElapsedTime(),
+    });
+  }
+
+  private getGameElapsedTime(): number {
+    return this.gameStartTime ? Date.now() - this.gameStartTime : 0;
   }
 
   private getParticipatingPlayers() {
