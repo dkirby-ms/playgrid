@@ -270,6 +270,43 @@
 - The lobby sidebar architecture was already complete with glass-morphism panels, proper data wiring, and interactive elements (join buttons, status badges)
 - Transition timing consistency across hover effects (300ms standard) creates smoother, more cohesive UX
 
+
+---
+
+## 2026-07-24: PR #160 Review Fixes — Complete ✅
+
+**Status:** Complete — PR #160 revision
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass (472 tests)
+
+### What was fixed
+
+**Problem:** Hal's review flagged two issues on Gately's PR #160 (branch `squad/149-drag-and-drop`):
+1. `ghostLayer` referenced in `container.addChild()` but never declared — would throw at runtime
+2. Memory leak in `redrawHand()` — each tile has `pointertap` + `pointerdown` listeners that weren't destroyed on redraw
+
+**Solution:**
+- Declared `ghostLayer` property: `private readonly ghostLayer = new Container();` (matching the pattern from other layers like `boardLayer`, `handLayer`, `dragLayer`)
+- Fixed memory leaks in three `removeChildren()` call sites:
+  - `redrawHand()` — destroy children before removing (prevents 2 listeners/tile leak)
+  - `redrawBoard()` — destroy children before removing
+  - `redrawEndMarkers()` — destroy children in all 4 end markers before removing
+- Followed codebase pattern: `for (const child of layer.removeChildren()) child.destroy()`
+
+**Files Modified:**
+- `client/src/renderers/DominosRenderer.ts` — Added ghostLayer property, fixed 3 memory leaks
+
+### Learnings
+
+- **PixiJS memory management pattern:** Always destroy removed children that have event listeners. The standard pattern is:
+  ```ts
+  for (const child of layer.removeChildren()) {
+    child.destroy();
+  }
+  ```
+  Not: `layer.removeChildren()` (leaks listeners).
+- **Layer declaration pattern:** All layers in `DominosRenderer` are `private readonly {name}Layer = new Container()` properties. `ghostLayer` needed the same treatment.
+- **Cross-branch dependencies:** `ghostLayer` is likely from PR #158 (not yet merged), but it's already referenced in this PR's code. Declaring it locally prevents runtime errors until #158 merges.
+- **Gately lockout protocol:** When Gately is locked out of revisions, I (Ortho) handle PixiJS renderer fixes. This was a clean handoff since the issues were isolated to the renderer file.
 ---
 
 ## 2026-07-23: HistoryScreen + View History Button — Complete ✅

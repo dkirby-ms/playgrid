@@ -6,6 +6,7 @@ import type {
 } from "@eschaton/shared";
 import { Container, Graphics, Text } from "pixi.js";
 import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
+import { DragHelper } from "./DragHelper";
 import {
   ACCENT_BLUE,
   AMBER_500,
@@ -140,6 +141,7 @@ export class DominosRenderer implements GameRenderer {
   private readonly boardLayer = new Container();
   private readonly ghostLayer = new Container();
   private readonly handLayer = new Container();
+  private readonly dragLayer = new Container();
   private readonly overlayLayer = new Container();
   private readonly overlayBackground = new Graphics();
   private readonly overlayTitleText = new Text({
@@ -222,6 +224,8 @@ export class DominosRenderer implements GameRenderer {
   };
   private width = DEFAULT_WIDTH;
   private height = DEFAULT_HEIGHT;
+  private dragHelper: DragHelper | null = null;
+  private dragTileId: number | null = null;
 
   // Layout state (stored during redraw for ghost tile computation)
   private boardScale = 1;
@@ -237,7 +241,9 @@ export class DominosRenderer implements GameRenderer {
   private layoutMode: "empty" | "linear" | "cross" = "empty";
 
   constructor() {
+    this.container.eventMode = "static";
     this.overlayLayer.eventMode = "none";
+    this.dragLayer.eventMode = "none";
     this.overlayLayer.visible = false;
     this.overlayTitleText.anchor.set(0.5);
     this.overlaySubtitleText.anchor.set(0.5);
@@ -275,8 +281,15 @@ export class DominosRenderer implements GameRenderer {
       this.boneyardLabel,
       this.boneyardCountText,
       this.handLayer,
+      this.dragLayer,
       this.overlayLayer,
     );
+
+    this.dragHelper = new DragHelper(this.container, this.dragLayer, {
+      onDragMove: (_id, x, y) => this.handleTileDragMove(x, y),
+      onDrop: (id, x, y) => this.handleTileDrop(id, x, y),
+      onDragCancel: () => this.handleTileDragCancel(),
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -290,6 +303,8 @@ export class DominosRenderer implements GameRenderer {
     this.gameResult = null;
     this.selectedTileId = null;
     this.choosingEnd = false;
+    this.dragHelper?.cancel();
+    this.dragTileId = null;
     this.turnClockSeconds = null;
     this.showTurnClock = false;
 
@@ -308,6 +323,8 @@ export class DominosRenderer implements GameRenderer {
   }
 
   onStateChange(state: unknown): void {
+    this.dragHelper?.cancel();
+    this.dragTileId = null;
     this.applyState(state);
     this.syncSelection();
     this.redrawAll();
@@ -345,6 +362,9 @@ export class DominosRenderer implements GameRenderer {
 
   destroy(): void {
     this.unsubscribeFromRoomEvents();
+    this.dragHelper?.destroy();
+    this.dragHelper = null;
+    this.dragTileId = null;
     this.room = null;
     this.requestLeave = null;
     this.players.clear();
@@ -558,6 +578,171 @@ export class DominosRenderer implements GameRenderer {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // Drag-and-drop from hand to board
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  private onTilePointerDown(tileId: number, e: import("pixi.js").FederatedPointerEvent): void {
+    if (!this.isLocalPlayersTurn()) return;
+
+    const tile = this.getMyHand().find((t) => t.id === tileId);
+    if (!tile) return;
+
+    this.dragTileId = tileId;
+
+    // Compute valid ends for this tile
+    const ends = this.getValidEndsForTile(tile);
+
+    const pos = this.container.toLocal(e.global);
+    const proxy = this.createTileDragProxy(tile);
+    this.dragHelper?.beginDrag(String(tileId), proxy, pos.x, pos.y);
+
+    // If tile has valid ends, highlight them during drag
+    if (ends.length > 0 && this.boardTiles.length > 0) {
+      this.validEnds = ends;
+      this.choosingEnd = true;
+      this.redrawEndMarkers();
+    }
+  }
+
+  private getValidEndsForTile(tile: HandTile): ("a" | "b" | "c" | "d")[] {
+    if (this.boardTiles.length === 0) return ["a"];
+    const ends: ("a" | "b" | "c" | "d")[] = [];
+    if (this.canPlayOnEnd(tile, this.openEndA)) ends.push("a");
+    if (this.canPlayOnEnd(tile, this.openEndB)) ends.push("b");
+    if (this.openEndC >= 0 && this.canPlayOnEnd(tile, this.openEndC)) ends.push("c");
+    if (this.openEndD >= 0 && this.canPlayOnEnd(tile, this.openEndD)) ends.push("d");
+    return ends;
+  }
+
+  private createTileDragProxy(tile: HandTile): Graphics {
+    const g = new Graphics();
+    const w = TILE_WIDTH;
+    const h = TILE_HEIGHT;
+
+    // Draw tile centered at (0,0)
+    g.roundRect(-w / 2, -h / 2, w, h, TILE_RADIUS)
+      .fill(TILE_BG)
+      .stroke({ color: TILE_SELECTED_BORDER, width: 2 });
+
+    // Divider
+    g.moveTo(-w / 2 + 4, 0)
+      .lineTo(w / 2 - 4, 0)
+      .stroke({ color: TILE_DIVIDER_COLOR, width: 1 });
+
+    // Pips
+    this.drawPipsVertical(g, tile.highPips, -w / 2, -h / 2, w, TILE_HALF);
+    this.drawPipsVertical(g, tile.lowPips, -w / 2, 0, w, TILE_HALF);
+
+    g.alpha = 0.85;
+    return g;
+  }
+
+  private handleTileDragMove(x: number, y: number): void {
+    // Highlight the nearest valid end marker when dragging over the board area
+    if (!this.dragTileId) return;
+
+    const tile = this.getMyHand().find((t) => t.id === this.dragTileId);
+    if (!tile) return;
+
+    const ends = this.getValidEndsForTile(tile);
+    if (ends.length > 0 && this.boardTiles.length > 0) {
+      this.validEnds = ends;
+      this.choosingEnd = true;
+      this.redrawEndMarkers();
+    }
+
+    // Check proximity to end markers for visual feedback
+    const boardY = this.height - HAND_AREA_HEIGHT - BOTTOM_HUD_SPACE;
+    if (y < boardY) {
+      // Cursor is over the board area — end markers are already highlighted
+      return;
+    }
+  }
+
+  private handleTileDrop(id: string, x: number, y: number): boolean {
+    const tileId = Number(id);
+    const tile = this.getMyHand().find((t) => t.id === tileId);
+    this.dragTileId = null;
+
+    if (!tile) {
+      this.choosingEnd = false;
+      this.validEnds = [];
+      this.redrawAll();
+      return false;
+    }
+
+    // Empty board — auto-play
+    if (this.boardTiles.length === 0) {
+      const ends = this.getValidEndsForTile(tile);
+      if (ends.length > 0) {
+        this.sendPlay(tileId, ends[0]);
+        return true;
+      }
+      this.choosingEnd = false;
+      this.validEnds = [];
+      this.redrawAll();
+      return false;
+    }
+
+    // Find the nearest valid end to the drop point
+    const ends = this.getValidEndsForTile(tile);
+    if (ends.length === 0) {
+      this.choosingEnd = false;
+      this.validEnds = [];
+      this.redrawAll();
+      return false;
+    }
+
+    if (ends.length === 1) {
+      this.sendPlay(tileId, ends[0]);
+      return true;
+    }
+
+    // Multiple valid ends — find the closest one to the drop position
+    const closest = this.findClosestEnd(ends, x, y);
+    if (closest) {
+      this.sendPlay(tileId, closest);
+      return true;
+    }
+
+    // Couldn't resolve — fall back to click-based end choice
+    this.selectedTileId = tileId;
+    this.validEnds = ends;
+    this.choosingEnd = true;
+    this.redrawAll();
+    return false;
+  }
+
+  private handleTileDragCancel(): void {
+    this.dragTileId = null;
+    this.choosingEnd = false;
+    this.validEnds = [];
+    this.redrawAll();
+  }
+
+  private findClosestEnd(
+    ends: ("a" | "b" | "c" | "d")[],
+    x: number,
+    y: number,
+  ): "a" | "b" | "c" | "d" | null {
+    let best: "a" | "b" | "c" | "d" | null = null;
+    let bestDist = Infinity;
+
+    for (const end of ends) {
+      const pos = this.endPositions[end];
+      const dx = x - pos.x;
+      const dy = y - pos.y;
+      const dist = dx * dx + dy * dy;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = end;
+      }
+    }
+
+    return best;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // Layout
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -608,7 +793,9 @@ export class DominosRenderer implements GameRenderer {
   // ═══════════════════════════════════════════════════════════════════════════
 
   private redrawBoard(): void {
-    this.boardLayer.removeChildren();
+    for (const child of this.boardLayer.removeChildren()) {
+      child.destroy();
+    }
 
     if (this.boardTiles.length === 0) {
       this.layoutMode = "empty";
@@ -1057,10 +1244,18 @@ export class DominosRenderer implements GameRenderer {
     this.endMarkerB.clear();
     this.endMarkerC.clear();
     this.endMarkerD.clear();
-    this.endMarkerA.removeChildren();
-    this.endMarkerB.removeChildren();
-    this.endMarkerC.removeChildren();
-    this.endMarkerD.removeChildren();
+    for (const child of this.endMarkerA.removeChildren()) {
+      child.destroy();
+    }
+    for (const child of this.endMarkerB.removeChildren()) {
+      child.destroy();
+    }
+    for (const child of this.endMarkerC.removeChildren()) {
+      child.destroy();
+    }
+    for (const child of this.endMarkerD.removeChildren()) {
+      child.destroy();
+    }
     this.endMarkerA.visible = false;
     this.endMarkerB.visible = false;
     this.endMarkerC.visible = false;
@@ -1143,7 +1338,9 @@ export class DominosRenderer implements GameRenderer {
   // ═══════════════════════════════════════════════════════════════════════════
 
   private redrawHand(): void {
-    this.handLayer.removeChildren();
+    for (const child of this.handLayer.removeChildren()) {
+      child.destroy();
+    }
 
     const hand = this.getMyHand();
     const handY = this.height - HAND_AREA_HEIGHT;
@@ -1184,6 +1381,9 @@ export class DominosRenderer implements GameRenderer {
       g.eventMode = "static";
       g.cursor = this.isLocalPlayersTurn() ? "pointer" : "default";
       g.on("pointertap", () => this.onTileClick(tile.id));
+      g.on("pointerdown", (e: import("pixi.js").FederatedPointerEvent) => {
+        this.onTilePointerDown(tile.id, e);
+      });
       this.handLayer.addChild(g);
     }
 
