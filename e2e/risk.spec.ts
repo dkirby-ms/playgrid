@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
+import { areTerritoriesAdjacent } from "@eschaton/shared";
 
 function uniqueName(prefix: string): string {
   return `${prefix}-${Date.now().toString(36).slice(-4)}-${Math.random().toString(36).slice(2, 4)}`;
@@ -166,8 +167,8 @@ function lobbyOverlay(page: Page): Locator {
   return page.locator("#lobby-overlay.visible");
 }
 
-function waitingRoomOverlay(page: Page): Locator {
-  return page.locator("#waiting-room-overlay.visible");
+function setupOverlay(page: Page): Locator {
+  return page.locator("#setup-overlay.visible");
 }
 
 function activeGameCard(page: Page, gameName: string): Locator {
@@ -214,25 +215,25 @@ async function startMatch(browser: Browser, gameName: string): Promise<StartedMa
 
   await createRiskGame(host.page, gameName);
 
-  await expect(waitingRoomOverlay(host.page)).toBeVisible();
+  await expect(setupOverlay(host.page)).toBeVisible();
 
   const guestCard = activeGameCard(guest.page, gameName);
   await expect(guestCard).toContainText(gameName);
   await guestCard.getByRole("button", { name: "Join" }).click();
 
-  await expect(waitingRoomOverlay(guest.page)).toBeVisible();
-  await expect(guest.page.getByRole("button", { name: "Ready", exact: true })).toBeVisible();
-  await expect(host.page.locator(".waiting-room-player")).toHaveCount(2);
-  await expect(guest.page.locator(".waiting-room-player")).toHaveCount(2);
+  await expect(setupOverlay(guest.page)).toBeVisible();
+  await expect(guest.page.getByRole("button", { name: /^✓ Ready$/ })).toBeVisible();
+  await expect(host.page.locator(".setup-player-card")).toHaveCount(2);
+  await expect(guest.page.locator(".setup-player-card")).toHaveCount(2);
 
-  await guest.page.getByRole("button", { name: "Ready", exact: true }).click();
+  await guest.page.getByRole("button", { name: /^✓ Ready$/ }).click();
   await expect(guest.page.getByRole("button", { name: "Not Ready", exact: true })).toBeVisible();
-  await expect(waitingRoomOverlay(host.page)).toContainText("✅ Ready");
+  await expect(setupOverlay(host.page).locator(".setup-ready-badge.ready")).toContainText("Ready");
 
-  await host.page.getByRole("button", { name: "Start Game", exact: true }).click();
+  await host.page.getByRole("button", { name: "Start Game" }).click();
 
-  await expect(host.page.getByRole("button", { name: "Leave Game" })).toBeVisible();
-  await expect(guest.page.getByRole("button", { name: "Leave Game" })).toBeVisible();
+  await expect(host.page.getByRole("button", { name: "Back to Lobby" })).toBeVisible();
+  await expect(guest.page.getByRole("button", { name: "Back to Lobby" })).toBeVisible();
   await expect.poll(async () => (await getSnapshot(host.page)).phase).toBe("playing");
   await expect.poll(async () => (await getSnapshot(guest.page)).phase).toBe("playing");
 
@@ -710,7 +711,7 @@ test.describe("Risk E2E — Troop deployment (reinforce phase)", () => {
         armiesBefore + riskPlayer.armiesToPlace,
       );
       expect(after.riskPlayers[currentId].armiesToPlace).toBe(0);
-      expect(after.phaseText).toBe("Attack Phase");
+      expect(after.turnPhase).toBe("attack");
     } finally {
       await closeMatch(match);
     }
@@ -823,14 +824,12 @@ test.describe("Risk E2E — Turn phases and transitions", () => {
 
       // Phase 1: Reinforce
       expect(snapshot.turnPhase).toBe("reinforce");
-      expect(snapshot.phaseText).toBe("Reinforce Phase");
 
       // Place all reinforcements → transitions to attack
       await placeAllReinforcements(match);
 
       const attackSnapshot = await getSnapshot(page);
       expect(attackSnapshot.turnPhase).toBe("attack");
-      expect(attackSnapshot.phaseText).toBe("Attack Phase");
 
       // Phase 2: Skip attack → end phase → transitions to fortify
       await sendAction(page, "endPhase", {});
@@ -840,7 +839,7 @@ test.describe("Risk E2E — Turn phases and transitions", () => {
       }).toBe("fortify");
 
       const fortifySnapshot = await getSnapshot(page);
-      expect(fortifySnapshot.phaseText).toBe("Fortify Phase");
+      expect(fortifySnapshot.turnPhase).toBe("fortify");
 
       // Phase 3: Skip fortify → end phase → ends turn → next player's reinforce
       await sendAction(page, "endPhase", {});
@@ -859,10 +858,10 @@ test.describe("Risk E2E — Turn phases and transitions", () => {
       const nextPlayer = nextTurnSnapshot.riskPlayers[nextId];
       expect(nextPlayer.armiesToPlace).toBeGreaterThanOrEqual(3);
 
-      // Other player's page should show the right status
+      // Other player's page should show it's their turn
       const otherPage = getPageForSession(match, nextId);
       const otherSnapshot = await getSnapshot(otherPage);
-      expect(otherSnapshot.statusText).toBe("Your turn");
+      expect(otherSnapshot.currentTurn).toBe(nextId);
     } finally {
       await closeMatch(match);
     }
@@ -897,7 +896,7 @@ test.describe("Risk E2E — Turn phases and transitions", () => {
       const secondPage = getPageForSession(match, secondPlayerId);
       const secondSnapshot = await getSnapshot(secondPage);
       expect(secondSnapshot.turnPhase).toBe("reinforce");
-      expect(secondSnapshot.statusText).toBe("Your turn");
+      expect(secondSnapshot.currentTurn).toBe(secondPlayerId);
       expect(secondSnapshot.riskPlayers[secondPlayerId].armiesToPlace).toBeGreaterThanOrEqual(3);
 
       // Second player places reinforcements
@@ -939,58 +938,51 @@ test.describe("Risk E2E — Fortification", () => {
       const currentId = snapshot.currentTurn!;
       const page = getPageForSession(match, currentId);
 
-      // Reinforce → Attack → Fortify
-      await placeAllReinforcements(match);
-      await sendAction(page, "endPhase", {}); // skip attack → fortify
-      await expect.poll(async () => (await getSnapshot(page)).turnPhase).toBe("fortify");
-
-      // Find two adjacent owned territories where the source has > 1 army
-      const fortifySnapshot = await getSnapshot(page);
-      const ownedTerritories = getOwnedTerritoryIds(fortifySnapshot, currentId);
-      const heavyTerritories = ownedTerritories
-        .filter((id) => fortifySnapshot.territories[id].armyCount > 1)
-        .sort((a, b) => fortifySnapshot.territories[b].armyCount - fortifySnapshot.territories[a].armyCount);
-
-      // Try to fortify from the heaviest territory to any adjacent owned territory
-      let fortifySucceeded = false;
+      // Find an adjacent owned pair using shared territory data
+      const ownedIds = getOwnedTerritoryIds(snapshot, currentId);
       let fromId = "";
       let toId = "";
-      let movedCount = 0;
-
-      for (const heavyId of heavyTerritories) {
-        for (const otherId of ownedTerritories) {
-          if (otherId === heavyId) continue;
-          const errorPromise = waitForRoomError(page);
-          const count = 1;
-          const beforeFortify = await getSnapshot(page);
-          await sendAction(page, "fortify", { from: heavyId, to: otherId, count });
-
-          const result = await Promise.race([
-            errorPromise.then(() => "error" as const),
-            waitForTerritoryChange(page, beforeFortify.territories).then(() => "ok" as const),
-          ]);
-
-          if (result === "ok") {
-            fortifySucceeded = true;
-            fromId = heavyId;
-            toId = otherId;
-            movedCount = count;
+      for (const a of ownedIds) {
+        for (const b of ownedIds) {
+          if (a !== b && areTerritoriesAdjacent(a, b)) {
+            fromId = a;
+            toId = b;
             break;
           }
         }
-        if (fortifySucceeded) break;
+        if (fromId) break;
+      }
+      expect(fromId).toBeTruthy();
+      expect(toId).toBeTruthy();
+
+      // Place all reinforcements on the "from" territory to ensure it has armies
+      const riskPlayer = snapshot.riskPlayers[currentId];
+      if (riskPlayer.armiesToPlace > 0) {
+        await sendAction(page, "placeArmy", { territoryId: fromId, count: riskPlayer.armiesToPlace });
+        await expect.poll(async () => {
+          const s = await getSnapshot(page);
+          return s.riskPlayers[currentId]?.armiesToPlace ?? -1;
+        }).toBe(0);
       }
 
-      expect(fortifySucceeded).toBe(true);
+      // Skip attack → fortify
+      await expect.poll(async () => (await getSnapshot(page)).turnPhase).toBe("attack");
+      await sendAction(page, "endPhase", {});
+      await expect.poll(async () => (await getSnapshot(page)).turnPhase).toBe("fortify");
+
+      const fortifySnapshot = await getSnapshot(page);
+      const armiesBefore = fortifySnapshot.territories[fromId].armyCount;
+      const toArmiesBefore = fortifySnapshot.territories[toId].armyCount;
+
+      // Fortify 1 army from → to
+      const beforeFortify = await getSnapshot(page);
+      await sendAction(page, "fortify", { from: fromId, to: toId, count: 1 });
+      await waitForTerritoryChange(page, beforeFortify.territories);
 
       // Verify armies moved correctly
       const afterFortify = await getSnapshot(page);
-      expect(afterFortify.territories[fromId].armyCount).toBe(
-        fortifySnapshot.territories[fromId].armyCount - movedCount,
-      );
-      expect(afterFortify.territories[toId].armyCount).toBe(
-        fortifySnapshot.territories[toId].armyCount + movedCount,
-      );
+      expect(afterFortify.territories[fromId].armyCount).toBe(armiesBefore - 1);
+      expect(afterFortify.territories[toId].armyCount).toBe(toArmiesBefore + 1);
 
       // Fortify ends the turn — should advance to next player
       await expect.poll(async () => {

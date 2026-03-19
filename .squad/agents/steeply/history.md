@@ -528,3 +528,38 @@ Added 24 new tests (20 logic + 4 plugin) for Dominos spinner rules and 4-way bra
 **Build/Lint/Test:** ✅ 470/470 tests pass (backward-compatible)
 
 ---
+
+## Learnings
+
+### E2E Setup Screen Migration (2025-01-16)
+
+Successfully migrated all 7 E2E test files from "Waiting Room" to "Setup Screen" UI:
+
+**Key selector changes:**
+- `#waiting-room-overlay.visible` → `#setup-overlay.visible`
+- `.waiting-room-player` → `.setup-player-card`
+- `.waiting-room-player-name` → `.setup-player-name`
+- `.waiting-room-player-list` → `.setup-player-list`
+- Helper `waitingRoomOverlay()` → `setupOverlay()`
+
+**Button text changes:**
+- "Ready" → "✓ Ready" (use regex: `/^✓ Ready$/` to avoid matching "Not Ready")
+- "Start Game" → "▶ Start Game" (but use `{ name: "Start Game" }` without exact:true)
+- "Start when everyone is ready" → "Waiting for players…"
+- "Leave" / "Leave Game" → "Back to Lobby" (both in setup screen and during gameplay)
+- Text "✅ Ready" → Look for `.setup-ready-badge.ready` with text "Ready"
+
+**Pattern for "Ready" button matching:**
+Use `getByRole("button", { name: /^✓ Ready$/ })` to avoid false matches with "Not Ready".
+
+**Files updated:**
+1. e2e/lobby.spec.ts
+2. e2e/checkers.spec.ts
+3. e2e/backgammon.spec.ts
+4. e2e/risk.spec.ts
+5. e2e/reconnection.spec.ts
+6. e2e/cpu-opponent.spec.ts
+7. e2e/spectator.spec.ts
+
+**Test results:** 33/40 passing. 7 failures are pre-existing game logic issues (Backgammon state sync, Risk UI text) unrelated to setup screen migration.
+

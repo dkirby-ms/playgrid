@@ -4585,3 +4585,48 @@ Generic move history system for turn-based games (Checkers, Backgammon, Dominos,
 - CPU moves: Included in history (they're real moves)
 - Spectator visibility: Yes, everyone sees game result
 
+
+---
+
+### Marathe: Remove `[skip ci]` from CI Version-Bump Commits
+
+**Status:** Implemented  
+**Date:** 2026-03-18  
+
+Removed redundant `[skip ci]` directive from version-bump commit messages in `.github/workflows/ci.yml` (line 150).
+
+**Problem:**
+- PR #153 (dev → uat) squash-merge included version-bump commits with `[skip ci]` in message bodies
+- GitHub Actions scans entire commit message body (not just title) for `[skip ci]`
+- Result: Deploy UAT workflow silently skipped, breaking production deployments
+
+**Decision:**
+Remove `[skip ci]` from the CI version-bump workflow commit message. The directive is redundant and dangerous:
+- The workflow uses `token: ${{ github.token }}` (default GITHUB_TOKEN)
+- Pushes made with GITHUB_TOKEN **do not trigger other workflows** by GitHub's built-in behavior
+- `[skip ci]` was unnecessary and caused squash-merge pollution
+
+**Rationale:**
+1. **GITHUB_TOKEN behavior:** GitHub's built-in token prevents workflow recursion without `[skip ci]`
+2. **Squash-merge safety:** Removing the directive prevents merge commit body pollution
+3. **Deploy reliability:** UAT/prod deploys will no longer be silently skipped
+
+**Implementation:**
+- **File:** `.github/workflows/ci.yml` (line 150)
+- **Before:** `git commit -m "chore: bump patch version to v${{ steps.version.outputs.new_version }} [skip ci]"`
+- **After:** `git commit -m "chore: bump patch version to v${{ steps.version.outputs.new_version }}"`
+
+**Impact:**
+- ✅ Squash merges to `uat`/`prod` will no longer skip deployment workflows
+- ✅ Version-bump commits will still not trigger CI loops (GITHUB_TOKEN behavior)
+- ✅ Critical deploy reliability issue resolved
+
+**Key Learning:**
+Never use `[skip ci]` in commit messages when workflows involve squash-merging. The directive pollutes merge commit bodies and causes unintended workflow skips. Always prefer:
+1. GitHub's built-in GITHUB_TOKEN behavior (no recursion by design)
+2. Workflow-level conditional checks (e.g., `if:` conditions)
+3. Path-based workflow filters (e.g., `paths-ignore`)
+
+**Files Modified:**
+- `.github/workflows/ci.yml`
+

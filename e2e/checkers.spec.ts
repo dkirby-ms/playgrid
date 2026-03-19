@@ -162,8 +162,8 @@ function lobbyOverlay(page: Page): Locator {
   return page.locator("#lobby-overlay.visible");
 }
 
-function waitingRoomOverlay(page: Page): Locator {
-  return page.locator("#waiting-room-overlay.visible");
+function setupOverlay(page: Page): Locator {
+  return page.locator("#setup-overlay.visible");
 }
 
 function activeGameCard(page: Page, gameName: string): Locator {
@@ -206,25 +206,25 @@ async function startMatch(browser: Browser, gameName: string): Promise<StartedMa
 
   await createGame(host.page, gameName);
 
-  await expect(waitingRoomOverlay(host.page)).toBeVisible();
+  await expect(setupOverlay(host.page)).toBeVisible();
 
   const guestCard = activeGameCard(guest.page, gameName);
   await expect(guestCard).toContainText(gameName);
   await guestCard.getByRole("button", { name: "Join" }).click();
 
-  await expect(waitingRoomOverlay(guest.page)).toBeVisible();
-  await expect(guest.page.getByRole("button", { name: "Ready", exact: true })).toBeVisible();
-  await expect(host.page.locator(".waiting-room-player")).toHaveCount(2);
-  await expect(guest.page.locator(".waiting-room-player")).toHaveCount(2);
+  await expect(setupOverlay(guest.page)).toBeVisible();
+  await expect(guest.page.getByRole("button", { name: /^✓ Ready$/ })).toBeVisible();
+  await expect(host.page.locator(".setup-player-card")).toHaveCount(2);
+  await expect(guest.page.locator(".setup-player-card")).toHaveCount(2);
 
-  await guest.page.getByRole("button", { name: "Ready", exact: true }).click();
+  await guest.page.getByRole("button", { name: /^✓ Ready$/ }).click();
   await expect(guest.page.getByRole("button", { name: "Not Ready", exact: true })).toBeVisible();
-  await expect(waitingRoomOverlay(host.page)).toContainText("✅ Ready");
+  await expect(setupOverlay(host.page).locator(".setup-ready-badge.ready")).toContainText("Ready");
 
-  await host.page.getByRole("button", { name: "Start Game", exact: true }).click();
+  await host.page.getByRole("button", { name: "Start Game" }).click();
 
-  await expect(host.page.getByRole("button", { name: "Leave Game" })).toBeVisible();
-  await expect(guest.page.getByRole("button", { name: "Leave Game" })).toBeVisible();
+  await expect(host.page.getByRole("button", { name: "Back to Lobby" })).toBeVisible();
+  await expect(guest.page.getByRole("button", { name: "Back to Lobby" })).toBeVisible();
   await expect.poll(async () => (await getSnapshot(host.page)).phase).toBe("playing");
   await expect.poll(async () => (await getSnapshot(guest.page)).phase).toBe("playing");
 
