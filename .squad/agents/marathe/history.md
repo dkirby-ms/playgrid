@@ -767,3 +767,45 @@ permissions:
 
 **File Changed:** `.github/workflows/ci.yml` (line 150)
 
+
+---
+
+## Learnings
+
+### 2025-07-17: DISABLED_GAMES Env Var + Container Start Command Fix
+
+**Task 1 — DISABLED_GAMES environment variable:**
+- Added `DISABLED_GAMES` env var to `infra/main.bicep` using a conditional `disabledGames` variable: `'risk'` for prod, empty string for dev/uat.
+- Added `"DISABLED_GAMES=risk"` to `deploy-prod.yml` `--set-env-vars`.
+- `deploy-uat.yml` left unchanged — no `DISABLED_GAMES` means all games enabled, which is correct.
+
+**Task 2 — Container start command:**
+- Replaced bootstrap placeholder command (`/bin/sh -c <inline node http server>`) with real app command (`node server/dist/src/index.js`) in `main.bicep`.
+- Kept `node:22-alpine` as the image (CI overrides with ACR image). Commented out old placeholder vars for reference.
+- Rationale: infra re-deploys should not revert to the dummy HTTP server now that CI pushes real images.
+
+**Bug fix — set-repo-secrets.sh:**
+- Fixed prod `CONTAINER_APP_NAME` from `playgrid-uat` → `playgrid-prod`. File is gitignored (contains secret refs) so fix is local-only.
+
+**Key learning:** `infra/set-repo-secrets.sh` is gitignored — it must be fixed manually on any machine that runs it. Consider moving non-secret variables into tracked config.
+
+---
+
+## Cross-Agent Update — P7: Game Availability Per Environment (2026-03-20)
+
+**Event:** Infrastructure & CI updated for deployment-specific game filtering + container bootstrap fix + secret-script bug fix.
+
+**Summary:** Added DISABLED_GAMES env var across infra and CI, switched container bootstrap from placeholder to real app, fixed prod CONTAINER_APP_NAME bug.
+
+**Outputs:**
+- `infra/main.bicep` — Added disabledGames variable (conditional per environmentName). Prod: risk disabled. Dev/UAT: empty.
+- `deploy-prod.yml` — DISABLED_GAMES=risk added to --set-env-vars
+- Container start command — Switched from placeholder HTTP server to real app: `node server/dist/src/index.js`
+- `set-repo-secrets.sh` — Bug fix: prod CONTAINER_APP_NAME was playgrid-uat, now playgrid-prod (local fix only, gitignored)
+
+**Team Impact:** Server config reads DISABLED_GAMES env var and filters registry at startup. Prod deploys auto-disable Risk. Future deploys run real app.
+
+**Validation:** Build ✓, Lint ✓, Test ✓
+
+**Status:** Production-ready. Feature merged into decisions.md (`marathe-infra-updates.md`).
+

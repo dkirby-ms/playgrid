@@ -1440,3 +1440,45 @@ All expect `room.disconnect()` to be called but it's not being invoked.
 **Decision Document:** `.squad/decisions/inbox/hal-cpu-opponents-dominos-triage.md`
 
 **Key Learning:** CPU opponent framework is extensible by design. New games just implement a strategy selector (`selectCpuX(state)`) and call it from `executeGameTypeCpuTurn()`. No architectural changes needed for Dominos.
+
+### Game Availability Per Environment (2026-03-20)
+
+**Event:** Designed architecture for disabling/enabling games per deployment environment (dev/uat/prod).
+
+**Key Findings:**
+- Game type list is **hardcoded client-side** in `GAME_TYPE_OPTIONS` at `client/src/ui/LobbyScreen.ts:124-149` and `GAME_LABELS` at `client/src/ui/SetupScreen.ts:35-47`
+- Server never sends available game types catalog — only game sessions via `GAME_LIST`
+- `GameRegistry` singleton is the server-side source of truth; `LobbyRoom` already validates against it at line 226
+- `infra/main.bicep` already passes `NODE_ENV` to container; adding another env var is trivial (line 260-269)
+- `server/src/config.ts` is the env var parsing layer — small, clean, typed
+
+**Architectural Decision:**
+- `DISABLED_GAMES` env var (denylist, comma-separated game IDs) parsed in `config.ts`
+- Filter at registration time in `index.ts` — disabled games never enter the registry
+- New `AVAILABLE_GAME_TYPES` server→client message replaces hardcoded client constants
+- ~8 files, ~100 lines. No new packages.
+
+**Decision Document:** `.squad/decisions/inbox/hal-game-availability.md`
+
+**Key Learning:** Client has no server-driven game type catalog — this is a latent coordination problem for any new game addition. The `AVAILABLE_GAME_TYPES` message fixes it. Registration-time filtering is simpler than runtime filtering because LobbyRoom validation already rejects unregistered types.
+
+---
+
+## Cross-Agent Update — P7: Game Availability Per Environment (2026-03-20)
+
+**Event:** Game availability feature complete across all agents.
+
+**Summary:** Designed and orchestrated deployment-specific game filtering (DISABLED_GAMES env var). All components shipped: shared types, server registration filtering, client UI, infra + CI, 29 new tests.
+
+**Decision:** `hal-game-availability.md` merged into `.squad/decisions.md` — denylist env var, filter at registration time, server-driven game types message to client.
+
+**Team Outputs:**
+- Pemulis: Shared types, config parsing, registry filtering, LobbyRoom sender
+- Ortho: LobbyScreen/SetupScreen updated, gameTypeCache shared module (new)
+- Marathe: main.bicep + deploy-prod.yml env vars, container command fix, set-repo-secrets.sh prod CONTAINER_APP_NAME bug fix
+- Steeply: 21 unit tests (parsing + filtering), 8 e2e tests (message delivery), 29 total pass, 747 existing pass
+
+**Validation:** Build ✓, Lint ✓, Test ✓ (776 total)
+
+**Status:** Feature production-ready. Deploy on next release cycle.
+

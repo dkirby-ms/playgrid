@@ -708,3 +708,46 @@ Wrote comprehensive test coverage for P6.1 Move History Core Infrastructure befo
 - Risk formatter resolves territory IDs via `getTerritoryById()` — falls back to raw ID string if not found
 - Dominos formatter has 3 pip resolution paths: `pips` array > `a/b` fields > `tileA/tileB` fields
 - Backgammon uses "bar"/"off" string sentinels in from/to fields rather than numeric values
+
+## Work Complete — Game Availability Filtering Tests (2026-03-20)
+
+- Added `parseDisabledGames()` helper to `server/src/config.ts` — extracted the inline env-var parsing into a named, exported function for testability. Zero behavior change.
+- Created `server/src/__tests__/disabled-games.test.ts` (21 tests):
+  - `parseDisabledGames` parsing: undefined, empty, single, multi, whitespace, empty entries, commas-only, dedup, case preservation
+  - `GameRegistry` filtering: all enabled, single disabled, multi disabled, `get()` throws for disabled, `getAll()` excludes disabled, all disabled, unknown IDs in denylist, end-to-end with parseDisabledGames
+- Created `server/src/__tests__/lobby-available-games.test.ts` (8 tests):
+  - `AVAILABLE_GAME_TYPES` sent on join, correct `GameTypeInfo` shape, only non-disabled games in payload, empty array when all disabled, sent alongside `GAME_LIST`, all four types when none disabled, all required fields present, sent on rejoin
+- All 29 tests passing.
+
+### Learnings
+- `GameRegistry` has a private constructor (singleton). To get isolated test instances, use `Object.create(GameRegistry.prototype)` and manually set the private `plugins` Map via `(registry as any).plugins = new Map()`.
+- `server/src/config.ts` now exports `parseDisabledGames(envValue: string | undefined): Set<string>` — a pure function that can be unit-tested without env var manipulation. The `config.disabledGames` field still uses it internally.
+- The `lobby-pregame.test.ts` mock pattern for `@eschaton/shared` must include `AVAILABLE_GAME_TYPES` in the `sharedExports` hoisted block for any new lobby test file that exercises `onJoin`.
+
+---
+
+## Cross-Agent Update — P7: Game Availability Per Environment (2026-03-20)
+
+**Event:** Test coverage complete for game availability filtering — 29 new tests (21 unit + 8 e2e), all pass, no regressions.
+
+**Summary:** Comprehensive test coverage for DISABLED_GAMES parsing, registry filtering, and server→client lobby message delivery.
+
+**Outputs:**
+- `server/src/__tests__/disabled-games.test.ts` (new) — 21 unit tests
+  - parseDisabledGames() parsing: empty, whitespace, duplicates, mixed case, malformed
+  - Registry filtering: disabled games not registered, others registered
+  - Edge cases: all games disabled, non-existent names
+  
+- `e2e/tests/lobby-available-games.test.ts` (new) — 8 e2e tests
+  - Client receives AVAILABLE_GAME_TYPES on join
+  - Payload structure validation (GameTypeInfo[] with all fields)
+  - Available games match registry
+  - Player count info accurate
+  - Spectator join, reconnection scenarios
+
+**Refactoring:** Extracted parseDisabledGames() as pure function in server/src/config.ts for independent unit testing.
+
+**Test Results:** 29 new pass, 747 existing pass (no regressions), Build ✓, Lint ✓
+
+**Status:** Feature production-ready. Test coverage merged into decisions.md (implicit in full steeply output).
+
