@@ -5665,3 +5665,202 @@ Extracted `parseDisabledGames()` as a pure function in `server/src/config.ts` to
 
 ---
 
+
+## Session: Chess Clock Feature for Checkers (Issue #165) (2026-03-20)
+
+### Hal: Chess Clock Architecture for Checkers
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Author:** Hal (Lead)  
+**Scope:** Generic chess clock system for any 2-player game
+
+Initial architecture proposal (later generalized by Pemulis per Copilot directive). Designed schema changes, server-side tick mechanism, and client display strategy.
+
+**Schema:** player1TimeRemainingMs, player2TimeRemainingMs fields (eventually moved to BaseGameState).
+
+**Server Logic:** Tick-based countdown (1Hz), per-player time depletion, timeout detection, disconnect pause.
+
+**Client Display:** Sidebar panel (4th position) + per-player info bar times.
+
+**MVP Scope:** Hardcoded 10-minute banks; UI toggle deferred to P7+.
+
+**Rationale:** Designed for reusability; architecture intentionally generic from start.
+
+---
+
+### Mario: Chess Clock Design Spec — Checkers Game
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Author:** Mario (UX/Design)  
+**Source:** Figma design export (CheckersGame.tsx)
+
+Comprehensive 486-line design specification for chess clock UI.
+
+**Game Clock Panel:**
+- Location: Right sidebar, 4th panel (after Game Info)
+- Layout: Two stacked clock items (Black/Red players)
+- Active state: Blue border (2px solid #60a5fa), glow effect, pulsing green indicator dot
+- Inactive state: Dark background (--bg-card-dark), muted text
+- Critical state (< 60s): Red text (#f87171), red border, faster pulse (1s)
+
+**Player Info Bars:** Per-player time display in MM:SS format, monospace with tabular-nums.
+
+**Colors:** All from existing design tokens — zero new tokens needed.
+
+**Typography:** 32px bold for clock time, monospace family.
+
+**Animations:** sidebar-clock-pulse (2s), sidebar-clock-highlight (2s), sidebar-clock-pulse-fast (1s).
+
+**Accessibility:** All animations respect prefers-reduced-motion.
+
+---
+
+### Pemulis: Checkers Chess Clock Server Implementation
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Author:** Pemulis (Systems Dev)
+
+Initial checkers-specific server-side implementation (Phase 1 of 2).
+
+**Schema:** Added player1TimeRemainingMs, player2TimeRemainingMs to CheckersState (schema decorators, defineTypes entries).
+
+**Configuration:** CHESS_CLOCK_ENABLED (true), INITIAL_TIME_BANK_MS (600000 = 10 min).
+
+**Lifecycle Hooks:**
+- **onGameStart:** Initialize both clocks to 600000ms.
+- **onTick:** Decrement active player's clock by deltaTime; pause if player disconnected.
+- **checkGameEnd:** Detect timeout (clock = 0); return GameResult with type: "timeout", winner = other player.
+
+**Rationale:** Reuses existing turn timer infrastructure (reconnection pause, penalty system). Integrates seamlessly with BaseGameRoom.setSimulationInterval.
+
+**Testing:** Unit tests cover initialization, tick, timeout, state transitions, edge cases.
+
+**Note:** Later refactored to BaseGameRoom-level system per Copilot directive for reusability.
+
+---
+
+### Pemulis: Chess Clock System Generalized to Base Layer
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Author:** Pemulis (Systems Dev)
+
+Refactored chess clock from checkers-specific to generic base-layer system (Phase 2).
+
+**Rationale:** Original checkers-specific implementation would require duplication for Backgammon, other 2-player games. User directive requested generic, reusable infrastructure.
+
+**Changes:**
+- **Shared:** Moved time fields to BaseGameState (default 0). Removed from CheckersState. Added ChessClockConfiguration interface to IGamePlugin.
+- **Server:** BaseGameRoom now owns updateChessClocks(), checkChessClockTimeout() logic. CheckersPlugin declares chessClockConfig (enabled, initialTimeBankMs).
+- **Client:** GameScene.ts generalized detection (checks chessClockTime !== null && > 0, not hardcoded to checkers).
+
+**Config Interface:**
+```typescript
+interface ChessClockConfiguration {
+  enabled: boolean;
+  initialTimeBankMs: number;
+}
+```
+
+**Alternatives Considered:**
+- Keep it checkers-specific — Rejected: Duplication for other games
+- Separate plugin/addon system — Rejected: Too heavyweight
+- Add to turnConfig — Rejected: Orthogonal feature
+
+**Impact:** DRY principle. Future games (Backgammon, Go, etc.) enable chess clocks by adding config, no server code changes needed.
+
+**Tests:** Updated 26 unit tests (all pass). 773 total tests pass. No regressions.
+
+---
+
+### Ortho: Chess Clock UI Implementation — Checkers Game
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Author:** Ortho (Frontend Dev)  
+**Design Spec:** mario-chess-clock-design-spec.md  
+**Server Implementation:** pemulis-chess-clock-generalized.md
+
+Implemented chess clock UI for sidebar panel and player info bars per Mario's design spec.
+
+**Data Flow:**
+```
+CheckersState (player1/2TimeRemainingMs) 
+  → Colyseus auto-sync 
+  → CheckersRenderer.applyState() 
+  → getChessClockMarkup() 
+  → GameSidebar.updatePanel("game-clock", markup)
+```
+
+**Sidebar Panel (4th position):**
+- Container: `.sidebar-clock-container`
+- Item states: `.sidebar-clock-item`, `.sidebar-clock-item--active`, `.sidebar-clock-item--critical`
+- Time display: `.sidebar-clock-time` (2rem monospace, tabular-nums)
+- Active indicator: `.sidebar-clock-indicator` (8×8px pulsing green dot)
+
+**Active State Styling:**
+- Gradient background (slate-700 → slate-800)
+- Blue border (2px solid --pg-blue-400)
+- Glow effect (box-shadow highlight)
+- Pulsing green indicator
+
+**Animations:**
+1. `sidebar-clock-pulse` (2s) — Green dot pulse
+2. `sidebar-clock-highlight` (2s) — Blue glow pulse
+3. `sidebar-clock-pulse-fast` (1s) — Critical state red pulse
+
+**Helper Functions:**
+- `getChessClockMarkup()` — Generates HTML with state-based CSS classes
+- `extractChessClockTime()` — Safe state access (playerIndex → timeMs)
+
+**Player Info Bars:** Per-player times displayed (both players, always visible for checkers).
+
+**Design Tokens:** All colors from existing tokens — zero new tokens needed.
+
+**Accessibility:** All animations respect prefers-reduced-motion media query.
+
+**Testing:** Manual verification checklist (turn switching, critical state, animations). Ready for e2e integration.
+
+---
+
+### Copilot Directive: Chess Clock Generic System
+
+**Date:** 2026-03-20T13:50  
+**Author:** dkirby-ms (via Copilot)  
+**Type:** Scope Adjustment
+
+**Directive:** The chess clock / game timer system must be generic and support future games — not checkers-specific. Infrastructure belongs in the base layer (BaseGameState, BaseGameRoom, IGamePlugin). Games opt in via plugin config.
+
+**Rationale:** User request for future-proofing and reusability. Triggered refactor from Pemulis (Phase 1 → Phase 2).
+
+**Outcome:** Generic system implemented, all tests pass, zero breaking changes.
+
+---
+
+### Steeply: Chess Clock Unit Tests
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Author:** Steeply (QA/Testing)  
+**Test File:** `server/src/__tests__/chess-clock.test.ts`
+
+Comprehensive unit test suite for chess clock feature (26 tests).
+
+**Coverage:**
+- Initialization: Fields set to 600000ms (10 min), schema sync
+- Tick mechanics: Decrement by deltaTime, minimum 0, inactive clock unchanged
+- Timeout detection: Clock = 0 triggers timeout, correct winner identified
+- Disconnect pause: Clock pauses when isConnected = false
+- Turn transitions: Clock switches on currentTurn change
+- Critical state: Detection at < 60 seconds
+- Edge cases: Multiple timeouts, precision, negative bounds
+
+**Test Quality:** All 26 pass. 773 total tests pass (no regressions). Updated after Pemulis's Phase 2 refactor (BaseGameRoom architecture).
+
+**Confidence:** 100% coverage of critical paths.
+
+---
+

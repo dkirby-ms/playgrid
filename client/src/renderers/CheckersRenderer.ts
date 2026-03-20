@@ -15,7 +15,7 @@ import {
   getValidMoves,
   type CheckersMove,
 } from "../games/checkers/checkersClientLogic";
-import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
+import { GameSidebar, escapeHtml, getTurnClockMarkup, getChessClockMarkup } from "../ui/GameSidebar";
 import { DragHelper } from "./DragHelper";
 import {
   ACCENT_BLUE,
@@ -88,6 +88,9 @@ const BOTTOM_HUD_SPACE = 96;
 const GAME_ENDED_MESSAGE = "game-end";
 const NO_FORCED_CAPTURE = -1;
 const MAX_SIDEBAR_HISTORY_ITEMS = 8;
+const COORD_LABEL_COLOR = 0xa8a29e;
+const COLUMN_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+const ROW_NUMBERS = ["8", "7", "6", "5", "4", "3", "2", "1"];
 
 function toCssHexColor(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
@@ -166,12 +169,17 @@ export class CheckersRenderer implements GameRenderer {
     },
   });
   private readonly capturedPiecesGraphics = new Graphics();
+  private readonly coordLabelsContainer = new Container();
+  private readonly columnLabels: Text[] = [];
+  private readonly rowLabels: Text[] = [];
   private readonly squareGraphics: Graphics[] = [];
   private room: Room | null = null;
   private requestLeave: (() => void) | null = null;
   private sidebar: GameSidebar | null = null;
   private turnClockSeconds: number | null = null;
   private showTurnClock = false;
+  private player1TimeRemainingMs = 600000;
+  private player2TimeRemainingMs = 600000;
   private unsubscribeGameEnded: (() => void) | null = null;
   private board: number[] = Array.from({ length: BOARD_CELL_COUNT }, () => EMPTY);
   private phase = "waiting";
@@ -209,6 +217,37 @@ export class CheckersRenderer implements GameRenderer {
 
     this.overlayLayer.addChild(this.overlayBackground, this.overlayTitleText, this.overlaySubtitleText);
 
+    this.coordLabelsContainer.eventMode = "none";
+    for (let i = 0; i < BOARD_DIMENSION; i += 1) {
+      const colLabel = new Text({
+        text: COLUMN_LETTERS[i],
+        style: {
+          fontFamily: "sans-serif",
+          fontSize: 13,
+          fontWeight: "500",
+          fill: COORD_LABEL_COLOR,
+        },
+      });
+      colLabel.anchor.set(0.5, 0.5);
+      colLabel.eventMode = "none";
+      this.columnLabels.push(colLabel);
+      this.coordLabelsContainer.addChild(colLabel);
+
+      const rowLabel = new Text({
+        text: ROW_NUMBERS[i],
+        style: {
+          fontFamily: "sans-serif",
+          fontSize: 13,
+          fontWeight: "500",
+          fill: COORD_LABEL_COLOR,
+        },
+      });
+      rowLabel.anchor.set(0.5, 0.5);
+      rowLabel.eventMode = "none";
+      this.rowLabels.push(rowLabel);
+      this.coordLabelsContainer.addChild(rowLabel);
+    }
+
     for (let index = 0; index < BOARD_CELL_COUNT; index += 1) {
       const square = new Graphics();
       square.eventMode = "static";
@@ -227,6 +266,7 @@ export class CheckersRenderer implements GameRenderer {
 
     this.container.addChild(
       this.boardFrame,
+      this.coordLabelsContainer,
       this.boardLayer,
       this.piecesLayer,
       this.dragLayer,
@@ -259,6 +299,7 @@ export class CheckersRenderer implements GameRenderer {
     this.sidebar?.destroy();
     this.sidebar = new GameSidebar();
     this.sidebar.addPanel("game-info", "Game Info");
+    this.sidebar.addPanel("game-clock", "Game Clock");
     this.sidebar.addPanel("move-history", "Move History");
     this.sidebar.addPanel("controls", "Controls");
     this.sidebar.show();
@@ -427,6 +468,33 @@ export class CheckersRenderer implements GameRenderer {
       }
 
       square.cursor = this.isSquareActionable(boardIndex) ? "pointer" : "default";
+    }
+
+    this.updateCoordLabels();
+  }
+
+  private updateCoordLabels(): void {
+    const fontSize = Math.max(10, Math.min(14, this.squareSize * 0.22));
+    const halfFrame = BOARD_FRAME_WIDTH / 2;
+
+    for (let i = 0; i < BOARD_DIMENSION; i += 1) {
+      const labelIndex = this.isFlipped ? BOARD_DIMENSION - 1 - i : i;
+
+      const colLabel = this.columnLabels[i];
+      colLabel.text = COLUMN_LETTERS[labelIndex];
+      colLabel.style.fontSize = fontSize;
+      colLabel.position.set(
+        this.boardOffsetX + (i * this.squareSize) + (this.squareSize / 2),
+        this.boardOffsetY - halfFrame,
+      );
+
+      const rowLabel = this.rowLabels[i];
+      rowLabel.text = ROW_NUMBERS[labelIndex];
+      rowLabel.style.fontSize = fontSize;
+      rowLabel.position.set(
+        this.boardOffsetX - halfFrame,
+        this.boardOffsetY + (i * this.squareSize) + (this.squareSize / 2),
+      );
     }
   }
 
@@ -813,6 +881,16 @@ export class CheckersRenderer implements GameRenderer {
       : NO_FORCED_CAPTURE;
     this.players = this.parsePlayers(nextState);
     this.isFlipped = this.getPerspectivePlayerColor() === BLACK;
+    
+    // Extract chess clock times from state
+    const stateWithClocks = nextState as { player1TimeRemainingMs?: number; player2TimeRemainingMs?: number };
+    this.player1TimeRemainingMs = typeof stateWithClocks?.player1TimeRemainingMs === "number" 
+      ? stateWithClocks.player1TimeRemainingMs 
+      : 600000;
+    this.player2TimeRemainingMs = typeof stateWithClocks?.player2TimeRemainingMs === "number" 
+      ? stateWithClocks.player2TimeRemainingMs 
+      : 600000;
+    
     this.recordMove(previousBoard, previousCurrentTurn, previousPlayers);
   }
 
@@ -1015,6 +1093,15 @@ export class CheckersRenderer implements GameRenderer {
     return this.players.get(localSessionId) ?? null;
   }
 
+  private getPlayerByIndex(playerIndex: number): PlayerSnapshot | null {
+    for (const player of this.players.values()) {
+      if (player.playerIndex === playerIndex) {
+        return player;
+      }
+    }
+    return null;
+  }
+
   private getLocalPlayerColor(): number | null {
     const localPlayer = this.getLocalPlayer();
     if (!localPlayer || localPlayer.isSpectator) {
@@ -1123,6 +1210,9 @@ export class CheckersRenderer implements GameRenderer {
       </div>${notes.join("")}`,
     );
 
+    // Update chess clock panel
+    this.updateChessClockPanel();
+
     const historyMarkup = this.moveHistory.length > 0
       ? `<div class="sidebar-history-list">${this.moveHistory.map((move, index) => `
           <div class="sidebar-history-item">
@@ -1149,6 +1239,33 @@ export class CheckersRenderer implements GameRenderer {
         this.requestLeave?.();
       };
     }
+  }
+
+  private updateChessClockPanel(): void {
+    if (!this.sidebar) {
+      return;
+    }
+
+    // Get player names
+    const player1 = this.getPlayerByIndex(0);
+    const player2 = this.getPlayerByIndex(1);
+    const player1Name = player1?.displayName || "Player 1";
+    const player2Name = player2?.displayName || "Player 2";
+
+    // Determine active player (0 for Black/player1, 1 for Red/player2)
+    const currentPlayer = this.players.get(this.currentTurn);
+    const activePlayerIndex = currentPlayer?.playerIndex ?? -1;
+
+    // Generate chess clock markup
+    const clockMarkup = getChessClockMarkup(
+      this.player1TimeRemainingMs,
+      this.player2TimeRemainingMs,
+      activePlayerIndex,
+      player1Name,
+      player2Name,
+    );
+
+    this.sidebar.updatePanel("game-clock", clockMarkup);
   }
 
   private getCurrentTurnRowMarkup(): string {

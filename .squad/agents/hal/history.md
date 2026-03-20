@@ -1482,3 +1482,81 @@ All expect `room.disconnect()` to be called but it's not being invoked.
 
 **Status:** Feature production-ready. Deploy on next release cycle.
 
+
+## Session: Chess Clock Architecture Design (2026-03-20)
+
+**Status:** ✅ Complete  
+**Deliverable:** `.squad/decisions/inbox/hal-chess-clock-architecture.md`
+
+**Context:**
+- User uploaded Figma design showing chess-style game clock for Checkers (two countdown clocks, cumulative time banks)
+- Current system has per-turn timer (`turnTimeRemaining`) that resets each turn
+- Need architecture for cumulative chess clock (time bank per player that depletes across entire game)
+
+**Key Decisions:**
+
+1. **Schema Location:** CheckersState (not BaseGameState) — per-player time banks are game-specific
+   - `player1TimeRemainingMs: number` (Player 0's time bank)
+   - `player2TimeRemainingMs: number` (Player 1's time bank)
+   - Rationale: Other games (Risk, Dominos) have different turn models; keep BaseGameState generic
+
+2. **Configuration:** Plugin-level `chessClockConfig` in CheckersPlugin
+   - `enabled: boolean` (default: false — MVP feature flag)
+   - `initialTimeBankMs: number` (default: 600000 = 10 minutes)
+   - Deferred: UI toggle in room setup, time increment (Fischer clock)
+
+3. **Server Tick Mechanism:** New `onTick()` lifecycle hook in CheckersPlugin
+   - Called from BaseGameRoom's existing `setInterval` at 1Hz
+   - Decrements active player's time bank by 1000ms/sec
+   - Triggers `handleTurnTimeout()` when time bank reaches 0
+   - Clock switches when `processAction()` returns `endsTurn=true`
+
+4. **Client Display:** Two surfaces
+   - **PlayerInfoBar:** Show per-player time bank (not turn timer) when chess clock enabled
+   - **Sidebar Panel:** New "Game Clock" panel with two stacked clocks, active ring on current player
+
+5. **Reuse Existing Infrastructure:**
+   - Timeout handling → existing `TurnTimerConfig` penalty system (auto-pass/forfeit)
+   - Pause on disconnect → existing `pauseTurnTimerFor()` logic
+   - Critical styling → existing `sidebar-turn-clock--critical` CSS (<60s red text)
+
+**Files to Change:**
+- `shared/src/games/checkers/CheckersState.ts` — Schema fields
+- `server/src/games/checkers/CheckersPlugin.ts` — Config + onTick hook
+- `server/src/game/BaseGameRoom.ts` — onTick interval call, timeout wiring
+- `client/src/scenes/GameScene.ts` — Per-player time extraction
+- `client/src/ui/GameSidebar.ts` — Chess clock panel markup
+- `client/src/ui/PlayerInfoBar.ts` — Per-player time display
+
+**Scope:**
+- **MVP:** Schema, config flag, server tick, timeout, client display
+- **Deferred:** Time increments, room setup UI, generalize to BaseGameState
+
+**Learnings:**
+- Existing `TurnManager` handles per-turn timers with pause/resume; chess clock needs parallel per-player time banks
+- CheckersPlugin already has no `turnTimerConfig` (timers disabled); chess clock is orthogonal feature
+- Client already has `formatTurnClock()` utility for mm:ss formatting; can reuse for chess clock display
+- BaseGameRoom has `setInterval` at line 115 for generic tick logic; can wire `onTick()` hook there
+
+
+## Chess Clock Architecture for Checkers (Issue #165) (2026-03-20)
+
+**Role:** Lead Architect  
+**Outcome:** ✅ Complete, implemented, committed to dev (1c92dff)
+
+Designed comprehensive chess clock system spanning schema, server logic, and client display. Architecture intentionally generic from start (per Copilot directive about base-layer reusability).
+
+**Key Decisions:**
+- Time bank fields in BaseGameState (not checkers-specific)
+- Plugin-level `chessClockConfig` interface for opt-in
+- Tick-based countdown (1Hz), per-player time depletion
+- Timeout handling reuses existing penalty system
+- MVP: Hardcoded 10-minute banks; UI toggle deferred to P7+
+
+**Handoff Pattern:**
+- Passed architecture to Pemulis (server implementation)
+- Passed design extraction needs to Mario (UX spec)
+- Coordinated with Ortho (UI implementation)
+- Coordinated with Steeply (test coverage)
+
+**Learning:** Designing for reusability from the start (generic base layer) prevents later refactoring. This pattern now extends to any 2-player game (Backgammon, Go, etc.).

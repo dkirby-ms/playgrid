@@ -356,10 +356,20 @@ export class GameScene implements Scene {
     const name = this.getPlayerDisplayName(context.player, context.isLocal);
     const label = this.getPlayerRoleLabel(this.gameType, context.player, context.sessionId, state);
     const status = this.getStatusForPlayer(context, phase, currentTurn);
-    const timerSeconds =
-      context.sessionId && currentTurn === context.sessionId && turnTimeRemaining > 0
-        ? turnTimeRemaining
-        : null;
+    
+    // For games with chess clock enabled, show per-player time instead of turn time
+    let timerSeconds: number | null;
+    const chessClockTime = this.extractChessClockTime(state, context.player.playerIndex);
+    if (chessClockTime !== null && chessClockTime > 0) {
+      // Chess clock is active for this game
+      timerSeconds = Math.ceil(chessClockTime / 1000);
+    } else {
+      // For other games, show turn timer only when it's the player's turn
+      timerSeconds =
+        context.sessionId && currentTurn === context.sessionId && turnTimeRemaining > 0
+          ? turnTimeRemaining
+          : null;
+    }
 
     return {
       name,
@@ -554,6 +564,26 @@ export class GameScene implements Scene {
     }
 
     return players;
+  }
+
+  private extractChessClockTime(state: unknown, playerIndex: number): number | null {
+    if (typeof state !== "object" || state === null) {
+      return null;
+    }
+
+    const stateObj = state as Record<string, unknown>;
+    
+    if (playerIndex === 0) {
+      return typeof stateObj.player1TimeRemainingMs === "number" 
+        ? stateObj.player1TimeRemainingMs 
+        : null;
+    } else if (playerIndex === 1) {
+      return typeof stateObj.player2TimeRemainingMs === "number" 
+        ? stateObj.player2TimeRemainingMs 
+        : null;
+    }
+    
+    return null;
   }
 
   private showTurnPrompt(message: string): void {

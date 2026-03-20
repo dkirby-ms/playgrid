@@ -25,6 +25,9 @@ export interface GamePlugin<TState extends Schema = Schema> {
   /** Turn management configuration */
   turnConfig: TurnConfiguration;
 
+  /** Chess clock configuration (optional) */
+  chessClockConfig?: ChessClockConfiguration;
+
   /** Action handlers for player moves */
   actions: GameActionHandlers<TState>;
 
@@ -195,6 +198,19 @@ export interface TurnConfiguration {
 
   /** Extensible turn timer with penalty escalation. Overrides turnTimeLimit when provided. */
   turnTimerConfig?: TurnTimerConfig;
+}
+
+/**
+ * Chess clock configuration for 2-player games.
+ * When enabled, each player has a fixed time bank that decrements only during their turns.
+ * The clock pauses on disconnect and a player loses if their time reaches zero.
+ */
+export interface ChessClockConfiguration {
+  /** Whether the chess clock is enabled */
+  enabled: boolean;
+
+  /** Initial time bank for each player in milliseconds */
+  initialTimeBankMs: number;
 }
 
 export type TurnOrderStrategy =
