@@ -312,3 +312,25 @@
 - References: Figma export, existing `GameSidebar.ts`, `PlayerInfoBar.ts`, `design-tokens.css`
 
 
+
+## Chess Clock Design Spec (Issue #165) (2026-03-20)
+
+**Role:** UX / Design Consultant  
+**Outcome:** ✅ Complete, 486-line spec delivered, implemented by Ortho
+
+Extracted detailed design specifications from Figma CheckersGame.tsx and provided comprehensive implementation guide for frontend developer.
+
+**Key Deliverables:**
+- Game Clock sidebar panel layout (4th panel, stacked clocks)
+- Active/inactive/critical visual states (blue glow, red warning)
+- Player info bar time display positioning
+- Color mapping (all from existing design tokens, zero new tokens)
+- Typography specs (32px bold monospace for time)
+- Animation keyframes (pulse 2s, highlight 2s, critical 1s)
+- Accessibility: prefers-reduced-motion support
+
+**Implementation Checklist:** Provided phased checklist (4 phases: core sidebar, player info, animations, testing)
+
+**Design Token Reuse:** Mapped all Figma colors to existing CSS custom properties (--pg-slate-700, --pg-blue-400, --pg-red-400, etc.). Zero design system extensions needed.
+
+**Learning:** Specifying animations, color tokens, and responsive states upfront prevents implementation rework. Design spec as executable contract.

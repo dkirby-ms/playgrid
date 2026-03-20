@@ -1876,3 +1876,28 @@ npm run test   # ✅ 472 tests passed (5 new)
 - `isCpuSupported()` extracts the game-type check so it's DRY across create-time and add-time paths
 
 **Build/Lint/Test:** All pass (718 tests green, lint has only pre-existing warnings).
+
+## Chess Clock UI Patterns — Reference for Future Renderers (2026-03-20)
+
+**Role:** Reference/Learning  
+**Context:** Ortho implemented chess clock UI following generic base-layer design
+
+**Relevant Patterns for Gately:**
+
+The chess clock UI demonstrates reusable patterns that apply to any game renderer:
+
+1. **State Extraction Helper:** `extractChessClockTime(state, playerIndex)` safely extracts typed fields from generic state objects. Pattern: Validate type, check field presence, return typed value or null.
+
+2. **Markup Generation Helper:** `getChessClockMarkup(player1TimeMs, player2TimeMs, activePlayerIndex, ...)` separates markup generation from state logic. Enables testing markup independently of state.
+
+3. **CSS Class Composition:** Active/inactive/critical states use class composition (`.sidebar-clock-item`, `.sidebar-clock-item--active`, `.sidebar-clock-item--critical`) not inline styles. Enables animation keyframes and media queries (prefers-reduced-motion).
+
+4. **Design Token Reuse:** All colors from existing tokens (--pg-blue-400, --pg-red-400, etc.). Prevents design system sprawl.
+
+5. **Animation Respect:** All animations wrapped in `@media (prefers-reduced-motion: reduce)`. Applies to custom keyframes (sidebar-clock-pulse, sidebar-clock-highlight).
+
+**Application to Gately's Work:**
+- Future game renderers (Risk, Backgammon) that display state-driven UI should use same extraction pattern
+- Sidebar panels should reuse class composition (active/inactive/critical)
+- Always check prefers-reduced-motion for animations
+- Extract color values to design tokens, don't hardcode hex values

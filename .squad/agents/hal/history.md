@@ -1538,3 +1538,25 @@ All expect `room.disconnect()` to be called but it's not being invoked.
 - Client already has `formatTurnClock()` utility for mm:ss formatting; can reuse for chess clock display
 - BaseGameRoom has `setInterval` at line 115 for generic tick logic; can wire `onTick()` hook there
 
+
+## Chess Clock Architecture for Checkers (Issue #165) (2026-03-20)
+
+**Role:** Lead Architect  
+**Outcome:** ✅ Complete, implemented, committed to dev (1c92dff)
+
+Designed comprehensive chess clock system spanning schema, server logic, and client display. Architecture intentionally generic from start (per Copilot directive about base-layer reusability).
+
+**Key Decisions:**
+- Time bank fields in BaseGameState (not checkers-specific)
+- Plugin-level `chessClockConfig` interface for opt-in
+- Tick-based countdown (1Hz), per-player time depletion
+- Timeout handling reuses existing penalty system
+- MVP: Hardcoded 10-minute banks; UI toggle deferred to P7+
+
+**Handoff Pattern:**
+- Passed architecture to Pemulis (server implementation)
+- Passed design extraction needs to Mario (UX spec)
+- Coordinated with Ortho (UI implementation)
+- Coordinated with Steeply (test coverage)
+
+**Learning:** Designing for reusability from the start (generic base layer) prevents later refactoring. This pattern now extends to any 2-player game (Backgammon, Go, etc.).

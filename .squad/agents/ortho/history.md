@@ -545,3 +545,46 @@ Implemented the chess clock UI for the Checkers game following Mario's design sp
 - **Design token reuse:** All Figma colors (`from-slate-700 to-slate-800`, `ring-2 ring-blue-400`, `text-red-400`, `bg-green-500 animate-pulse`) mapped directly to existing CSS custom properties — zero new tokens needed
 
 **Status:** Implementation complete. Server-side chess clock logic (Pemulis) will populate `player1TimeRemainingMs` and `player2TimeRemainingMs` fields. UI is ready to display them.
+
+## Chess Clock UI Implementation (Issue #165) (2026-03-20)
+
+**Role:** Frontend Developer  
+**Outcome:** ✅ Complete, UI implemented per design spec, integrated with server logic
+
+Implemented chess clock UI for sidebar panel and player info bars following Mario's design spec and integrating Pemulis's server-side time fields.
+
+**Architecture:**
+```
+CheckersState (player1/2TimeRemainingMs) 
+  → Colyseus sync 
+  → CheckersRenderer.applyState()
+  → getChessClockMarkup()
+  → GameSidebar.updatePanel("game-clock")
+```
+
+**Sidebar Panel (4th position):**
+- Container: `.sidebar-clock-container` (flex column)
+- Items: `.sidebar-clock-item`, `.sidebar-clock-item--active`, `.sidebar-clock-item--critical`
+- Time: `.sidebar-clock-time` (2rem monospace, tabular-nums)
+- Indicator: `.sidebar-clock-indicator` (8×8px pulsing green dot)
+
+**Active State:**
+- Gradient bg (slate-700 → slate-800)
+- Blue border (2px solid --pg-blue-400)
+- Glow box-shadow + pulse animation
+- Green pulsing indicator dot
+
+**Animations (respect prefers-reduced-motion):**
+- `sidebar-clock-pulse` (2s) — Green dot pulse
+- `sidebar-clock-highlight` (2s) — Blue glow pulse
+- `sidebar-clock-pulse-fast` (1s) — Critical state red pulse
+
+**Helper Functions:**
+- `getChessClockMarkup()` — HTML generation with state-based CSS
+- `extractChessClockTime()` — Safe state access (playerIndex → timeMs)
+
+**Design Token Reuse:** All colors from existing tokens (zero new tokens needed).
+
+**Testing:** Manual verification checklist (turn switching, critical state, animations, responsive).
+
+**Learning:** Componentizing state extraction (getChessClockMarkup, extractChessClockTime) enables reuse across multiple game renderers. Design spec as executable contract prevents rework.

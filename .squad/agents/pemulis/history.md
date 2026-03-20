@@ -1277,3 +1277,38 @@ Implemented per-deployment game availability using a `DISABLED_GAMES` environmen
 - Tests updated to reflect BaseGameState inheritance pattern (fields default to 0, BaseGameRoom sets actual values)
 - All validation passes: `npm run build && npm run test` (773 tests passed including 26 chess clock tests)
 - Pattern ready for ANY 2-player game to opt in by adding chessClockConfig to their plugin
+
+## Chess Clock System — Two-Phase Implementation (Issue #165) (2026-03-20)
+
+**Role:** Systems Developer  
+**Outcome:** ✅ Complete, both phases implemented and merged
+
+### Phase 1: Checkers-Specific Implementation (Initial)
+
+Implemented server-side chess clock logic for Checkers following Hal's architecture:
+- Added player1/2TimeRemainingMs to CheckersState schema
+- Config constants: CHESS_CLOCK_ENABLED=true, INITIAL_TIME_BANK_MS=600000
+- Lifecycle hooks: onGameStart (init), onTick (decrement), checkGameEnd (timeout)
+- Disconnect pause: Reuses existing isConnected pattern
+- Integration: Zero changes to BaseGameRoom (reuses setSimulationInterval)
+
+**Tests:** 26 unit tests covering initialization, tick, timeout, transitions, edge cases (all pass)
+
+### Phase 2: Generic Refactor (Per Copilot Directive)
+
+Promoted chess clock from checkers-specific to generic base-layer system:
+- Moved time fields to BaseGameState (default 0)
+- Created ChessClockConfiguration interface in IGamePlugin
+- BaseGameRoom now owns updateChessClocks(), checkChessClockTimeout() logic
+- CheckersPlugin declares config: `{ enabled: true, initialTimeBankMs: 600000 }`
+- Removed checkers-specific onTick/timeout hooks
+- Client generalized: checks if chessClockTime !== null && > 0 (not hardcoded to checkers)
+
+**Impact:**
+- DRY principle: Clock logic in one place (BaseGameRoom)
+- Future-proof: Backgammon, Go, etc. enable chess clocks by adding config (no code duplication)
+- Type-safe: Config validated at compile time
+- All 773 tests pass (26 chess clock-specific)
+- Zero breaking changes
+
+**Learning:** Two-pass implementation strategy (specific → generic) balances speed of initial feedback with long-term reusability. Copilot directive provided clear scope adjustment (base-layer design).
