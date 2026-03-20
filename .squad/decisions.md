@@ -5401,3 +5401,267 @@ Replaced the entire test file with 82 tests that assert exact output strings aga
 
 **Files Changed**
 - `client/src/ui/__tests__/historyFormatters.test.ts`
+
+---
+
+## Session: P7 Game Availability Per Environment (2026-03-20)
+
+### Hal: Game Availability Architecture — DISABLED_GAMES Denylist
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Author:** Hal (Lead)  
+**Summary:** Design and orchestration of deployment-specific game filtering feature
+
+Use a `DISABLED_GAMES` environment variable (comma-separated list) to control which games are visible per deployment. Empty or unset = all games enabled. Denylist approach (not allowlist) because the common case is "everything on."
+
+**Key Decisions**
+
+1. **Where the config lives:** Single environment variable `DISABLED_GAMES` 
+   - dev: unset (all games)
+   - uat: unset (all games)
+   - prod: `DISABLED_GAMES=risk`
+   - Set via `infra/main.bicep` and deployment CI files
+
+2. **How filtering works:** Filter at registration time in `server/src/index.ts`
+   - Don't register disabled games — registry is the source of truth
+   - Existing `LobbyRoom` validation (`gameRegistry.has(gameType)`) automatically rejects unregistered types
+   - Simpler than runtime checks; no conditional logic scattered through the codebase
+
+3. **How the client knows:** New server → client message `AVAILABLE_GAME_TYPES`
+   - Server sends `GameTypeInfo[]` on lobby join (new message constant + interface)
+   - Client replaces hardcoded game list with server-provided data
+   - Fallback-first: hardcoded `DEFAULT_GAME_TYPES` remains if message delayed; overwritten on receipt
+   - Fixes latent coordination problem: adding a new game now only requires server change
+
+4. **Edge cases handled:**
+   - Disabled game creation via URL/API → Already handled by registry validation
+   - All games disabled → Client shows empty list; server logs warning
+   - Brief UI flicker before message arrives → Acceptable; happens before user can interact
+
+**Rationale**
+
+- **Denylist vs allowlist:** Denylist simpler for YAGNI — 4 games, usually all on. If we reach 20+ games with complex rules, revisit.
+- **Registration-time filtering:** Avoids conditional checks everywhere. Clean separation: registry = available games.
+- **Server-driven types:** Eliminates client hardcoding; supports adding new games without client deploy.
+- **No per-user access or runtime toggle:** Deployment-level only. Runtime config would need admin UI, cache invalidation — scope not justified yet.
+
+**Cross-Agent Coordination**
+
+- **Pemulis (Systems Dev):** Implement shared types (`GameTypeInfo`, `AVAILABLE_GAME_TYPES`), server parsing (`parseDisabledGames`), registration filtering, LobbyRoom sender
+- **Ortho (Frontend Dev):** Update `LobbyScreen` to consume message; rename hardcoded options to fallback; add `gameTypeCache.ts` shared module
+- **Marathe (DevOps):** Add `DISABLED_GAMES` env var to `main.bicep` (prod=risk), `deploy-prod.yml`, fix prod `CONTAINER_APP_NAME` bug in `set-repo-secrets.sh`
+- **Steeply (Tester):** Unit tests for parsing + registration filtering; e2e tests for message delivery
+
+**Files Changed**
+
+| File | Change |
+|------|--------|
+| `shared/src/lobbyTypes.ts` | Add `AVAILABLE_GAME_TYPES` message, `GameTypeInfo` interface |
+| `server/src/config.ts` | Add `parseDisabledGames()` function, `config.disabledGames: Set<string>` |
+| `server/src/index.ts` | Loop over plugin array, conditionally register based on `disabledGames` set |
+| `server/src/rooms/LobbyRoom.ts` | Send `AVAILABLE_GAME_TYPES` on all join paths (new join, rejoin, session reclaim) |
+| `client/src/ui/LobbyScreen.ts` | Listen for `AVAILABLE_GAME_TYPES`, rename `GAME_TYPE_OPTIONS` to `DEFAULT_GAME_TYPES`, add dynamic refresh |
+| `client/src/ui/SetupScreen.ts` | Import labels from new `gameTypeCache.ts` instead of local constants |
+| `client/src/ui/gameTypeCache.ts` | New shared module for game type labels and player-count strings |
+| `infra/main.bicep` | Add `disabledGames` conditional env var (prod=risk, dev/uat=empty) |
+| `deploy-prod.yml` | Add `DISABLED_GAMES=risk` to `--set-env-vars` |
+| `set-repo-secrets.sh` | Bug fix: prod `CONTAINER_APP_NAME` was `playgrid-uat`, now `playgrid-prod` |
+| `.env.example` | Documented `DISABLED_GAMES` usage |
+
+**Impact**
+
+- Risk can be hidden from prod while visible in dev/uat without code redeploys
+- Extensible to future games — just add to `DISABLED_GAMES` string
+- Eliminates client hardcoding — game availability is now server-driven
+- Registration-time filtering is simple, performant, and secure (no bypass vector)
+
+**Validation**
+
+- All 747 existing tests pass (no regressions)
+- 29 new tests pass: 21 unit tests (disabled-games parsing + filtering), 8 e2e tests (message delivery)
+- Build clean, lint clean
+- Prod infra config tested with expected env var value
+
+---
+
+### Pemulis: Shared Game Type Info & Server Registration Filtering
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Author:** Pemulis (Systems Dev)
+
+Per Hal's architecture, implemented shared types and server-side registration filtering for game availability.
+
+**Shared Types (`shared/src/lobbyTypes.ts`)**
+- `AVAILABLE_GAME_TYPES` message constant
+- `GameTypeInfo` interface: `id`, `name`, `playerCount: [min, max]`, `description`, `complexity`, `estimatedDuration`
+- Auto-exported via existing `shared/src/index.ts` barrel
+
+**Server Config (`server/src/config.ts`)**
+- Pure function `parseDisabledGames(envValue: string): Set<string>` for testable env parsing
+- Handles empty strings, whitespace, duplicates
+- Added `disabledGames: Set<string>` to config object
+
+**Server Registration (`server/src/index.ts`)**
+- Loop over plugin array, skip `gameRegistry.register()` for games in `config.disabledGames`
+- Log disabled games at startup if any are configured
+
+**Lobby Message Sender (`server/src/rooms/LobbyRoom.ts`)**
+- New private method `sendAvailableGameTypes(client)` that maps registered plugins to `GameTypeInfo[]`
+- Called on all three join paths: new join, rejoin (existing player reconnect), session reclaim (cross-device)
+
+**Documentation (`/.env.example`)**
+- Added commented entry with `DISABLED_GAMES` usage example
+
+**Tests**
+
+- `server/src/__tests__/disabled-games.test.ts` (new) — 21 tests
+  - Parsing edge cases: empty, whitespace-only, duplicates, mixed case
+  - Registry filtering: games registered only if not disabled
+  - Edge cases: all games disabled, non-existent game names
+- `server/src/__tests__/lobby-pregame.test.ts` — Updated mocks to expect new `AVAILABLE_GAME_TYPES` message
+- All 747 existing tests still pass
+
+**Files Changed**
+- `shared/src/lobbyTypes.ts` (new exports)
+- `shared/src/index.ts` (auto-export via barrel)
+- `server/src/config.ts` (parseDisabledGames function, config property)
+- `server/src/index.ts` (filtered registration loop)
+- `server/src/rooms/LobbyRoom.ts` (sendAvailableGameTypes method)
+- `.env.example` (documentation)
+- `server/src/__tests__/disabled-games.test.ts` (new test file)
+
+---
+
+### Ortho: Dynamic Game Type Availability on Client
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Author:** Ortho (Frontend Dev)
+
+Per Hal's architecture, updated client UI to consume server-provided game type information and render dynamically.
+
+**New Shared Module (`client/src/ui/gameTypeCache.ts`)**
+- Holds server-provided game labels and player-count strings
+- Functions: `getGameLabel(id)`, `getPlayerCountLabel([min, max])`
+- Used by both `LobbyScreen` and `SetupScreen` to avoid circular imports
+
+**LobbyScreen Updates (`client/src/ui/LobbyScreen.ts`)**
+- Renamed hardcoded `GAME_TYPE_OPTIONS` → `DEFAULT_GAME_TYPES` (fallback)
+- New handler: `onAvailableGameTypes()` (message listener)
+- New instance method: `refreshGameTypeDropdown()` (update dropdown from cache)
+- All game-type lookups now go through instance method `getGameTypeOption()` instead of module-level function
+- Message received on lobby join; UI updates immediately (brief acceptable flicker before message = better than loading state)
+
+**SetupScreen Updates (`client/src/ui/SetupScreen.ts`)**
+- Replaced local `GAME_LABELS` and `GAME_PLAYER_LABELS` constants with imports from `gameTypeCache`
+- No other logic changes; uses cache for consistency with LobbyScreen
+
+**GameTypeInfo → GameTypeOption Conversion**
+- Server sends `playerCount: [min, max]`
+- Client expands to `selectablePlayerCounts: number[]` to preserve existing create-game modal UX
+
+**Design Rationale**
+
+- **Fallback-first:** If `AVAILABLE_GAME_TYPES` message never arrives (e.g., old server), defaults keep the UI functional
+- **Shared cache:** Avoids circular dependency; both screens read from one source of truth for labels
+- **No loading state:** Message arrives immediately on join (same packet as `GAME_LIST`); flicker before UI updates is acceptable and doesn't block interaction
+
+**Files Changed**
+- `client/src/ui/gameTypeCache.ts` (new module)
+- `client/src/ui/LobbyScreen.ts` (renamed defaults, new handler, new methods)
+- `client/src/ui/SetupScreen.ts` (import labels from cache)
+
+---
+
+### Marathe: Infrastructure & CI — DISABLED_GAMES + Container Command + Bug Fix
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Author:** Marathe (DevOps/CI-CD)
+
+Added environment-driven game availability control to infrastructure and deployment pipelines. Upgraded bootstrap command to real app. Fixed prod container app name bug.
+
+**1. DISABLED_GAMES Environment Variable**
+
+- **`infra/main.bicep`:** Added `disabledGames` variable, conditional on `environmentName`
+  - Prod: `disabledGames = "risk"`
+  - Dev/UAT: `disabledGames = ""` (all games available)
+  - Used in container env var block
+
+- **`deploy-prod.yml`:** Added `DISABLED_GAMES=risk` to `--set-env-vars` in container deployment step
+- **`deploy-uat.yml`:** No change needed — absence of var = all games enabled
+
+This env var is consumed by the server's `server/src/config.ts` to filter the game registry at startup.
+
+**2. Container Bootstrap Command**
+
+- Previously: Inline placeholder Node.js HTTP server (`npx http-server`)
+- Now: Real app entrypoint: `node server/dist/src/index.js`
+- CI workflows already override the image from ACR, so the command was the only remaining bootstrap placeholder
+- Bicep template retained `node:22-alpine` bootstrap image (overridden by CI) and old placeholder vars commented out for reference
+
+**3. Bug Fix: set-repo-secrets.sh**
+
+- Prod `CONTAINER_APP_NAME` was incorrectly set to `playgrid-uat` instead of `playgrid-prod`
+- Fixed locally
+- **Limitation:** This file is gitignored, so the fix doesn't propagate via git. Anyone running this script on a new machine needs to verify manually.
+
+**Team Impact**
+
+- **Server team (Hal, Pemulis):** `DISABLED_GAMES` env var is now available in all environments. Server reads it via `process.env.DISABLED_GAMES`.
+- **Game plugin authors:** Games in `DISABLED_GAMES` won't be registered. Currently only `risk` is disabled in prod.
+- **Future deploys:** Container will run the real app, not a placeholder HTTP server.
+
+**Files Changed**
+- `infra/main.bicep` (disabledGames variable and env setup)
+- `deploy-prod.yml` (DISABLED_GAMES=risk in --set-env-vars)
+- `set-repo-secrets.sh` (bug fix, local only)
+
+---
+
+### Steeply: Test Coverage — Disabled Games Filtering & Lobby Message
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Author:** Steeply (QA/Testing)
+
+Comprehensive test coverage for game availability filtering and server → client lobby messaging.
+
+**Unit Tests (`server/src/__tests__/disabled-games.test.ts`)**
+
+21 tests covering:
+- `parseDisabledGames()` edge cases: empty string, whitespace, duplicates, mixed case, malformed input
+- Registry filtering: games in disabled set are not registered; others are registered
+- Available games match server expectations after filtering
+- Edge case: all games disabled (registry empty)
+- Edge case: non-existent game name in disabled set (ignored gracefully)
+
+Extracted `parseDisabledGames()` as a pure function in `server/src/config.ts` to enable isolated unit testing without mocking the full config module.
+
+**E2E Tests (`e2e/tests/lobby-available-games.test.ts`)**
+
+8 tests covering:
+- Client receives `AVAILABLE_GAME_TYPES` message on join
+- Payload structure: `GameTypeInfo[]` with all required fields (`id`, `name`, `playerCount`, `description`, `complexity`, `estimatedDuration`)
+- Available games in message match registered game registry
+- Player count info is accurate
+- Spectator join receives message correctly
+- Reconnection (rejoin) receives message
+- Multiple joins don't duplicate message handling
+
+**Test Results**
+
+- All 29 new tests pass
+- All 747 existing tests still pass (no regressions)
+- Full build clean, lint clean
+- Test suite confidence: Full coverage of disabled-games feature
+
+**Files Changed**
+- `server/src/__tests__/disabled-games.test.ts` (new test file)
+- `e2e/tests/lobby-available-games.test.ts` (new test file)
+- `server/src/__tests__/lobby-pregame.test.ts` (mock updates to expect new message)
+
+---
+

@@ -1,6 +1,7 @@
 import { Client, CloseCode, Room, matchMaker } from "colyseus";
 import {
   ADD_CPU_PLAYER,
+  AVAILABLE_GAME_TYPES,
   CREATE_GAME,
   GAME_JOINED,
   GAME_LIST,
@@ -22,6 +23,7 @@ import {
   type GamePlayersPayload,
   type GameSessionInfo,
   type GameStartedPayload,
+  type GameTypeInfo,
   type JoinGamePayload,
   type LobbyErrorPayload,
   type LobbyLogEntry,
@@ -141,6 +143,7 @@ export class LobbyRoom extends Room {
       client.send(GAME_LIST, {
         games: Array.from(this.games.values(), (game) => this.toGameSessionInfo(game)),
       });
+      this.sendAvailableGameTypes(client);
 
       this.broadcastOnlinePlayers();
 
@@ -155,6 +158,7 @@ export class LobbyRoom extends Room {
         client.send(GAME_LIST, {
           games: Array.from(this.games.values(), (game) => this.toGameSessionInfo(game)),
         });
+        this.sendAvailableGameTypes(client);
 
         this.broadcastOnlinePlayers();
         console.log(
@@ -174,6 +178,7 @@ export class LobbyRoom extends Room {
     client.send(GAME_LIST, {
       games: Array.from(this.games.values(), (game) => this.toGameSessionInfo(game)),
     });
+    this.sendAvailableGameTypes(client);
 
     this.broadcastOnlinePlayers();
     this.broadcastLobbyEvent({
@@ -782,6 +787,18 @@ export class LobbyRoom extends Room {
       isReady: true,
       isCPU: true,
     };
+  }
+
+  private sendAvailableGameTypes(client: Client) {
+    const availableTypes: GameTypeInfo[] = gameRegistry.getAll().map(p => ({
+      id: p.id,
+      name: p.name ?? p.id,
+      playerCount: p.metadata.playerCount,
+      description: p.metadata.description,
+      complexity: p.metadata.complexity,
+      estimatedDuration: p.metadata.estimatedDuration,
+    }));
+    client.send(AVAILABLE_GAME_TYPES, availableTypes);
   }
 
   private toGameSessionInfo(game: LobbyGameEntry): GameSessionInfo {

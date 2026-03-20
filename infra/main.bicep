@@ -53,8 +53,10 @@ var customDomains = empty(selectedCustomDomain)
         bindingType: 'Disabled'
       }
     ]
-var bootstrapPlaceholderImage = 'node:22-alpine'
-var bootstrapPlaceholderCommand = 'node -e "require(\'http\').createServer((q,s)=>{s.writeHead(200,{\'Content-Type\':\'application/json\'});s.end(JSON.stringify({status:\'ok\',mode:\'placeholder\'}))}).listen(2567,\'0.0.0.0\')"'
+// Bootstrap placeholder image/command for first-time infra deploys (before CI has pushed the real image to ACR).
+// After the first CI deploy, the real image and command are used. Kept here for reference only.
+// var bootstrapPlaceholderImage = 'node:22-alpine'
+// var bootstrapPlaceholderCommand = 'node -e "require(\'http\').createServer((q,s)=>{s.writeHead(200,{\'Content-Type\':\'application/json\'});s.end(JSON.stringify({status:\'ok\',mode:\'placeholder\'}))}).listen(2567,\'0.0.0.0\')"'
 
 // Container App configuration based on environment
 var containerAppConfig = {
@@ -244,14 +246,14 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'playgrid'
-          // Use a public bootstrap image so the first infra deploy succeeds before CI has pushed the real app image into ACR.
-          image: bootstrapPlaceholderImage
+          // CI deploys override the image with the real ACR image. For first-time infra deploys
+          // (before any CI push), manually set bootstrapPlaceholderImage param or pre-push an image.
+          image: 'node:22-alpine'
           command: [
-            '/bin/sh'
-            '-c'
+            'node'
           ]
           args: [
-            bootstrapPlaceholderCommand
+            'server/dist/src/index.js'
           ]
           resources: {
             cpu: json(containerAppConfig[environmentName].cpu)
@@ -266,6 +268,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'PORT'
               value: '2567'
             }
+            // DISABLED_GAMES is set by deploy workflows via --set-env-vars using
+            // the GitHub Actions environment variable vars.DISABLED_GAMES.
           ]
           probes: [
             {

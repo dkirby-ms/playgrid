@@ -28,6 +28,7 @@ const { mockCreateRoom, mockGameRegistry, mockedCloseCode, sharedExports } = vi.
     LOBBY_ERROR: "lobby_error",
     ONLINE_PLAYERS: "online_players",
     LOBBY_LOG_EVENT: "lobby_log_event",
+    AVAILABLE_GAME_TYPES: "available_game_types",
     DEFAULT_MAP_SIZE: 128,
     LOBBY_DEFAULTS: {
       MIN_PLAYERS: 1,
@@ -185,8 +186,13 @@ function findPayload(client: MockClient, messageType: string) {
 
 function createPlugin(minPlayers: number, maxPlayers: number) {
   return {
+    id: "checkers",
+    name: "Checkers",
     metadata: {
       playerCount: [minPlayers, maxPlayers],
+      description: "Classic board game",
+      complexity: 2,
+      estimatedDuration: 20,
     },
   };
 }

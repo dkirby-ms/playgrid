@@ -1207,3 +1207,36 @@ Implemented standard dominos spinner rules with 4-way branching:
 
 **Pattern to remember:** When adding game-specific enrichment beyond simple `description` strings (like stats aggregation), use a temporary `_formattedStats` property on state to pass data to the `buildGameResult` function without polluting the schema or requiring additional traversals.
 
+### Game availability filtering via DISABLED_GAMES env var
+
+Implemented per-deployment game availability using a `DISABLED_GAMES` environment variable (comma-separated denylist). Key decisions and touchpoints:
+
+- **Parsing** lives in `server/src/config.ts` as an exported `parseDisabledGames()` function, making it independently testable.
+- **Registration filtering** in `server/src/index.ts` — plugins are collected into a typed array and only registered if not in the disabled set. Required `as unknown as GamePlugin<Schema>` casts because `GamePlugin<T>` is contravariant on `T` (same pattern used by `GameRegistry.register` internally).
+- **Shared types** added to `shared/src/lobbyTypes.ts`: `AVAILABLE_GAME_TYPES` message constant and `GameTypeInfo` interface. Auto-exported via the barrel wildcard in `shared/src/index.ts`.
+- **LobbyRoom** sends `AVAILABLE_GAME_TYPES` to each client on join (all three join paths: new session, existing session rejoin, session reclaim).
+- **Test mocks** in `lobby-pregame.test.ts` needed the new constant added to the hoisted `sharedExports` object and fuller metadata in `createPlugin()`.
+- Existing `disabled-games.test.ts` had a top-level-await-inside-`describe` issue; fixed by moving the dynamic import into `beforeEach`.
+
+
+---
+
+## Cross-Agent Update — P7: Game Availability Per Environment (2026-03-20)
+
+**Event:** Game availability feature complete — shared types, server registration, lobby message sender.
+
+**Summary:** Implemented Hal's architecture for deployment-specific game filtering via DISABLED_GAMES env var.
+
+**Outputs:**
+- `shared/src/lobbyTypes.ts` — AVAILABLE_GAME_TYPES message constant, GameTypeInfo interface (id, name, playerCount, description, complexity, estimatedDuration)
+- `server/src/config.ts` — parseDisabledGames() function, config.disabledGames Set
+- `server/src/index.ts` — Filtered plugin registration loop, skips disabled games
+- `server/src/rooms/LobbyRoom.ts` — sendAvailableGameTypes() method, called on all join paths
+- `.env.example` — DISABLED_GAMES documentation
+
+**Tests:** 21 new unit tests (disabled-games.test.ts) covering parsing edge cases and filtering. All 747 existing tests pass.
+
+**Validation:** Build ✓, Lint ✓, Test ✓
+
+**Status:** Ready for client and infra work. Feature merged into decisions.md (`pemulis-game-availability.md`).
+

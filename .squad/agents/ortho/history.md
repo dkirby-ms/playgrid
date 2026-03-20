@@ -446,3 +446,24 @@ Implemented comprehensive design enhancements to HistoryScreen based on Figma de
 - **Unused parameter prefix:** ESLint `@typescript-eslint/no-unused-vars` requires unused params to start with `_` (e.g., `_meta`, `_playerIndexMap`).
 - **Add CPU Player button:** CPU opponent selection moved from game creation time to the waiting room. The host sees an "Add CPU Player" dashed-border slot in the player list (both WaitingRoom.ts and SetupScreen.ts). Sends `ADD_CPU_PLAYER`/`REMOVE_CPU_PLAYER` messages to the lobby room. CPU-supporting games: checkers, backgammon, dominos. The PvP/AI mode toggle was removed from CheckersSetupConfig and BackgammonSetupConfig, and the cpuOpponent checkbox removed from LobbyScreen's create modal. Invite section visibility now checks `players.some(p => p.isCPU)` instead of `gameInfo.cpuOpponent`.
 
+- **Dynamic game availability (AVAILABLE_GAME_TYPES):** LobbyScreen now listens for an `AVAILABLE_GAME_TYPES` message from the server (imported from `@eschaton/shared`). The hardcoded `GAME_TYPE_OPTIONS` was renamed to `DEFAULT_GAME_TYPES` and serves as a fallback until the server sends the authoritative list. On receipt, the lobby tiles, create-game modal dropdown, and SetupScreen labels all update dynamically. A new `client/src/ui/gameTypeCache.ts` module provides `updateAvailableGameTypes()`, `getGameLabel()`, and `getPlayerCountLabel()` — shared between LobbyScreen and SetupScreen to avoid circular imports. The `GameTypeInfo` → `GameTypeOption` conversion is done by `gameTypeInfoToOption()` which expands the `playerCount: [min, max]` tuple into an array of selectable counts.
+
+---
+
+## Cross-Agent Update — P7: Game Availability Per Environment (2026-03-20)
+
+**Event:** Game availability feature complete — client UI updated to consume server-provided game types.
+
+**Summary:** Implemented dynamic game type rendering on client, replacing hardcoded game list with server-driven data.
+
+**Outputs:**
+- `client/src/ui/gameTypeCache.ts` (new) — Shared label cache (getGameLabel, getPlayerCountLabel) used by LobbyScreen and SetupScreen
+- `client/src/ui/LobbyScreen.ts` — Renamed GAME_TYPE_OPTIONS to DEFAULT_GAME_TYPES (fallback), added AVAILABLE_GAME_TYPES handler, refreshGameTypeDropdown() method
+- `client/src/ui/SetupScreen.ts` — Import game labels from gameTypeCache instead of local constants
+
+**Design:** Fallback-first (defaults remain if message delayed), shared cache avoids circular imports, GameTypeInfo→GameTypeOption conversion preserves existing modal UX.
+
+**Validation:** Build ✓, Lint ✓, Test ✓
+
+**Status:** Ready for deployment. Feature merged into decisions.md (`ortho-game-availability.md`).
+

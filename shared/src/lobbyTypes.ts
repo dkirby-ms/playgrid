@@ -15,6 +15,16 @@ export const GAME_PLAYERS = "game_players" as const;
 export const LOBBY_ERROR = "lobby_error" as const;
 export const ONLINE_PLAYERS = "online_players" as const;
 export const LOBBY_LOG_EVENT = "lobby_log_event" as const;
+export const AVAILABLE_GAME_TYPES = "available_game_types" as const;
+
+export interface GameTypeInfo {
+  id: string;
+  name: string;
+  playerCount: [number, number];
+  description: string;
+  complexity: number;
+  estimatedDuration: number;
+}
 
 export type GameStatus = "waiting" | "in_progress";
 

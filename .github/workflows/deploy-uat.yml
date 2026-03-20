@@ -62,7 +62,7 @@ jobs:
             --resource-group ${{ vars.RESOURCE_GROUP }} \
             --image ${{ vars.ACR_NAME }}.azurecr.io/playgrid:${{ github.sha }} \
             --command "node" --args "server/dist/src/index.js" \
-            --set-env-vars "NODE_ENV=development" "PORT=2567" "DATABASE_URL=secretref:postgres-connection-string"
+            --set-env-vars "NODE_ENV=development" "PORT=2567" "DATABASE_URL=secretref:postgres-connection-string" "DISABLED_GAMES=${{ vars.DISABLED_GAMES }}"
 
       - name: Wait for deployment
         run: sleep 15
