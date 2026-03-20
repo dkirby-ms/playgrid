@@ -42,3 +42,20 @@ Five-agent sprint successfully delivered deployment-specific game visibility con
 ## Next Steps
 
 Feature is production-ready. Deploy on next release cycle.
+
+## Post-Session Notes
+
+**History File Sizes (for next scribe cycle):**
+- gately/history.md: 104KB (summarize)
+- hal/history.md: 77KB (summarize)
+- marathe/history.md: 48KB (summarize)
+- mario/history.md: 16KB (summarize)
+- ortho/history.md: 31KB (summarize)
+- pemulis/history.md: 95KB (summarize)
+- steeply/history.md: 48KB (summarize)
+
+These files accumulated during the P6 (move history) and P7 (game availability) cycles. Future scribe sessions should create `## Core Context` sections consolidating pre-P6 entries into a single archival block, keeping recent (P6+) entries verbose for traceability.
+
+Decision files (.squad/decisions/inbox/ + .squad/decisions.md) are healthy. All game-availability decision files merged and inbox cleared.
+
+Orchestration logs archived for audit trail (timestamp-keyed, immutable).
