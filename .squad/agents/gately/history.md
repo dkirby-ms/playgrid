@@ -1901,3 +1901,14 @@ The chess clock UI demonstrates reusable patterns that apply to any game rendere
 - Sidebar panels should reuse class composition (active/inactive/critical)
 - Always check prefers-reduced-motion for animations
 - Extract color values to design tokens, don't hardcode hex values
+
+## Learnings
+
+### Board Coordinate Labels (Issue #165)
+- Added algebraic coordinate labels (A–H columns, 8–1 rows) to CheckersRenderer using PIXI.Text objects
+- Labels live in a dedicated `coordLabelsContainer` rendered between the board frame and square layers
+- Font size scales with the board (`squareSize * 0.22`, clamped 10–14px) for responsive display
+- Labels respect `isFlipped`: when the board flips for the red player, labels reverse to match the visual perspective (H→A columns, 1→8 rows)
+- Used stone-400 (`0xa8a29e`) for label color to match the Figma design spec
+- Labels are positioned in the board frame area (centered in the 24px frame band above/left of the grid)
+- Pattern is reusable: any future game with algebraic notation (Chess) can follow the same approach

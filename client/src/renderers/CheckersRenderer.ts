@@ -88,6 +88,9 @@ const BOTTOM_HUD_SPACE = 96;
 const GAME_ENDED_MESSAGE = "game-end";
 const NO_FORCED_CAPTURE = -1;
 const MAX_SIDEBAR_HISTORY_ITEMS = 8;
+const COORD_LABEL_COLOR = 0xa8a29e;
+const COLUMN_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+const ROW_NUMBERS = ["8", "7", "6", "5", "4", "3", "2", "1"];
 
 function toCssHexColor(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
@@ -166,6 +169,9 @@ export class CheckersRenderer implements GameRenderer {
     },
   });
   private readonly capturedPiecesGraphics = new Graphics();
+  private readonly coordLabelsContainer = new Container();
+  private readonly columnLabels: Text[] = [];
+  private readonly rowLabels: Text[] = [];
   private readonly squareGraphics: Graphics[] = [];
   private room: Room | null = null;
   private requestLeave: (() => void) | null = null;
@@ -211,6 +217,37 @@ export class CheckersRenderer implements GameRenderer {
 
     this.overlayLayer.addChild(this.overlayBackground, this.overlayTitleText, this.overlaySubtitleText);
 
+    this.coordLabelsContainer.eventMode = "none";
+    for (let i = 0; i < BOARD_DIMENSION; i += 1) {
+      const colLabel = new Text({
+        text: COLUMN_LETTERS[i],
+        style: {
+          fontFamily: "sans-serif",
+          fontSize: 13,
+          fontWeight: "500",
+          fill: COORD_LABEL_COLOR,
+        },
+      });
+      colLabel.anchor.set(0.5, 0.5);
+      colLabel.eventMode = "none";
+      this.columnLabels.push(colLabel);
+      this.coordLabelsContainer.addChild(colLabel);
+
+      const rowLabel = new Text({
+        text: ROW_NUMBERS[i],
+        style: {
+          fontFamily: "sans-serif",
+          fontSize: 13,
+          fontWeight: "500",
+          fill: COORD_LABEL_COLOR,
+        },
+      });
+      rowLabel.anchor.set(0.5, 0.5);
+      rowLabel.eventMode = "none";
+      this.rowLabels.push(rowLabel);
+      this.coordLabelsContainer.addChild(rowLabel);
+    }
+
     for (let index = 0; index < BOARD_CELL_COUNT; index += 1) {
       const square = new Graphics();
       square.eventMode = "static";
@@ -229,6 +266,7 @@ export class CheckersRenderer implements GameRenderer {
 
     this.container.addChild(
       this.boardFrame,
+      this.coordLabelsContainer,
       this.boardLayer,
       this.piecesLayer,
       this.dragLayer,
@@ -430,6 +468,33 @@ export class CheckersRenderer implements GameRenderer {
       }
 
       square.cursor = this.isSquareActionable(boardIndex) ? "pointer" : "default";
+    }
+
+    this.updateCoordLabels();
+  }
+
+  private updateCoordLabels(): void {
+    const fontSize = Math.max(10, Math.min(14, this.squareSize * 0.22));
+    const halfFrame = BOARD_FRAME_WIDTH / 2;
+
+    for (let i = 0; i < BOARD_DIMENSION; i += 1) {
+      const labelIndex = this.isFlipped ? BOARD_DIMENSION - 1 - i : i;
+
+      const colLabel = this.columnLabels[i];
+      colLabel.text = COLUMN_LETTERS[labelIndex];
+      colLabel.style.fontSize = fontSize;
+      colLabel.position.set(
+        this.boardOffsetX + (i * this.squareSize) + (this.squareSize / 2),
+        this.boardOffsetY - halfFrame,
+      );
+
+      const rowLabel = this.rowLabels[i];
+      rowLabel.text = ROW_NUMBERS[labelIndex];
+      rowLabel.style.fontSize = fontSize;
+      rowLabel.position.set(
+        this.boardOffsetX - halfFrame,
+        this.boardOffsetY + (i * this.squareSize) + (this.squareSize / 2),
+      );
     }
   }
 
