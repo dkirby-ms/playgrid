@@ -1240,3 +1240,40 @@ Implemented per-deployment game availability using a `DISABLED_GAMES` environmen
 
 **Status:** Ready for client and infra work. Feature merged into decisions.md (`pemulis-game-availability.md`).
 
+### Chess Clock for Checkers (2026-01-XX — Issue #165)
+
+**Objective:** Add chess clock (10-minute time banks per player) to Checkers with timeout handling, pause on disconnect, and tick-based countdown.
+
+**Approach:**
+- Added schema fields to CheckersState for player1TimeRemainingMs and player2TimeRemainingMs
+- Implemented onTick lifecycle hook in CheckersPlugin to decrement the active player's clock each tick
+- Modified checkGameEnd condition to detect clock timeout and declare the other player winner
+- Clock automatically pauses when a player disconnects (existing isConnected logic)
+- Leveraged BaseGameRoom's existing setSimulationInterval infrastructure for tick mechanism
+
+**Implementation Details:**
+- `shared/src/games/checkers/CheckersState.ts` — Added `@type("number")` decorated fields for both player clocks with 600000ms (10 min) defaults in constructor and defineTypes
+- `server/src/games/checkers/CheckersPlugin.ts` — Added CHESS_CLOCK_ENABLED constant (true), INITIAL_TIME_BANK_MS constant (600000), onGameStart initialization of clocks, onTick handler that checks phase === "playing" and decrements current player's clock (with disconnect pause via isConnected check), checkGameEnd timeout detection with GameResult creation
+- Clock automatically switches when currentTurn changes after action with endsTurn: true
+- Used Math.max(0, clock - deltaTime) to prevent negative values
+- Mapped sessionId → playerIndex via state.players to know which clock to decrement
+
+**BaseGameRoom Integration:** No changes needed — existing infrastructure in BaseGameRoom.onCreate already sets up tick interval when plugin.lifecycle.onTick exists (lines 108-112), and calls plugin.lifecycle.onTick with deltaTime on each simulation interval.
+
+**Validation:** Build ✓, Tests ✓ (all pass, no new tests added for this server-side feature yet)
+
+**Status:** Server-side logic complete and verified. Ready for client UI integration to display clocks.
+
+
+### Chess Clock Generalized to Base Layer (2026-03-20)
+
+- Refactored chess clock from checkers-specific to a generic base-layer system
+- Schema fields `player1TimeRemainingMs` and `player2TimeRemainingMs` moved from CheckersState to BaseGameState (default 0, set by config)
+- Added `chessClockConfig?: { enabled: boolean; initialTimeBankMs: number }` to GamePlugin interface
+- Chess clock tick logic moved from CheckersPlugin.onTick to BaseGameRoom.updateChessClocks (separate simulation interval)
+- Chess clock timeout detection moved from CheckersPlugin.checkGameEnd to BaseGameRoom.checkChessClockTimeout
+- CheckersPlugin now declares `chessClockConfig: { enabled: true, initialTimeBankMs: 600000 }` instead of hardcoded constants
+- Client GameScene.ts now detects chess clock generically (checks if time fields > 0) instead of hardcoding `gameType === "checkers"`
+- Tests updated to reflect BaseGameState inheritance pattern (fields default to 0, BaseGameRoom sets actual values)
+- All validation passes: `npm run build && npm run test` (773 tests passed including 26 chess clock tests)
+- Pattern ready for ANY 2-player game to opt in by adding chessClockConfig to their plugin

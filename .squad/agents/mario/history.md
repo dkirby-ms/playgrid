@@ -260,3 +260,55 @@
 
 **Impact for Mario:** Gap analysis now drives prioritized implementation plan. P0-P3 roadmap translates to phase sequence.
 
+---
+
+## 2026-03-18: Chess Clock Design Spec Extraction
+
+**Session:** Extracted detailed chess clock design specifications from Figma export for Checkers game.
+
+**Deliverable:** `.squad/decisions/inbox/mario-chess-clock-design-spec.md` — Comprehensive design spec covering:
+
+1. **Sidebar Clock Panel (260px width):**
+   - Layout: Header + two player clock items (Black/Red)
+   - Inactive state: Dark bg (`--bg-card-dark`), light border
+   - Active state: Slate gradient bg + blue 2px border (`--pg-blue-400`), pulsing green indicator dot
+   - Time format: MM:SS, monospace, 32px, bold (weight 700)
+   - Warning state: Red text (`--pg-red-400`) when < 60 seconds
+
+2. **Player Info Bars (above/below board):**
+   - Opponent bar: Avatar + name/label + clock time on right
+   - Player bar: Avatar + name/label + status badge + optional timer
+   - Both use glass-morphism with backdrop blur
+   - Player bar avatar: Blue gradient vs. opponent's slate gradient
+
+3. **Color Mapping (100% coverage):**
+   - All Figma Tailwind classes mapped to existing CSS custom properties
+   - No new tokens required — all colors already in `design-tokens.css`
+   - Key mapping: `ring-2 ring-blue-400` → `border: 2px solid --pg-blue-400`
+
+4. **Interaction States:**
+   - Opponent's turn: Dim, no pulse
+   - Your turn: Active highlight + pulsing green dot (2s cycle)
+   - Critical time (< 60s): Red text + optional red border + faster pulse (1s)
+   - Game over: Not in Figma spec, flagged for coordination
+
+5. **Animations:**
+   - `sidebar-clock-pulse`: Green dot pulse (2s ease-in-out infinite)
+   - `sidebar-clock-highlight`: Border glow (2s ease-in-out infinite)
+   - `sidebar-clock-pulse-fast`: Rapid pulse for critical state (1s)
+   - All respect `prefers-reduced-motion` media query
+
+**Key Insights:**
+- Figma uses inline styles + Tailwind classes; current implementation uses CSS custom properties (cleaner, more maintainable)
+- Clock time should be significantly larger (32px) than system font scale to emphasize urgency
+- Monospace font + `font-variant-numeric: tabular-nums` critical for fixed-width digit display
+- Pulsing animations must be tested for accessibility (seizure risk)
+- Mobile responsive already planned: clock panel hides < 768px, player bars stack < 720px
+
+**Ready for Implementation:** All specs match current design system patterns. Frontend dev (Ortho) can implement without design system changes.
+
+**Files:**
+- Spec location: `.squad/decisions/inbox/mario-chess-clock-design-spec.md` (18KB)
+- References: Figma export, existing `GameSidebar.ts`, `PlayerInfoBar.ts`, `design-tokens.css`
+
+

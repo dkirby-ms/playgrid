@@ -111,6 +111,13 @@ export class BaseGameRoom extends Room {
       });
     }
 
+    // Chess clock tick (separate from onTick to ensure it runs independently)
+    if (this.plugin.chessClockConfig?.enabled) {
+      this.setSimulationInterval((deltaTime) => {
+        this.updateChessClocks(deltaTime);
+      });
+    }
+
     if (this.clock) {
       this.clock.setInterval(() => {
         this.updateTurnTimeRemaining();
@@ -376,6 +383,15 @@ export class BaseGameRoom extends Room {
       return true;
     }
 
+    // Check for chess clock timeout (after normal game end check)
+    if (this.plugin.chessClockConfig?.enabled && this.state.phase === "playing") {
+      const timeoutResult = this.checkChessClockTimeout();
+      if (timeoutResult) {
+        await this.endGame(timeoutResult);
+        return true;
+      }
+    }
+
     if (result.endsTurn) {
       this.advanceTurn();
     }
@@ -414,6 +430,13 @@ export class BaseGameRoom extends Room {
     });
 
     this.plugin.lifecycle.onGameStart(this.state);
+    
+    // Initialize chess clocks if enabled
+    if (this.plugin.chessClockConfig?.enabled) {
+      this.state.player1TimeRemainingMs = this.plugin.chessClockConfig.initialTimeBankMs;
+      this.state.player2TimeRemainingMs = this.plugin.chessClockConfig.initialTimeBankMs;
+    }
+    
     this.turnManager.startTurns();
     this.state.currentTurn = this.turnManager.getCurrentPlayer();
     this.state.turnNumber = this.turnManager.getTurnNumber();
@@ -1048,5 +1071,77 @@ export class BaseGameRoom extends Room {
     if (msg !== null && msg !== undefined) {
       client.send("player-data", msg);
     }
+  }
+
+  private updateChessClocks(deltaTime: number) {
+    // Only tick during active gameplay
+    if (this.state.phase !== "playing") {
+      return;
+    }
+
+    // Get the current player
+    const currentPlayer = this.state.players.get(this.state.currentTurn);
+    if (!currentPlayer || currentPlayer.isSpectator) {
+      return;
+    }
+
+    // Check if player is connected (pause clock on disconnect)
+    if (!currentPlayer.isConnected) {
+      return;
+    }
+
+    // Decrement the active player's clock
+    const playerIndex = currentPlayer.playerIndex;
+    if (playerIndex === 0) {
+      this.state.player1TimeRemainingMs = Math.max(0, this.state.player1TimeRemainingMs - deltaTime);
+    } else if (playerIndex === 1) {
+      this.state.player2TimeRemainingMs = Math.max(0, this.state.player2TimeRemainingMs - deltaTime);
+    }
+  }
+
+  private checkChessClockTimeout(): GameResult | null {
+    const players = Array.from(this.state.players.values()).filter((player) => !player.isSpectator);
+
+    // Check if player 1 (index 0) ran out of time
+    if (this.state.player1TimeRemainingMs <= 0) {
+      const player1 = players.find((p) => p.playerIndex === 0);
+      const player2 = players.find((p) => p.playerIndex === 1);
+      if (player1 && player2) {
+        return {
+          type: "timeout",
+          winnerId: player2.sessionId,
+          scores: {
+            [player1.sessionId]: 0,
+            [player2.sessionId]: 1,
+          },
+          metadata: {
+            reason: "chess_clock_timeout",
+            timedOutPlayerId: player1.sessionId,
+          },
+        };
+      }
+    }
+
+    // Check if player 2 (index 1) ran out of time
+    if (this.state.player2TimeRemainingMs <= 0) {
+      const player1 = players.find((p) => p.playerIndex === 0);
+      const player2 = players.find((p) => p.playerIndex === 1);
+      if (player1 && player2) {
+        return {
+          type: "timeout",
+          winnerId: player1.sessionId,
+          scores: {
+            [player1.sessionId]: 1,
+            [player2.sessionId]: 0,
+          },
+          metadata: {
+            reason: "chess_clock_timeout",
+            timedOutPlayerId: player2.sessionId,
+          },
+        };
+      }
+    }
+
+    return null;
   }
 }

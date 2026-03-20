@@ -50,6 +50,48 @@ export function getTurnClockMarkup(seconds: number | null, visible: boolean): st
   return `<div class="sidebar-stat-row"><span class="sidebar-stat-label">Turn Clock</span><span class="sidebar-stat-value sidebar-turn-clock${criticalClass}">${escapeHtml(formatTurnClock(seconds))}</span></div>`;
 }
 
+export function getChessClockMarkup(
+  player1TimeMs: number,
+  player2TimeMs: number,
+  activePlayerIndex: number,
+  player1Name: string,
+  player2Name: string,
+): string {
+  const player1Seconds = Math.ceil(player1TimeMs / 1000);
+  const player2Seconds = Math.ceil(player2TimeMs / 1000);
+  const player1Critical = player1Seconds < 60;
+  const player2Critical = player2Seconds < 60;
+  const player1Active = activePlayerIndex === 0;
+  const player2Active = activePlayerIndex === 1;
+
+  const player1ItemClass = `sidebar-clock-item${player1Active ? " sidebar-clock-item--active" : ""}${player1Critical && player1Active ? " sidebar-clock-item--critical" : ""}`;
+  const player2ItemClass = `sidebar-clock-item${player2Active ? " sidebar-clock-item--active" : ""}${player2Critical && player2Active ? " sidebar-clock-item--critical" : ""}`;
+  const player1TimeClass = `sidebar-clock-time${player1Critical ? " sidebar-clock-time--critical" : ""}`;
+  const player2TimeClass = `sidebar-clock-time${player2Critical ? " sidebar-clock-time--critical" : ""}`;
+
+  const player1Indicator = player1Active ? '<div class="sidebar-clock-indicator"></div>' : "";
+  const player2Indicator = player2Active ? '<div class="sidebar-clock-indicator"></div>' : "";
+
+  return `
+    <div class="sidebar-clock-container">
+      <div class="${player1ItemClass}">
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1;">
+          <div class="sidebar-clock-player-name">${escapeHtml(player1Name)} (Black)</div>
+          <div class="${player1TimeClass}">${escapeHtml(formatTurnClock(player1Seconds))}</div>
+        </div>
+        ${player1Indicator}
+      </div>
+      <div class="${player2ItemClass}">
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1;">
+          <div class="sidebar-clock-player-name">${escapeHtml(player2Name)} (Red)</div>
+          <div class="${player2TimeClass}">${escapeHtml(formatTurnClock(player2Seconds))}</div>
+        </div>
+        ${player2Indicator}
+      </div>
+    </div>
+  `;
+}
+
 function injectStyles(): void {
   if (document.getElementById(GAME_SIDEBAR_STYLE_ID)) {
     return;
@@ -356,8 +398,119 @@ function injectStyles(): void {
       transform: none;
     }
 
+    .sidebar-clock-container {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+
+    .sidebar-clock-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      min-height: 64px;
+      padding: var(--space-md) var(--space-lg);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-lg);
+      background: var(--bg-card-dark);
+      transition: all 200ms ease;
+    }
+
+    .sidebar-clock-item--active {
+      background: linear-gradient(135deg, var(--pg-slate-700), var(--pg-slate-800));
+      border: 2px solid var(--pg-blue-400);
+      box-shadow: 
+        inset 0 0 0 2px var(--pg-blue-400),
+        0 0 16px rgba(96, 165, 250, 0.3);
+      animation: sidebar-clock-highlight 2000ms ease-in-out infinite;
+    }
+
+    .sidebar-clock-item--active.sidebar-clock-item--critical {
+      background: rgba(248, 113, 113, 0.08);
+      border-color: var(--pg-red-400);
+    }
+
+    .sidebar-clock-player-name {
+      color: var(--pg-slate-400);
+      font-size: var(--font-xs);
+      font-weight: 400;
+      line-height: 1.2;
+    }
+
+    .sidebar-clock-time {
+      color: var(--text-primary);
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      font-family: 'Courier New', Consolas, monospace;
+    }
+
+    .sidebar-clock-time--critical {
+      color: var(--pg-red-400);
+      font-weight: 800;
+    }
+
+    .sidebar-clock-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--pg-green-500);
+      flex-shrink: 0;
+      animation: sidebar-clock-pulse 2000ms ease-in-out infinite;
+    }
+
+    .sidebar-clock-item--active.sidebar-clock-item--critical .sidebar-clock-indicator {
+      animation: sidebar-clock-pulse-fast 1000ms ease-in-out infinite;
+    }
+
+    @keyframes sidebar-clock-pulse {
+      0%, 100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+      }
+      50% {
+        opacity: 0.7;
+        box-shadow: 0 0 8px 2px rgba(34, 197, 94, 0.2);
+      }
+    }
+
+    @keyframes sidebar-clock-highlight {
+      0%, 100% {
+        box-shadow: 
+          inset 0 0 0 2px var(--pg-blue-400),
+          0 0 16px rgba(96, 165, 250, 0.3);
+      }
+      50% {
+        box-shadow: 
+          inset 0 0 0 2px var(--pg-blue-400),
+          0 0 24px rgba(96, 165, 250, 0.5);
+      }
+    }
+
+    @keyframes sidebar-clock-pulse-fast {
+      0%, 100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.4);
+      }
+      50% {
+        opacity: 0.6;
+        box-shadow: 0 0 12px 3px rgba(248, 113, 113, 0.3);
+      }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       .sidebar-stat-row--turn-active {
+        animation: none;
+      }
+      .sidebar-clock-item--active {
+        animation: none;
+      }
+      .sidebar-clock-indicator {
+        animation: none;
+      }
+      .sidebar-clock-item--active.sidebar-clock-item--critical .sidebar-clock-indicator {
         animation: none;
       }
     }
@@ -379,6 +532,10 @@ function injectStyles(): void {
 
       .sidebar-panel-header h3 {
         font-size: var(--font-base);
+      }
+
+      .sidebar-clock-time {
+        font-size: 1.75rem;
       }
     }
   `;

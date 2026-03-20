@@ -467,3 +467,81 @@ Implemented comprehensive design enhancements to HistoryScreen based on Figma de
 
 **Status:** Ready for deployment. Feature merged into decisions.md (`ortho-game-availability.md`).
 
+
+---
+
+## 2026-03-20: Chess Clock UI for Checkers (Issue #165)
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass
+
+### Task: Implement chess clock UI panel and player info bar time display
+
+Implemented the chess clock UI for the Checkers game following Mario's design spec at `.squad/decisions/inbox/mario-chess-clock-design-spec.md`.
+
+**1. GameSidebar Chess Clock Panel**
+- Added new "Game Clock" sidebar panel (4th panel, between "Game Info" and "Move History")
+- Two stacked clock items showing both players' remaining time
+- Active player clock: Blue border ring (`--pg-blue-400`), gradient background, pulsing green dot, glow animation
+- Inactive player clock: Dark subdued background (`--bg-card-dark`)
+- Critical state (< 60 seconds): Red text (`--pg-red-400`), red border, faster pulse animation
+- Clock time format: MM:SS with `font-variant-numeric: tabular-nums` (fixed-width monospace)
+- Animations: `sidebar-clock-pulse` (2s), `sidebar-clock-highlight` (2s), `sidebar-clock-pulse-fast` (1s for critical)
+- All animations respect `prefers-reduced-motion` accessibility setting
+
+**2. Player Info Bars Chess Clock Display**
+- Updated PlayerInfoBar to show per-player remaining time (not just active turn timer)
+- GameScene checks `gameType === "checkers"` and extracts per-player times from state
+- Opponent bar shows opponent's remaining time; player bar shows your remaining time
+- Extracted chess clock times via `extractChessClockTime(state, playerIndex)` method
+
+**3. CheckersRenderer Integration**
+- Added `player1TimeRemainingMs` and `player2TimeRemainingMs` fields (defaults: 600000 = 10 min)
+- Extracted chess clock data from Colyseus state in `applyState()` method
+- Created `updateChessClockPanel()` method to populate the sidebar panel with live data
+- Added `getPlayerByIndex(playerIndex)` helper to map player indices to player snapshots
+- Chess clock panel updates on every state change and sidebar refresh
+
+**4. Design Tokens & CSS**
+- No new CSS custom properties required — all colors already exist in `design-tokens.css`
+- Active clock gradient: `linear-gradient(135deg, var(--pg-slate-700), var(--pg-slate-800))`
+- Active border: `2px solid var(--pg-blue-400)`
+- Critical text: `var(--pg-red-400)`
+- Pulsing dot: `var(--pg-green-500)` with box-shadow animation
+- Mobile responsive: Clock time font-size scales down to 1.75rem on tablet (768-1024px)
+
+**Modified:**
+- `client/src/ui/GameSidebar.ts`
+  - Added CSS classes: `.sidebar-clock-container`, `.sidebar-clock-item`, `.sidebar-clock-item--active`, `.sidebar-clock-item--critical`, `.sidebar-clock-time`, `.sidebar-clock-time--critical`, `.sidebar-clock-indicator`, `.sidebar-clock-player-name`
+  - Added keyframe animations: `sidebar-clock-pulse`, `sidebar-clock-highlight`, `sidebar-clock-pulse-fast`
+  - Added `getChessClockMarkup()` helper function to generate chess clock HTML
+
+- `client/src/renderers/CheckersRenderer.ts`
+  - Added fields: `player1TimeRemainingMs`, `player2TimeRemainingMs`
+  - Modified `init()`: Added "game-clock" panel after "game-info"
+  - Modified `applyState()`: Extract chess clock times from state
+  - Modified `updateSidebar()`: Call `updateChessClockPanel()` to populate clock data
+  - Added `updateChessClockPanel()`: Generate and update chess clock markup
+  - Added `getPlayerByIndex()`: Map player index to PlayerSnapshot
+
+- `client/src/ui/PlayerInfoBar.ts`
+  - No changes — already supports `timerSeconds` display
+
+- `client/src/scenes/GameScene.ts`
+  - Modified `buildPlayerInfoData()`: Check for checkers game type, extract chess clock time per player
+  - Added `extractChessClockTime()`: Extract player1/player2TimeRemainingMs from state by player index
+
+### Learnings
+
+- **Chess clock data flow:** Server adds `player1TimeRemainingMs` and `player2TimeRemainingMs` fields to CheckersState → Colyseus auto-syncs to client → CheckersRenderer extracts in `applyState()` → Sidebar panel and PlayerInfoBar both display the times
+- **Active player detection:** Use `state.currentTurn` to get session ID, look up player in `this.players`, check `player.playerIndex` (0 = Black, 1 = Red)
+- **Sidebar panel order:** Game Clock panel placed between "Game Info" and "Move History" for logical grouping (game state → clock → history → controls)
+- **CSS animation best practice:** Always provide `@media (prefers-reduced-motion: reduce)` fallback with `animation: none` for accessibility
+- **Monospace time display:** Use `font-family: 'Courier New', Consolas, monospace` + `font-variant-numeric: tabular-nums` for fixed-width digits (prevents layout shift as time counts down)
+- **Critical time threshold:** Design spec specifies < 60 seconds for critical state (red text, red border, faster pulse)
+- **Optional chaining on Colyseus state:** Always use `?.` when accessing state fields that may not exist yet (e.g., `stateWithClocks?.player1TimeRemainingMs`)
+- **GameScene game-specific state access:** For game-specific state fields (like chess clock times), add extraction helpers to GameScene that check `gameType` and safely cast state to access those fields
+- **PlayerInfoBar timer persistence:** Unlike turn timer (only shows for active player), chess clock time shows for BOTH players at all times — this required updating GameScene to extract per-player time instead of just active turn time
+- **Design token reuse:** All Figma colors (`from-slate-700 to-slate-800`, `ring-2 ring-blue-400`, `text-red-400`, `bg-green-500 animate-pulse`) mapped directly to existing CSS custom properties — zero new tokens needed
+
+**Status:** Implementation complete. Server-side chess clock logic (Pemulis) will populate `player1TimeRemainingMs` and `player2TimeRemainingMs` fields. UI is ready to display them.

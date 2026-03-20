@@ -15,7 +15,7 @@ import {
   getValidMoves,
   type CheckersMove,
 } from "../games/checkers/checkersClientLogic";
-import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
+import { GameSidebar, escapeHtml, getTurnClockMarkup, getChessClockMarkup } from "../ui/GameSidebar";
 import { DragHelper } from "./DragHelper";
 import {
   ACCENT_BLUE,
@@ -172,6 +172,8 @@ export class CheckersRenderer implements GameRenderer {
   private sidebar: GameSidebar | null = null;
   private turnClockSeconds: number | null = null;
   private showTurnClock = false;
+  private player1TimeRemainingMs = 600000;
+  private player2TimeRemainingMs = 600000;
   private unsubscribeGameEnded: (() => void) | null = null;
   private board: number[] = Array.from({ length: BOARD_CELL_COUNT }, () => EMPTY);
   private phase = "waiting";
@@ -259,6 +261,7 @@ export class CheckersRenderer implements GameRenderer {
     this.sidebar?.destroy();
     this.sidebar = new GameSidebar();
     this.sidebar.addPanel("game-info", "Game Info");
+    this.sidebar.addPanel("game-clock", "Game Clock");
     this.sidebar.addPanel("move-history", "Move History");
     this.sidebar.addPanel("controls", "Controls");
     this.sidebar.show();
@@ -813,6 +816,16 @@ export class CheckersRenderer implements GameRenderer {
       : NO_FORCED_CAPTURE;
     this.players = this.parsePlayers(nextState);
     this.isFlipped = this.getPerspectivePlayerColor() === BLACK;
+    
+    // Extract chess clock times from state
+    const stateWithClocks = nextState as { player1TimeRemainingMs?: number; player2TimeRemainingMs?: number };
+    this.player1TimeRemainingMs = typeof stateWithClocks?.player1TimeRemainingMs === "number" 
+      ? stateWithClocks.player1TimeRemainingMs 
+      : 600000;
+    this.player2TimeRemainingMs = typeof stateWithClocks?.player2TimeRemainingMs === "number" 
+      ? stateWithClocks.player2TimeRemainingMs 
+      : 600000;
+    
     this.recordMove(previousBoard, previousCurrentTurn, previousPlayers);
   }
 
@@ -1015,6 +1028,15 @@ export class CheckersRenderer implements GameRenderer {
     return this.players.get(localSessionId) ?? null;
   }
 
+  private getPlayerByIndex(playerIndex: number): PlayerSnapshot | null {
+    for (const player of this.players.values()) {
+      if (player.playerIndex === playerIndex) {
+        return player;
+      }
+    }
+    return null;
+  }
+
   private getLocalPlayerColor(): number | null {
     const localPlayer = this.getLocalPlayer();
     if (!localPlayer || localPlayer.isSpectator) {
@@ -1123,6 +1145,9 @@ export class CheckersRenderer implements GameRenderer {
       </div>${notes.join("")}`,
     );
 
+    // Update chess clock panel
+    this.updateChessClockPanel();
+
     const historyMarkup = this.moveHistory.length > 0
       ? `<div class="sidebar-history-list">${this.moveHistory.map((move, index) => `
           <div class="sidebar-history-item">
@@ -1149,6 +1174,33 @@ export class CheckersRenderer implements GameRenderer {
         this.requestLeave?.();
       };
     }
+  }
+
+  private updateChessClockPanel(): void {
+    if (!this.sidebar) {
+      return;
+    }
+
+    // Get player names
+    const player1 = this.getPlayerByIndex(0);
+    const player2 = this.getPlayerByIndex(1);
+    const player1Name = player1?.displayName || "Player 1";
+    const player2Name = player2?.displayName || "Player 2";
+
+    // Determine active player (0 for Black/player1, 1 for Red/player2)
+    const currentPlayer = this.players.get(this.currentTurn);
+    const activePlayerIndex = currentPlayer?.playerIndex ?? -1;
+
+    // Generate chess clock markup
+    const clockMarkup = getChessClockMarkup(
+      this.player1TimeRemainingMs,
+      this.player2TimeRemainingMs,
+      activePlayerIndex,
+      player1Name,
+      player2Name,
+    );
+
+    this.sidebar.updatePanel("game-clock", clockMarkup);
   }
 
   private getCurrentTurnRowMarkup(): string {

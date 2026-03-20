@@ -271,6 +271,10 @@ export const checkersPlugin: GamePlugin<CheckersState> = {
     turnOrder: { type: "round-robin" },
     allowPass: false,
   },
+  chessClockConfig: {
+    enabled: true,
+    initialTimeBankMs: 600000, // 10 minutes
+  },
   lifecycle: {
     onGameStart(state) {
       replaceBoard(state, initializeBoard());
