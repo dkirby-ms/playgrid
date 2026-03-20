@@ -809,3 +809,24 @@ permissions:
 
 **Status:** Production-ready. Feature merged into decisions.md (`marathe-infra-updates.md`).
 
+---
+
+### 2025-07-18: Promote Workflow — Idempotency Fix & Push-Only Option
+
+**Problem:** The promote workflow (`promote.yml`) was not idempotent. When the first run bumped version to 0.2.0 and pushed the commit but the PR creation step failed, re-running the workflow bumped the version again to 0.3.0. This created a double-bump.
+
+**Root cause:** The bump step always runs unconditionally — `npm version minor` increments from whatever the current version is. A re-run after a partial failure bumps again.
+
+**Fix applied:**
+1. **Reverted version from 0.3.0 → 0.2.0** across all package.json files. Deleted v0.3.0 tag (local + remote). Closed stale PR #170.
+2. **Added `none` option to `bump_type` input** — allows skipping the version bump entirely and just creating the tag + PR from the current version.
+3. **Conditional steps:** `Bump release version`, `Commit version bump`, and `Push dev branch` steps are gated with `if: inputs.bump_type != 'none'`. A separate `Read current version (push-only)` step handles the `none` path. A `Set version outputs` step merges both paths into `steps.version.outputs`.
+
+**Pattern — Idempotent release workflows:**
+- Always provide a "push-only" / "skip bump" option for recovery from partial failures.
+- Gate side-effect steps (bump, commit, push) with conditionals.
+- The existing tag-existence check in `Create release tag` already prevents duplicate tags — that part was already idempotent.
+- The existing PR-existence check prevents duplicate PRs — also already idempotent.
+
+**Validation:** Workflow YAML reviewed for correctness. Version revert pushed to dev. Workflow fix pushed to dev.
+
