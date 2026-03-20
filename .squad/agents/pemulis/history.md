@@ -1312,3 +1312,26 @@ Promoted chess clock from checkers-specific to generic base-layer system:
 - Zero breaking changes
 
 **Learning:** Two-pass implementation strategy (specific → generic) balances speed of initial feedback with long-term reusability. Copilot directive provided clear scope adjustment (base-layer design).
+
+### Disable chess clock for CPU games (2026-03-20)
+
+- Added `!this.cpuOpponentEnabled` guard to all three chess-clock code paths in `BaseGameRoom.ts`: the simulation interval registration (`onCreate`), the clock initialization (`startGame`), and the timeout check (`processAction`).
+- The `cpuOpponentEnabled` flag is already set from room options at `onCreate` time, so no new state or flags were needed — just three `&&` clauses.
+- Important subtlety: without the guard on `checkChessClockTimeout()`, skipping clock initialization alone would cause an immediate timeout (clocks default to 0, and `<= 0` triggers forfeit).
+- Added 3 integration tests to `chess-clock.test.ts` using the BaseGameRoom mock infrastructure: CPU game clocks stay at 0, no simulation interval registered for CPU games, human-vs-human clocks still work.
+- Build, lint (no new errors), and all 776 tests pass.
+
+---
+
+### 2026-03-20: Orchestration Complete (Scribe)
+
+Session finalized: Orchestration logs created, decisions merged, cross-agent references propagated. See `.squad/log/2026-03-20T15-15-24Z-scribe-session.md`.
+
+**Related work:**
+- Marathe: Dev→UAT workflow dispatch (parallel)
+- Gately: Board coordinate labels (completed earlier, merged in this session)
+
+**Decisions merged:** `pemulis-cpu-no-timer.md` → decisions.md
+
+**Test Results:** 776 tests passing (all green)
+

@@ -5864,3 +5864,63 @@ Comprehensive unit test suite for chess clock feature (26 tests).
 
 ---
 
+
+---
+
+## Session: P6.3 DevOps & CPU Opponent Guards (2026-03-20)
+
+### Marathe: Dev→UAT Workflow Dispatch (Fast-Forward Push)
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Author:** Marathe (DevOps / CI-CD)
+
+Created `.github/workflows/push-to-uat.yml` — a manual `workflow_dispatch` workflow for promoting `dev` to `uat` branch.
+
+**Decision:** Uses `git push origin HEAD:uat` (fast-forward only), not force push.
+
+**Rationale:**
+- Fast-forward is the safe default — prevents accidental overwrites on `uat`
+- Expected flow is `dev` → `uat` → `prod`, so `uat` should never be ahead of `dev`
+- If force push is needed, it should be a deliberate manual operation
+
+**Impact:** Team can manually trigger UAT promotion via GitHub Actions UI. Existing `deploy-uat.yml` fires automatically on push.
+
+---
+
+### Pemulis: Disable Chess Clock for CPU Opponent Games
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Author:** Pemulis (Systems Dev)
+
+When any CPU opponent is present, chess clocks are fully disabled (not initialized, tick interval not registered, timeout forfeits skipped).
+
+**Rationale:**
+- CPU opponents respond in ~200ms, making timed play irrelevant and unfair to humans
+- `cpuOpponentEnabled` flag is the single source of truth (no new state needed)
+- Guarding all three chess-clock code paths ensures complete inertness
+
+**Implementation:** 3 guard clauses in `BaseGameRoom.ts` (onCreate, startGame, processAction). 3 integration tests added. All 776 tests passing.
+
+**Impact:** Generic solution — any game plugin with `chessClockConfig.enabled` inherits this. No breaking changes to human-vs-human games.
+
+---
+
+### Gately: Board Coordinate Label Positioning in Frame Band
+
+**Status:** Implemented  
+**Date:** 2026-03-20  
+**Issue:** #165
+
+Algebraic coordinate labels (A–H, 8–1) placed inside the 24px board frame using PIXI.Text in a non-interactive container, rather than on squares or outside frame.
+
+**Rationale:**
+- Frame band provides natural gutter without consuming board real estate
+- Dedicated `coordLabelsContainer` keeps labels visually prominent but interaction-free (eventMode "none")
+- Labels flip with board perspective (`isFlipped`) maintaining algebraic consistency
+- Font size scales with board (10–14px clamped) for viewport readability
+- Uses stone-400 (`0xa8a29e`) per Figma spec
+
+**Impact:** Reusable pattern for any game needing board annotations (e.g., Chess). No changes to drag/drop, piece rendering, or hit detection. Build, lint, tests all pass.
+
