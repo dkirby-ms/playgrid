@@ -25,26 +25,13 @@ import {
   createRiskSetupConfig,
   createDominosSetupConfig,
 } from "./setup";
+import { getGameLabel, getPlayerCountLabel } from "./gameTypeCache";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const STYLE_ID = "playgrid-setup-screen-styles";
-
-const GAME_LABELS: Record<string, string> = {
-  checkers: "Checkers",
-  backgammon: "Backgammon",
-  risk: "Risk",
-  dominos: "Dominos",
-};
-
-const GAME_PLAYER_LABELS: Record<string, string> = {
-  checkers: "2 Players",
-  backgammon: "2 Players",
-  risk: "2–6 Players",
-  dominos: "2–4 Players",
-};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1005,7 +992,7 @@ export class SetupScreen {
   // ---------------------------------------------------------------------------
 
   private updateHeader(): void {
-    const label = GAME_LABELS[this.gameType] ?? this.gameType;
+    const label = getGameLabel(this.gameType);
     this.titleEl.textContent = `${label} — Game Setup`;
     this.subtitleEl.textContent = this.mode === "create"
       ? "Configure your match settings"
@@ -1016,7 +1003,7 @@ export class SetupScreen {
   }
 
   private updatePlayerCountHeader(): void {
-    const label = GAME_PLAYER_LABELS[this.gameType] ?? "";
+    const label = getPlayerCountLabel(this.gameType);
     if (this.mode === "waiting" && this.gameInfo) {
       this.playerCountEl.textContent = `👥 ${this.players.length}/${this.gameInfo.maxPlayers}`;
     } else {

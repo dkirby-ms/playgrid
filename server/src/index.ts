@@ -4,6 +4,8 @@ import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
+import type { Schema } from "@colyseus/schema";
+import type { GamePlugin } from "@eschaton/shared";
 import { config } from "./config.js";
 import { connectDb } from "./db.js";
 import { BaseGameRoom } from "./game/BaseGameRoom.js";
@@ -52,10 +54,22 @@ const server = new Server({
   }),
 });
 
-gameRegistry.register(checkersPlugin);
-gameRegistry.register(backgammonPlugin);
-gameRegistry.register(riskPlugin);
-gameRegistry.register(dominosPlugin);
+const allPlugins: readonly GamePlugin<Schema>[] = [
+  checkersPlugin as unknown as GamePlugin<Schema>,
+  backgammonPlugin as unknown as GamePlugin<Schema>,
+  riskPlugin as unknown as GamePlugin<Schema>,
+  dominosPlugin as unknown as GamePlugin<Schema>,
+];
+
+for (const plugin of allPlugins) {
+  if (!config.disabledGames.has(plugin.id)) {
+    gameRegistry.register(plugin);
+  }
+}
+
+if (config.disabledGames.size > 0) {
+  console.log(`[playgrid] Disabled games: ${[...config.disabledGames].join(", ")}`);
+}
 
 server.define("game", BaseGameRoom);
 server.define("lobby", LobbyRoom);

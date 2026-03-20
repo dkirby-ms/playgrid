@@ -1,6 +1,8 @@
 import type { Room } from "@colyseus/sdk";
+import { AVAILABLE_GAME_TYPES, type GameTypeInfo } from "@eschaton/shared";
 import { MessageLog } from "./MessageLog.js";
 import type { ConsoleLog } from "./ConsoleLog";
+import { updateAvailableGameTypes } from "./gameTypeCache";
 
 export const CREATE_GAME = "create_game" as const;
 export const JOIN_GAME = "join_game" as const;
@@ -121,7 +123,8 @@ interface GameTypeOption {
   selectablePlayerCounts: number[];
 }
 
-const GAME_TYPE_OPTIONS: GameTypeOption[] = [
+/** Hardcoded fallback used when the server hasn't sent AVAILABLE_GAME_TYPES yet. */
+const DEFAULT_GAME_TYPES: GameTypeOption[] = [
   {
     value: "checkers",
     label: "Checkers",
@@ -149,8 +152,20 @@ const GAME_TYPE_OPTIONS: GameTypeOption[] = [
 ];
 const MAX_DISPLAY_NAME_LENGTH = 24;
 
-function getGameTypeOption(gameType: string): GameTypeOption {
-  return GAME_TYPE_OPTIONS.find((option) => option.value === gameType) ?? GAME_TYPE_OPTIONS[0];
+function gameTypeInfoToOption(info: GameTypeInfo): GameTypeOption {
+  const [min, max] = info.playerCount;
+  const counts: number[] = [];
+  for (let i = min; i <= max; i++) counts.push(i);
+  return {
+    value: info.id,
+    label: info.name,
+    playerCountLabel: min === max ? `${min} players` : `${min}-${max} players`,
+    selectablePlayerCounts: counts,
+  };
+}
+
+function getGameTypeOptionFrom(list: GameTypeOption[], gameType: string): GameTypeOption {
+  return list.find((option) => option.value === gameType) ?? list[0];
 }
 
 const GAME_TILE_ARTWORK: Record<string, string> = {
@@ -197,6 +212,7 @@ export class LobbyScreen {
   private readonly onlinePlayersBadgeEl: HTMLElement;
   private messageLog: MessageLog | null = null;
   private consoleLog: ConsoleLog | null = null;
+  private availableGameTypes: GameTypeOption[] = [...DEFAULT_GAME_TYPES];
 
   private room: Room | null = null;
   private boundRoom: Room | null = null;
@@ -371,7 +387,7 @@ export class LobbyScreen {
     this.gameTypeInput = createElement("select", "lobby-select") as HTMLSelectElement;
     this.gameTypeInput.name = "game-type";
 
-    for (const optionConfig of GAME_TYPE_OPTIONS) {
+    for (const optionConfig of this.availableGameTypes) {
       const option = createElement("option") as HTMLOptionElement;
       option.value = optionConfig.value;
       option.textContent = optionConfig.label;
@@ -484,6 +500,13 @@ export class LobbyScreen {
       for (const game of payload.games) {
         this.games.set(game.id, game);
       }
+      this.renderGameList();
+    });
+
+    room.onMessage(AVAILABLE_GAME_TYPES, (types: GameTypeInfo[]) => {
+      this.availableGameTypes = types.map(gameTypeInfoToOption);
+      updateAvailableGameTypes(types);
+      this.refreshGameTypeDropdown();
       this.renderGameList();
     });
 
@@ -661,16 +684,37 @@ export class LobbyScreen {
   }
 
   private getSelectedGameType(): string {
-    return this.gameTypeInput.value || GAME_TYPE_OPTIONS[0].value;
+    return this.gameTypeInput.value || this.availableGameTypes[0]?.value || DEFAULT_GAME_TYPES[0].value;
+  }
+
+  private getGameTypeOption(gameType: string): GameTypeOption {
+    return getGameTypeOptionFrom(this.availableGameTypes, gameType);
+  }
+
+  /** Rebuild the game-type <select> in the Create Game modal to match availableGameTypes. */
+  private refreshGameTypeDropdown(): void {
+    const previousValue = this.gameTypeInput.value;
+    this.gameTypeInput.textContent = "";
+    for (const optionConfig of this.availableGameTypes) {
+      const option = createElement("option") as HTMLOptionElement;
+      option.value = optionConfig.value;
+      option.textContent = optionConfig.label;
+      this.gameTypeInput.append(option);
+    }
+    // Preserve previous selection if it's still available
+    if (this.availableGameTypes.some((o) => o.value === previousValue)) {
+      this.gameTypeInput.value = previousValue;
+    }
+    this.syncGameTypeConstraints();
   }
 
   private getSelectedMaxPlayers(): number {
-    const selectedGameType = getGameTypeOption(this.getSelectedGameType());
+    const selectedGameType = this.getGameTypeOption(this.getSelectedGameType());
     return Number(this.maxPlayersInput.value) || selectedGameType.selectablePlayerCounts[0] || 2;
   }
 
   private syncGameTypeConstraints(): void {
-    const gameTypeOption = getGameTypeOption(this.getSelectedGameType());
+    const gameTypeOption = this.getGameTypeOption(this.getSelectedGameType());
     const currentValue = Number(this.maxPlayersInput.value);
     const selectedValue = gameTypeOption.selectablePlayerCounts.includes(currentValue)
       ? currentValue
@@ -698,7 +742,7 @@ export class LobbyScreen {
   }
 
   private isTwoPlayerGameType(gameType: string): boolean {
-    return getGameTypeOption(gameType).selectablePlayerCounts.length === 1;
+    return this.getGameTypeOption(gameType).selectablePlayerCounts.length === 1;
   }
 
   private supportsHeadToHeadMode(gameType: string): boolean {
@@ -726,7 +770,7 @@ export class LobbyScreen {
     const filteredGames = this.getFilteredGames();
     
     // Render game type tiles (always show available game types)
-    for (const gameTypeOption of GAME_TYPE_OPTIONS) {
+    for (const gameTypeOption of this.availableGameTypes) {
       const activeGamesOfType = filteredGames.filter((game) => game.gameType === gameTypeOption.value);
       const tile = this.buildGameTile(gameTypeOption, activeGamesOfType.length);
       this.gameListBody.append(tile);
@@ -849,7 +893,7 @@ export class LobbyScreen {
     const meta = createElement("div", "active-game-meta");
     
     const gameTypeMeta = createElement("span", "active-game-meta-item");
-    const gameTypeOption = getGameTypeOption(game.gameType);
+    const gameTypeOption = this.getGameTypeOption(game.gameType);
     gameTypeMeta.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg><span>${gameTypeOption.label}</span>`;
     
     const playersMeta = createElement("span", "active-game-meta-item");
