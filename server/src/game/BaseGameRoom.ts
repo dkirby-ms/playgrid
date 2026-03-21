@@ -112,7 +112,8 @@ export class BaseGameRoom extends Room {
     }
 
     // Chess clock tick (separate from onTick to ensure it runs independently)
-    if (this.plugin.chessClockConfig?.enabled) {
+    // Disabled when a CPU opponent is present — CPU games are untimed.
+    if (this.plugin.chessClockConfig?.enabled && !this.cpuOpponentEnabled) {
       this.setSimulationInterval((deltaTime) => {
         this.updateChessClocks(deltaTime);
       });
@@ -384,7 +385,7 @@ export class BaseGameRoom extends Room {
     }
 
     // Check for chess clock timeout (after normal game end check)
-    if (this.plugin.chessClockConfig?.enabled && this.state.phase === "playing") {
+    if (this.plugin.chessClockConfig?.enabled && !this.cpuOpponentEnabled && this.state.phase === "playing") {
       const timeoutResult = this.checkChessClockTimeout();
       if (timeoutResult) {
         await this.endGame(timeoutResult);
@@ -431,8 +432,8 @@ export class BaseGameRoom extends Room {
 
     this.plugin.lifecycle.onGameStart(this.state);
     
-    // Initialize chess clocks if enabled
-    if (this.plugin.chessClockConfig?.enabled) {
+    // Initialize chess clocks if enabled (skip for CPU games — they are untimed)
+    if (this.plugin.chessClockConfig?.enabled && !this.cpuOpponentEnabled) {
       this.state.player1TimeRemainingMs = this.plugin.chessClockConfig.initialTimeBankMs;
       this.state.player2TimeRemainingMs = this.plugin.chessClockConfig.initialTimeBankMs;
     }
