@@ -65,6 +65,7 @@ export class WaitingRoom {
   private readonly overlay: HTMLElement;
   private readonly titleEl: HTMLHeadingElement;
   private readonly subtitleEl: HTMLParagraphElement;
+  private readonly gameInfoEl: HTMLParagraphElement;
   private readonly inviteSection: HTMLDivElement;
   private readonly joinLinkInput: HTMLInputElement;
   private readonly copyLinkButton: HTMLButtonElement;
@@ -100,7 +101,8 @@ export class WaitingRoom {
     const header = createElement("header", "overlay-header");
     this.titleEl = createElement("h2", "overlay-title", "Waiting Room") as HTMLHeadingElement;
     this.subtitleEl = createElement("p", "overlay-subtitle", "Waiting for players to join.") as HTMLParagraphElement;
-    header.append(this.titleEl, this.subtitleEl);
+    this.gameInfoEl = createElement("p", "waiting-room-game-info") as HTMLParagraphElement;
+    header.append(this.titleEl, this.subtitleEl, this.gameInfoEl);
 
     this.inviteSection = createElement("div", "waiting-room-invite-section") as HTMLDivElement;
     const shareHeading = createElement("h3", "section-title", "Invite Players");
@@ -235,6 +237,7 @@ export class WaitingRoom {
     this.updateJoinLink();
     this.updateInviteSectionVisibility();
     this.updatePlayerCount();
+    this.updateGameInfo();
     this.clearCopyFeedback();
     this.renderPlayerList();
     this.updateControls();
@@ -406,6 +409,33 @@ export class WaitingRoom {
   private updatePlayerCount(): void {
     const max = this.gameInfo?.maxPlayers ?? 0;
     this.playerCountEl.textContent = max > 0 ? ` (${this.players.length}/${max})` : "";
+  }
+
+  private updateGameInfo(): void {
+    if (!this.gameInfo) {
+      this.gameInfoEl.textContent = "";
+      return;
+    }
+
+    const infoParts: string[] = [];
+
+    // Time Control
+    if (this.gameInfo.timeControl) {
+      const timeLabels: Record<string, string> = {
+        "no-limit": "⏱ No Time Limit",
+        "blitz": "⏱ Blitz (3:00)",
+        "rapid": "⏱ Rapid (10:00)",
+        "classical": "⏱ Classical (30:00)",
+      };
+      infoParts.push(timeLabels[this.gameInfo.timeControl] || "⏱ Time Control");
+    }
+
+    // Head-to-Head Mode
+    if (this.gameInfo.headToHeadMode) {
+      infoParts.push("🖥 Shared Device");
+    }
+
+    this.gameInfoEl.textContent = infoParts.join(" • ");
   }
 
   private async copyText(text: string): Promise<void> {

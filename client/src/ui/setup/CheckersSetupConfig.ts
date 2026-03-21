@@ -50,6 +50,7 @@ export function createCheckersSetupConfig(): SetupConfigPanel {
       return {
         headToHeadMode: h2hToggle.getValue(),
         maxPlayers: 2,
+        timeControl: timeGroup.getValue(),
       };
     },
     setReadOnly(readOnly: boolean) {

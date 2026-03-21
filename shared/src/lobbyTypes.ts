@@ -28,6 +28,15 @@ export interface GameTypeInfo {
 
 export type GameStatus = "waiting" | "in_progress";
 
+export type TimeControl = "no-limit" | "blitz" | "rapid" | "classical";
+
+export const TIME_CONTROL_MS: Record<TimeControl, number> = {
+  "no-limit": Number.MAX_SAFE_INTEGER,
+  "blitz": 3 * 60 * 1000,
+  "rapid": 10 * 60 * 1000,
+  "classical": 30 * 60 * 1000,
+};
+
 export interface GameSessionInfo {
   id: string;
   name: string;
@@ -41,6 +50,7 @@ export interface GameSessionInfo {
   canSpectate?: boolean;
   cpuOpponent?: boolean;
   headToHeadMode?: boolean;
+  timeControl?: TimeControl;
 }
 
 export interface CreateGamePayload {
@@ -50,6 +60,7 @@ export interface CreateGamePayload {
   cpuOpponent?: boolean;
   headToHeadMode?: boolean;
   quickstart?: boolean;
+  timeControl?: TimeControl;
 }
 
 export interface JoinGamePayload {
