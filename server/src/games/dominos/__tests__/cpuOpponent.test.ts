@@ -5,10 +5,10 @@ vi.mock("@eschaton/shared", async () => await import("../../../../../shared/src/
 const shared = await import("../../../../../shared/src/index.ts");
 const { DominosState, DominosPlayerState, PlayerInfo } = shared;
 const { selectCpuAction } = await import("../CpuOpponent");
-const { setPlayerHand, getPlayerHands } = await import("../DominosPlugin");
+const { setPlayerHand } = await import("../DominosPlugin");
 const { placeTileOnBoard } = await import("../dominosLogic");
 
-import type { RawTile, PlayEnd } from "../dominosLogic";
+import type { RawTile } from "../dominosLogic";
 
 const CPU_SESSION_ID = "cpu-opponent";
 const HUMAN_SESSION_ID = "player-1";

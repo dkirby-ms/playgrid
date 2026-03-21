@@ -1,7 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
-const BLACK = 1;
-
 function uniqueName(prefix: string): string {
   return `${prefix}-${Date.now().toString(36).slice(-4)}-${Math.random().toString(36).slice(2, 4)}`;
 }
@@ -113,17 +111,6 @@ type BackgammonSnapshot = {
   }[];
 };
 
-type OutcomeSnapshot = {
-  result: {
-    type: string;
-    winnerId?: string;
-    metadata?: {
-      winnerColor?: number;
-    };
-  };
-  overlayTitle: string | null;
-  overlaySubtitle: string | null;
-};
 
 type RoomErrorPayload = {
   message: string;
@@ -343,41 +330,6 @@ async function waitForRoomError(page: Page): Promise<RoomErrorPayload> {
 
     room.onMessage("error", (payload) => {
       resolve(payload as RoomErrorPayload);
-    });
-  }));
-}
-
-async function waitForOutcome(page: Page): Promise<OutcomeSnapshot> {
-  return page.evaluate(() => new Promise<OutcomeSnapshot>((resolve) => {
-    const remoteWindow = window as E2EWindow;
-    const remoteApp = remoteWindow.__PLAYGRID_E2E__?.app;
-    if (!remoteApp) {
-      throw new Error("E2E harness is not available.");
-    }
-
-    const room = remoteApp.gameRoom;
-    if (!room) {
-      throw new Error("Missing active game room.");
-    }
-
-    room.onMessage("game-end", (payload) => {
-      const latestApp = (window as E2EWindow).__PLAYGRID_E2E__?.app;
-      const renderer = latestApp?.gameScene?.renderer;
-      const overlayTitle = typeof renderer?.getGameOverTitle === "function"
-        ? renderer.getGameOverTitle()
-        : typeof renderer?.overlayTitleText?.text === "string"
-          ? renderer.overlayTitleText.text
-          : null;
-      const overlaySubtitle = typeof renderer?.getGameOverSubtitle === "function"
-        ? renderer.getGameOverSubtitle()
-        : typeof renderer?.overlaySubtitleText?.text === "string"
-          ? renderer.overlaySubtitleText.text
-          : null;
-      resolve({
-        result: payload as OutcomeSnapshot["result"],
-        overlayTitle,
-        overlaySubtitle,
-      });
     });
   }));
 }
@@ -843,8 +795,7 @@ test.describe("Backgammon E2E — Win condition", () => {
         const remoteWindow = window as E2EWindow;
         const room = remoteWindow.__PLAYGRID_E2E__?.app?.gameRoom;
         if (!room) return false;
-        let registered = false;
-        room.onMessage("game-end", () => { registered = true; });
+        room.onMessage("game-end", () => { /* listener registered */ });
         return true;
       });
       expect(canRegisterListener).toBe(true);

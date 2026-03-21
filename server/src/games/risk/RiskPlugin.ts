@@ -18,7 +18,7 @@
  * core Risk gameplay mechanics (combat, reinforcements, continent bonuses, win conditions).
  */
 
-import type { Client } from "colyseus";
+
 import {
   RiskState,
   TerritoryState,
@@ -71,8 +71,6 @@ type TradeCardsPayload = {
 type CaptureMovePayload = {
   count: number;
 };
-
-type EndPhasePayload = Record<string, never>;
 
 function isPickTerritoryPayload(payload: unknown): payload is PickTerritoryPayload {
   if (typeof payload !== "object" || payload === null) return false;

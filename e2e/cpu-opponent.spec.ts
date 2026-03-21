@@ -136,10 +136,6 @@ function lobbyOverlay(page: Page): Locator {
   return page.locator("#lobby-overlay.visible");
 }
 
-function setupOverlay(page: Page): Locator {
-  return page.locator("#setup-overlay.visible");
-}
-
 // ── Lobby helpers ──────────────────────────────────────────────────────
 
 async function savePlayerName(page: Page, displayName: string): Promise<void> {

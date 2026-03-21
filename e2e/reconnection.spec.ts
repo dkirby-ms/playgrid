@@ -131,10 +131,6 @@ function activeGameCard(page: Page, gameName: string): Locator {
   return page.locator(".active-game-card").filter({ hasText: gameName });
 }
 
-function reconnectOverlay(page: Page): Locator {
-  return page.locator("#reconnect-overlay.visible");
-}
-
 // ─── Page Helpers ──────────────────────────────────────────────────────────────
 
 async function savePlayerName(page: Page, displayName: string): Promise<void> {
@@ -304,12 +300,6 @@ async function getActiveSession(page: Page): Promise<ActiveSessionRecord | null>
       return null;
     }
   });
-}
-
-async function setActiveSession(page: Page, record: ActiveSessionRecord): Promise<void> {
-  await page.evaluate((r) => {
-    window.sessionStorage.setItem("playgrid.active-session", JSON.stringify(r));
-  }, record);
 }
 
 async function sendMove(page: Page, from: number, to: number): Promise<void> {
