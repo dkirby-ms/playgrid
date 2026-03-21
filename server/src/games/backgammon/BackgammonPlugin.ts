@@ -226,6 +226,10 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
     turnOrder: { type: "round-robin" },
     allowPass: false,
   },
+  chessClockConfig: {
+    enabled: true,
+    initialTimeBankMs: 600_000,
+  },
   lifecycle: {
     onGameStart(state) {
       replacePoints(state, initializeBoard());

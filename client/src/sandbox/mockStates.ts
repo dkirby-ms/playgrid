@@ -10,7 +10,8 @@ export interface MockCheckersState {
   phase: string;
   currentTurn: string;
   players: Map<string, { displayName: string; playerIndex: number; isSpectator: boolean }>;
-  turnTimeRemaining: number;
+  player1TimeRemainingMs: number;
+  player2TimeRemainingMs: number;
 }
 
 export interface MockBackgammonState {
@@ -24,7 +25,8 @@ export interface MockBackgammonState {
   phase: string;
   currentTurn: string;
   players: Map<string, { displayName: string; playerIndex: number; isSpectator: boolean }>;
-  turnTimeRemaining: number;
+  player1TimeRemainingMs: number;
+  player2TimeRemainingMs: number;
 }
 
 export interface MockRiskState {
@@ -38,7 +40,8 @@ export interface MockRiskState {
   phase: string;
   currentTurn: string;
   players: Map<string, { displayName: string; playerIndex: number; isSpectator: boolean }>;
-  turnTimeRemaining: number;
+  player1TimeRemainingMs: number;
+  player2TimeRemainingMs: number;
 }
 
 export function createMockCheckersState(): MockCheckersState {
@@ -71,7 +74,8 @@ export function createMockCheckersState(): MockCheckersState {
     phase: "playing",
     currentTurn: "player1",
     players,
-    turnTimeRemaining: 0,
+    player1TimeRemainingMs: 600000,
+    player2TimeRemainingMs: 600000,
   };
 }
 
@@ -103,7 +107,8 @@ export function createMockBackgammonState(): MockBackgammonState {
     phase: "playing",
     currentTurn: "player1",
     players,
-    turnTimeRemaining: 0,
+    player1TimeRemainingMs: 600000,
+    player2TimeRemainingMs: 600000,
   };
 }
 
@@ -141,6 +146,7 @@ export function createMockRiskState(): MockRiskState {
     phase: "playing",
     currentTurn: "player1",
     players,
-    turnTimeRemaining: 0,
+    player1TimeRemainingMs: 600000,
+    player2TimeRemainingMs: 600000,
   };
 }

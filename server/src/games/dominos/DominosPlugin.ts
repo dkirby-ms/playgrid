@@ -227,8 +227,11 @@ export const dominosPlugin: GamePlugin<DominosState> = {
   turnConfig: {
     mode: "sequential",
     turnOrder: { type: "round-robin" },
-    turnTimeLimit: 60,
     allowPass: true,
+  },
+  chessClockConfig: {
+    enabled: true,
+    initialTimeBankMs: 480_000,
   },
 
   lifecycle: {

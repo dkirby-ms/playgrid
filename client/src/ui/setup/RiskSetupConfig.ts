@@ -43,17 +43,12 @@ export function createRiskSetupConfig(): SetupConfigPanel {
     2, 6, 1, 4,
     (v) => `${v} players`,
   );
-  const turnTimer = createStepper(
-    "Turn Timer",
-    30, 300, 30, 120,
-    (v) => `${v}s`,
-  );
   const startingArmies = createStepper(
     "Starting Armies",
     20, 50, 5, 35,
     (v) => String(v),
   );
-  advPanel.append(maxPlayers.element, turnTimer.element, startingArmies.element);
+  advPanel.append(maxPlayers.element, startingArmies.element);
   container.append(advPanel);
 
   return {
@@ -68,7 +63,6 @@ export function createRiskSetupConfig(): SetupConfigPanel {
       modeGroup.setReadOnly(readOnly);
       quickstartToggle.setReadOnly(readOnly);
       maxPlayers.setReadOnly(readOnly);
-      turnTimer.setReadOnly(readOnly);
       startingArmies.setReadOnly(readOnly);
     },
     destroy() {
