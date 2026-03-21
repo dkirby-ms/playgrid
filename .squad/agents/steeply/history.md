@@ -20,6 +20,7 @@
 ---
 
 ## Learnings
+- Chess clock time control tests added to `server/src/__tests__/chess-clock.test.ts` in a new describe block "time control configuration". Tests verify: (1) blitz=3min, (2) rapid=10min, (3) classical=30min, (4) no-limit disables clock, (5) fallback to plugin default when unspecified, and (6) CPU games ignore time control (always untimed). Room setup pattern: `room.onCreate({ gameType, expectedPlayers, timeControl })` → add clients → `onJoin` triggers `startGame()` when full → assert `state.player{1,2}TimeRemainingMs`. The `timeControlOption` from room options overrides plugin default via `TIME_CONTROL_MS` mapping in BaseGameRoom.startGame().
 - History formatter tests live in `client/src/ui/__tests__/historyFormatters.test.ts`. The pattern for anticipatory tests (formatters not yet registered) uses `describe.skip` gated on a runtime `isRegistered` check comparing the returned formatter against the default — when Ortho lands backgammon/dominos/risk formatters, the tests auto-activate without code changes. Test MoveEntry objects are built via a `makeMoveEntry` helper that only requires `actionType` and `payload`.
 - Lobby gameType coverage lives in `server/src/__tests__/lobby-pregame.test.ts`; the useful seams are the mocked `gameRegistry` responses plus `GAME_LIST`/`GAME_UPDATED` payload assertions to verify type propagation and player-limit clamping.
 - Checkers Playwright coverage has to follow the current lobby UI, not the old table flow: open `#create-game-modal`, scope joins to the unique `.active-game-card`, and assert the visible lobby shell as "Board Game Lounge" before using the `?e2e=1` harness for in-game state.
@@ -830,3 +831,34 @@ Wrote comprehensive unit test suite for chess clock feature covering all critica
 ## Team Updates (2026-03-21)
 
 **Turn Timer Removal Session:** Audited turn timer test surface (2 turns). Found 8 removal targets in BaseGameRoom.test.ts, verified 36 chess clock tests baseline, flagged TurnManager.test.ts dead code. Removed all 8 turn timer tests after Pemulis updated shared types/server logic. 768 tests pass post-removal. Orchestration log: `.squad/orchestration-log/2026-03-21T12-29-57Z-steeply.md`. Clean audit surface ready for Phase 4 validation.
+
+## Cross-Agent Update — Chess Clock Time Control Selection Testing (2026-03-21)
+
+**Event:** Time control type system, server plumbing, and client wiring complete. Tests in progress.
+
+**Summary:** Pemulis wired server-side time control plumbing (TimeControl type, TIME_CONTROL_MS constant, LobbyRoom/BaseGameRoom integration). Ortho wired client setup config and WaitingRoom display. Steeply writing unit tests to validate time control propagation across all layers.
+
+**Server Implementation (Pemulis):**
+- `TimeControl` type: "no-limit" | "blitz" | "rapid" | "classical"
+- `TIME_CONTROL_MS` mapping with MAX_SAFE_INTEGER for no-limit
+- LobbyRoom captures and forwards timeControl from CREATE_GAME
+- BaseGameRoom overrides chess clock with selected time control (or plugin default if undefined)
+- CPU games bypass time control (blocked by !cpuOpponentEnabled)
+
+**Client Implementation (Ortho):**
+- CheckersSetupConfig sends timeControl in payload
+- WaitingRoom displays time control chip to all players
+- Display format: "⏱ Blitz (3:00) • 🖥 Shared Device"
+
+**Test Scope (Steeply):**
+- TimeControl type validation
+- TIME_CONTROL_MS constant lookups
+- LobbyRoom → BaseGameRoom time control forward
+- Clock initialization with override vs. plugin default
+- CPU game time control bypass (should have no effect)
+- No-limit handling (MAX_SAFE_INTEGER)
+
+**Status:** Tests in progress. Server (Pemulis) and client (Ortho) complete and validated. All 773 existing tests pass.
+
+**Decisions merged:** chess-clock-time-control-selection, time-control-ui-pattern, backgammon-bearoff-fixes, no-scrollbars-sidebar
+
