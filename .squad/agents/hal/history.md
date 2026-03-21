@@ -1560,3 +1560,75 @@ Designed comprehensive chess clock system spanning schema, server logic, and cli
 - Coordinated with Steeply (test coverage)
 
 **Learning:** Designing for reusability from the start (generic base layer) prevents later refactoring. This pattern now extends to any 2-player game (Backgammon, Go, etc.).
+
+---
+
+## Session: Turn Timer Removal Scope Analysis (2026-03-21)
+
+**Role:** Lead Architect  
+**Task:** Analyze scope for replacing turn timer system with chess clock for all games (Checkers, Backgammon, Risk, Dominos)  
+**Status:** ✅ Complete  
+**Deliverable:** `.squad/decisions/inbox/hal-turn-timer-removal.md`
+
+**System Audit Findings:**
+
+1. **Turn Timer (Penalty Escalation System):**
+   - Implemented only in **Risk** via `turnTimerConfig` on plugin config
+   - Shared types: `TurnTimerPenalty`, `TurnTimerConfig`, `onAutoPass` lifecycle hook
+   - Server infrastructure: `playerTimeoutCounts` map, `handleTurnTimeout()`, `applyTurnTimerPenalty()`, `resetTurnTimer()`, penalty chaining logic
+   - Risk-specific: 90-second turns, 2 warnings then auto-pass
+   - Risk `onAutoPass`: Auto-places armies, resolves capture-move, resets phase
+   - Test coverage: 10+ tests in BaseGameRoom.test.ts covering penalty escalation, timeout counting, warnings, forfeit, etc.
+   - Backward compatibility: Falls back to instant-loss for games without `turnTimerConfig`
+
+2. **Chess Clock (2-Player Time Banks):**
+   - Currently implemented in **Checkers** via `chessClockConfig` on plugin config
+   - Shared types: `ChessClockConfiguration` interface (just `enabled` and `initialTimeBankMs`)
+   - Shared state: `player1TimeRemainingMs`, `player2TimeRemainingMs` on BaseGameState (synced to clients)
+   - Server infrastructure: 1Hz tick loop, per-player depletion, timeout trigger
+   - Client rendering: Already implemented (GameSidebar, PlayerInfoBar, CheckersRenderer display per-player clocks)
+   - Checkers config: `enabled: true`, `initialTimeBankMs: 600000` (10 minutes)
+
+3. **Key Architecture Insight:**
+   - Chess clock is **already generic at base layer** (no checkers-specific code in BaseGameRoom)
+   - Turn timer is **isolated to Risk** (no other games use it)
+   - Removal is surgical: Delete Risk's `turnTimerConfig` + `onAutoPass`, remove penalty escalation infrastructure, update chess clock timeout handler
+
+**Per-Game Chess Clock Design:**
+- **Checkers:** ✅ 10 minutes (already implemented)
+- **Backgammon:** 10 minutes (2-player, comparable game length to Checkers)
+- **Risk:** 10 minutes (multi-phase turns, more flexibility than 90-second timer; removes auto-pass behavior → timeout = forfeit)
+- **Dominos:** 8 minutes (2–4 players, longer average games with 4 players; reduces kingmaking via timeout)
+
+**Breaking Changes:**
+- Risk timeout behavior changes: Auto-pass (current) → Forfeit (new)
+- Requires release notes and player communication
+
+**File-by-File Changes:**
+- **Shared:** Remove `TurnTimerPenalty`, `TurnTimerConfig`, `onAutoPass` from gamePlugin.ts
+- **Server (BaseGameRoom):** Remove `playerTimeoutCounts`, `handleTurnTimeout`, `applyTurnTimerPenalty`, `resetTurnTimer`, penalty escalation; update chess clock tick to forfeit directly
+- **Risk Plugin:** Remove `turnTimerConfig`, `onAutoPass` handler
+- **Backgammon Plugin:** Add `chessClockConfig { enabled: true, initialTimeBankMs: 600000 }`
+- **Dominos Plugin:** Remove legacy `turnTimeLimit: 60`, add `chessClockConfig { enabled: true, initialTimeBankMs: 480000 }`
+- **Tests:** Delete ~10 turn timer tests (BloomFilter on timeout count, penalty chaining, onAutoPass behavior)
+- **Client:** No changes (already compatible with chess clock)
+
+**Impact:**
+- 6 files modified, ~200–300 lines deleted, ~50 lines added
+- ~10 tests deleted, ~770 remain
+- All 4 games (Checkers, Backgammon, Risk, Dominos) now use unified chess clock system
+- CPU opponent games unaffected (chess clock disabled for CPU, fall back to instant-loss)
+
+**Learnings:**
+- Designing generic infrastructure at base layer (chess clock in BaseGameRoom, not game-specific) enables zero-friction feature enablement across games
+- Localizing complex business logic to single consumer (turn timer in Risk only) makes removal/refactoring tractable
+- State schema generic fields (`player1TimeRemainingMs`, `player2TimeRemainingMs`) usable by any 2-player game without modification
+- Chess clock client UI already designed for reuse (GameSidebar, PlayerInfoBar, formatTurnClock utility)
+
+**Next Steps:**
+- Implementation (2–3 hours) assigned to team once approval given
+- Validation: Build, lint, test, smoke test all 4 games
+
+## Team Updates (2026-03-21)
+
+**Turn Timer Removal Session:** Coordinated with Steeply, Pemulis, Ortho to remove turn timer penalty escalation and migrate all 4 games to chess clock. Scope analysis created, approved for implementation. Orchestration log: `.squad/orchestration-log/2026-03-21T12-29-57Z-hal.md`.

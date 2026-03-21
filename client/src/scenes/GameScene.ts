@@ -169,23 +169,15 @@ export class GameScene implements Scene {
       return;
     }
 
-    const turnTimeRemaining = this.room ? this.extractTurnTimeRemaining(this.room.state) : 0;
-    this.hud.show({
-      gameTimer: turnTimeRemaining,
-      showTimer: turnTimeRemaining > 0,
-    });
+    this.hud.show({});
   }
 
-  private updateHUD(state: unknown): void {
+  private updateHUD(_state: unknown): void {
     if (!this.hud) {
       return;
     }
 
-    const turnTimeRemaining = this.extractTurnTimeRemaining(state);
-    this.hud.update({
-      gameTimer: turnTimeRemaining,
-      showTimer: turnTimeRemaining > 0,
-    });
+    this.hud.update({});
   }
 
   private initGameHeader(): void {
@@ -273,7 +265,6 @@ export class GameScene implements Scene {
     const players = this.extractPlayers(state);
     const phase = this.extractPhase(state);
     const currentTurn = this.extractCurrentTurn(state);
-    const turnTimeRemaining = this.extractTurnTimeRemaining(state);
     const localSessionId = this.room.sessionId ?? "";
 
     const localPlayer = localSessionId ? players.get(localSessionId) ?? null : null;
@@ -288,7 +279,6 @@ export class GameScene implements Scene {
       },
       phase,
       currentTurn,
-      turnTimeRemaining,
       state,
     );
 
@@ -301,7 +291,6 @@ export class GameScene implements Scene {
       },
       phase,
       currentTurn,
-      turnTimeRemaining,
       state,
     );
 
@@ -339,7 +328,6 @@ export class GameScene implements Scene {
     },
     phase: string,
     currentTurn: string,
-    turnTimeRemaining: number,
     state: unknown,
   ): PlayerInfoBarData {
     if (!context.player) {
@@ -357,19 +345,12 @@ export class GameScene implements Scene {
     const label = this.getPlayerRoleLabel(this.gameType, context.player, context.sessionId, state);
     const status = this.getStatusForPlayer(context, phase, currentTurn);
     
-    // For games with chess clock enabled, show per-player time instead of turn time
-    let timerSeconds: number | null;
+    // Show per-player chess clock time when available
     const chessClockTime = this.extractChessClockTime(state, context.player.playerIndex);
-    if (chessClockTime !== null && chessClockTime > 0) {
-      // Chess clock is active for this game
-      timerSeconds = Math.ceil(chessClockTime / 1000);
-    } else {
-      // For other games, show turn timer only when it's the player's turn
-      timerSeconds =
-        context.sessionId && currentTurn === context.sessionId && turnTimeRemaining > 0
-          ? turnTimeRemaining
-          : null;
-    }
+    const timerSeconds: number | null =
+      chessClockTime !== null && chessClockTime > 0
+        ? Math.ceil(chessClockTime / 1000)
+        : null;
 
     return {
       name,
@@ -478,15 +459,6 @@ export class GameScene implements Scene {
 
     const color = RISK_COLOR_LABELS[playerIndex % RISK_COLOR_LABELS.length] ?? "Player";
     return `${color} Army`;
-  }
-
-  private extractTurnTimeRemaining(state: unknown): number {
-    if (typeof state !== "object" || state === null) {
-      return 0;
-    }
-
-    const stateObj = state as Record<string, unknown>;
-    return typeof stateObj.turnTimeRemaining === "number" ? stateObj.turnTimeRemaining : 0;
   }
 
   private handleHUDEvent(event: HUDEvent): void {

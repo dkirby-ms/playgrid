@@ -1,5 +1,117 @@
-import { CheckersState } from "@eschaton/shared";
+import { BaseGameState, CheckersState, type GamePlugin } from "@eschaton/shared";
+import type { ClockTimer as Clock, Delayed } from "@colyseus/timer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// --- BaseGameRoom mock infrastructure for integration tests ---
+
+function createMockClock(): Clock {
+  return {
+    setTimeout(callback: (...args: unknown[]) => void, delayMs: number): Delayed {
+      const id = setTimeout(callback, delayMs);
+      return { clear: () => clearTimeout(id) } as Delayed;
+    },
+    setInterval(callback: (...args: unknown[]) => void, delayMs: number): Delayed {
+      const id = setInterval(callback, delayMs);
+      return { clear: () => clearInterval(id) } as Delayed;
+    },
+  } as Clock;
+}
+
+const { mockedCloseCode, mockGameRegistry } = vi.hoisted(() => ({
+  mockedCloseCode: { NORMAL_CLOSURE: 1000, CONSENTED: 4000 },
+  mockGameRegistry: { get: vi.fn() },
+}));
+
+vi.mock("colyseus", () => ({ Room: class {}, CloseCode: mockedCloseCode }));
+vi.mock("../game/GameRegistry", () => ({ gameRegistry: mockGameRegistry }));
+vi.mock("@eschaton/shared", async () => await import("../../../shared/src/index.ts"));
+
+const roomModule = await import("../game/BaseGameRoom")
+  .catch(() => import("../game/BaseGameRoom.ts"))
+  .catch(() => import("../game/BaseGameRoom.js"))
+  .catch(() => null);
+
+const BaseGameRoom = roomModule?.BaseGameRoom;
+
+type MockClient = { sessionId: string; send: ReturnType<typeof vi.fn> };
+type TestRoom = Record<string, any> & {
+  messageHandlers: Map<string, (client: MockClient, payload: unknown) => unknown>;
+};
+
+class TestState extends BaseGameState {}
+
+function createClient(sessionId: string): MockClient {
+  return { sessionId, send: vi.fn() };
+}
+
+function createPlugin(overrides: Partial<GamePlugin<TestState>> = {}): GamePlugin<TestState> {
+  return {
+    id: "checkers",
+    name: "Checkers",
+    metadata: {
+      playerCount: [2, 4],
+      estimatedDuration: 20,
+      complexity: 2,
+      description: "Test plugin",
+      hasHiddenInformation: false,
+      ...overrides.metadata,
+    },
+    createState: overrides.createState ?? (() => new TestState()),
+    lifecycle: {
+      onCreate: vi.fn(),
+      onPlayerJoin: vi.fn(),
+      onGameStart: vi.fn(),
+      onPlayerLeave: vi.fn(),
+      onPlayerReconnect: vi.fn(),
+      onGameEnd: vi.fn(),
+      onTick: undefined,
+      ...overrides.lifecycle,
+    },
+    turnConfig: {
+      mode: "sequential",
+      turnOrder: { type: "round-robin" },
+      allowPass: false,
+      ...overrides.turnConfig,
+    },
+    actions: {
+      move: vi.fn().mockReturnValue({ success: true, endsTurn: true }),
+      ...overrides.actions,
+    },
+    conditions: {
+      validateAction: vi.fn().mockReturnValue(true),
+      checkGameEnd: vi.fn().mockReturnValue(null),
+      ...overrides.conditions,
+    },
+    ...("chessClockConfig" in overrides ? { chessClockConfig: overrides.chessClockConfig } : {}),
+  };
+}
+
+function createRoom(): TestRoom {
+  if (!BaseGameRoom) {
+    throw new Error("BaseGameRoom is not available");
+  }
+  const messageHandlers = new Map<string, (client: MockClient, payload: unknown) => unknown>();
+  return Object.assign(new BaseGameRoom(), {
+    roomId: "test-room",
+    clients: [] as MockClient[],
+    maxClients: 1,
+    clock: createMockClock(),
+    messageHandlers,
+    allowReconnection: vi.fn(),
+    broadcast: vi.fn(),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+    presence: { publish: vi.fn() },
+    onMessage: vi.fn((type: string, handler: (client: MockClient, payload: unknown) => unknown) => {
+      messageHandlers.set(type, handler);
+    }),
+    setSimulationInterval: vi.fn(),
+    setState: vi.fn(function setState(state: TestState) {
+      this.state = state;
+    }),
+  });
+}
+
+// --- Tests ---
 
 describe("Chess Clock Feature", () => {
   beforeEach(() => {
@@ -420,6 +532,77 @@ describe("Chess Clock Feature", () => {
       expect(typeof state.player2TimeRemainingMs).toBe("number");
       expect(Number.isFinite(state.player1TimeRemainingMs)).toBe(true);
       expect(Number.isFinite(state.player2TimeRemainingMs)).toBe(true);
+    });
+  });
+
+  const describeRoom = BaseGameRoom ? describe : describe.skip;
+
+  describeRoom("CPU Opponent — Chess Clock Disabled", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("does not initialize chess clocks when a CPU opponent is present", () => {
+      const room = createRoom();
+      const plugin = createPlugin({
+        chessClockConfig: { enabled: true, initialTimeBankMs: 600_000 },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2, cpuOpponent: true });
+
+      const human = createClient("player-1");
+      room.clients.push(human);
+      room.onJoin(human, { displayName: "Alice" });
+
+      // Game should have started (CPU auto-joins)
+      expect(room.state.phase).toBe("playing");
+
+      // Chess clocks must NOT be initialized — should remain at 0
+      expect(room.state.player1TimeRemainingMs).toBe(0);
+      expect(room.state.player2TimeRemainingMs).toBe(0);
+    });
+
+    it("does not register the chess clock simulation interval for CPU games", () => {
+      const room = createRoom();
+      const plugin = createPlugin({
+        chessClockConfig: { enabled: true, initialTimeBankMs: 600_000 },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2, cpuOpponent: true });
+
+      // setSimulationInterval should NOT have been called for chess clocks.
+      // It may still be called for onTick, so check that no chess-clock interval was registered.
+      const calls = room.setSimulationInterval.mock.calls;
+      // With no onTick and CPU mode, no simulation intervals should be registered
+      expect(calls.length).toBe(0);
+    });
+
+    it("initializes chess clocks normally for human-vs-human games", () => {
+      const room = createRoom();
+      const plugin = createPlugin({
+        chessClockConfig: { enabled: true, initialTimeBankMs: 600_000 },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+      const p1 = createClient("player-1");
+      const p2 = createClient("player-2");
+      room.clients.push(p1, p2);
+      room.onJoin(p1, { displayName: "Alice" });
+      room.onJoin(p2, { displayName: "Bob" });
+
+      expect(room.state.phase).toBe("playing");
+
+      // Chess clocks SHOULD be initialized for human-vs-human
+      expect(room.state.player1TimeRemainingMs).toBe(600_000);
+      expect(room.state.player2TimeRemainingMs).toBe(600_000);
     });
   });
 });

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@eschaton/shared", async () => await import("../../../shared/src/index.ts"));
 
 const shared = await import("../../../shared/src/index.ts");
-const { RiskState, TerritoryState, RiskPlayerState } = shared;
+
 const { riskPlugin } = await import("../games/risk/RiskPlugin");
 const {
   calculateReinforcements,
@@ -16,19 +16,16 @@ const {
   checkWinCondition,
   calculateInitialArmies,
   getOwnedTerritories,
-  performQuickstartSetup,
 } = await import("../games/risk/riskLogic");
 const {
   TERRITORIES,
   CONTINENTS,
   TERRITORY_COUNT,
   areTerritoriesAdjacent,
-  getTerritoryById,
 } = shared;
 
-type RiskStateInstance = InstanceType<typeof RiskState>;
+type RiskStateInstance = InstanceType<typeof shared.RiskState>;
 type TerritoryId = string;
-type ContinentId = string;
 
 const mockClient = (sessionId: string) => ({ sessionId } as Client);
 
@@ -965,7 +962,7 @@ describe("Risk Game — Win Conditions", () => {
       
       // Player 1 controls 40 territories
       let count = 0;
-      state.territories.forEach((territory, id) => {
+      state.territories.forEach((territory, _id) => {
         if (count < 40) {
           territory.owner = "player-1";
           territory.armyCount = 1;

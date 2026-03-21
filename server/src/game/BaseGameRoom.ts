@@ -11,7 +11,6 @@ import {
   type GamePlugin,
   type GameResult,
   type MoveEntry,
-  type TurnTimerPenalty,
 } from "@eschaton/shared";
 import * as gameRepository from "../db/gameRepository.js";
 import { getPool } from "../db.js";
@@ -43,7 +42,6 @@ const HEAD_TO_HEAD_OPPONENT_DISPLAY_NAME = "Player 2";
 const HEAD_TO_HEAD_OPPONENT_SESSION_ID = "shared-device-opponent";
 const INVALID_ACTION_ERROR = "Invalid action.";
 const ROOM_ERROR_MESSAGE = "error";
-const TURN_TIMER_WARNING_MESSAGE = "turn-timer-warning";
 
 export class BaseGameRoom extends Room {
   declare state: BaseGameState;
@@ -59,7 +57,6 @@ export class BaseGameRoom extends Room {
   private pendingCpuTurn?: Delayed;
   private headToHeadMode = false;
   private moveHistory: MoveEntry[] = [];
-  private playerTimeoutCounts = new Map<string, number>();
 
   override async onCreate(options: BaseGameRoomOptions = {}) {
     const gameType = typeof options.gameType === "string" ? options.gameType.trim() : "";
@@ -112,16 +109,11 @@ export class BaseGameRoom extends Room {
     }
 
     // Chess clock tick (separate from onTick to ensure it runs independently)
-    if (this.plugin.chessClockConfig?.enabled) {
+    // Disabled when a CPU opponent is present — CPU games are untimed.
+    if (this.plugin.chessClockConfig?.enabled && !this.cpuOpponentEnabled) {
       this.setSimulationInterval((deltaTime) => {
         this.updateChessClocks(deltaTime);
       });
-    }
-
-    if (this.clock) {
-      this.clock.setInterval(() => {
-        this.updateTurnTimeRemaining();
-      }, 1000);
     }
 
     try {
@@ -148,7 +140,6 @@ export class BaseGameRoom extends Room {
       this.setControllerOwnedConnection(client.sessionId, true);
 
       if (wasDisconnected) {
-        this.resumeTurnTimerFor(client.sessionId);
         this.plugin.lifecycle.onPlayerReconnect?.(this.state, client);
         this.sendPlayerMessage(client);
         trackEvent("player_reconnected", {
@@ -226,8 +217,6 @@ export class BaseGameRoom extends Room {
       && !player.isSpectator
       && code !== CloseCode.CONSENTED
     ) {
-      this.pauseTurnTimerFor(client.sessionId);
-
       try {
         await this.allowReconnection(client, this.reconnectionTimeout);
         player.isConnected = true;
@@ -373,7 +362,15 @@ export class BaseGameRoom extends Room {
       return false;
     }
 
-    this.recordMove(actionType, actingClient.sessionId, payload);
+    // Enrich recorded payload for backgammon roll actions (dice are generated
+    // server-side and aren't part of the client payload, but move history needs them)
+    let recordPayload = payload;
+    if (actionType === "roll" && this.plugin.id === "backgammon") {
+      const bgState = this.state as BackgammonState;
+      recordPayload = { die1: bgState.dice[0], die2: bgState.dice[1] };
+    }
+
+    this.recordMove(actionType, actingClient.sessionId, recordPayload);
 
     this.broadcastPlayerMessages();
 
@@ -384,7 +381,7 @@ export class BaseGameRoom extends Room {
     }
 
     // Check for chess clock timeout (after normal game end check)
-    if (this.plugin.chessClockConfig?.enabled && this.state.phase === "playing") {
+    if (this.plugin.chessClockConfig?.enabled && !this.cpuOpponentEnabled && this.state.phase === "playing") {
       const timeoutResult = this.checkChessClockTimeout();
       if (timeoutResult) {
         await this.endGame(timeoutResult);
@@ -415,24 +412,13 @@ export class BaseGameRoom extends Room {
     this.state.phase = "playing";
     this.gameStartTime = Date.now();
     this.moveHistory = [];
-    this.playerTimeoutCounts.clear();
 
-    const timerConfig = this.plugin.turnConfig.turnTimerConfig;
-    const turnTimeLimit = timerConfig?.enabled
-      ? timerConfig.turnDurationMs / 1000
-      : this.plugin.turnConfig.turnTimeLimit;
-
-    this.turnManager = new TurnManager(this.orderTurnPlayers(playerIds), this.clock, {
-      turnTimeLimit,
-      onTimeout: (sessionId) => {
-        void this.handleTurnTimeout(sessionId);
-      },
-    });
+    this.turnManager = new TurnManager(this.orderTurnPlayers(playerIds));
 
     this.plugin.lifecycle.onGameStart(this.state);
     
-    // Initialize chess clocks if enabled
-    if (this.plugin.chessClockConfig?.enabled) {
+    // Initialize chess clocks if enabled (skip for CPU games — they are untimed)
+    if (this.plugin.chessClockConfig?.enabled && !this.cpuOpponentEnabled) {
       this.state.player1TimeRemainingMs = this.plugin.chessClockConfig.initialTimeBankMs;
       this.state.player2TimeRemainingMs = this.plugin.chessClockConfig.initialTimeBankMs;
     }
@@ -440,7 +426,6 @@ export class BaseGameRoom extends Room {
     this.turnManager.startTurns();
     this.state.currentTurn = this.turnManager.getCurrentPlayer();
     this.state.turnNumber = this.turnManager.getTurnNumber();
-    this.updateTurnTimeRemaining();
     this.broadcastPlayerMessages();
     this.queueCpuTurnIfNeeded();
     trackEvent("game_started", {
@@ -456,17 +441,10 @@ export class BaseGameRoom extends Room {
       return;
     }
 
-    const previousPlayer = this.state.currentTurn;
     this.state.currentTurn = this.turnManager.nextTurn();
     this.state.turnNumber = this.turnManager.getTurnNumber();
-    this.state.timerWarningActive = false;
-
-    if (this.plugin.turnConfig.turnTimerConfig?.resetCountPerTurn && previousPlayer) {
-      this.playerTimeoutCounts.delete(previousPlayer);
-    }
 
     this.plugin.lifecycle.onTurnStarted?.(this.state, this.state.currentTurn);
-    this.updateTurnTimeRemaining();
     this.queueCpuTurnIfNeeded();
   }
 
@@ -475,21 +453,6 @@ export class BaseGameRoom extends Room {
       return;
     }
 
-    const timerConfig = this.plugin.turnConfig.turnTimerConfig;
-    if (!timerConfig?.enabled || timerConfig.penalties.length === 0) {
-      await this.handleLegacyTurnTimeout(sessionId);
-      return;
-    }
-
-    const timeoutCount = this.playerTimeoutCounts.get(sessionId) ?? 0;
-    const penaltyIndex = Math.min(timeoutCount, timerConfig.penalties.length - 1);
-    const penalty = timerConfig.penalties[penaltyIndex];
-    this.playerTimeoutCounts.set(sessionId, timeoutCount + 1);
-
-    await this.applyTurnTimerPenalty(sessionId, penalty);
-  }
-
-  private async handleLegacyTurnTimeout(sessionId: string) {
     const remainingPlayers = this.getConnectedParticipants().filter(
       (player) => player.sessionId !== sessionId,
     );
@@ -503,84 +466,6 @@ export class BaseGameRoom extends Room {
         timedOutPlayerId: sessionId,
       },
     });
-  }
-
-  private async applyTurnTimerPenalty(sessionId: string, penalty: TurnTimerPenalty) {
-    switch (penalty.type) {
-      case "warning": {
-        this.state.timerWarningActive = true;
-        this.broadcast(TURN_TIMER_WARNING_MESSAGE, {
-          playerId: sessionId,
-          message: penalty.message,
-        });
-        this.resetTurnTimer();
-        break;
-      }
-      case "auto-pass": {
-        this.state.timerWarningActive = false;
-        const handled = this.plugin.lifecycle.onAutoPass?.(this.state, sessionId) ?? false;
-        if (!handled) {
-          this.advanceTurn();
-        } else {
-          // Plugin handled the pass (e.g., skipped a phase but kept the player).
-          // Check for game end, then reset the timer for the same player.
-          const gameResult = this.plugin.conditions.checkGameEnd(this.state);
-          if (gameResult) {
-            await this.endGame(gameResult);
-            return;
-          }
-          this.resetTurnTimer();
-        }
-        break;
-      }
-      case "forfeit": {
-        this.state.timerWarningActive = false;
-        const remainingPlayers = this.getConnectedParticipants().filter(
-          (player) => player.sessionId !== sessionId,
-        );
-        const winnerId = remainingPlayers[0]?.sessionId;
-
-        await this.endGame({
-          type: "forfeit",
-          winnerId,
-          scores: winnerId ? { [winnerId]: 1 } : {},
-          metadata: {
-            timedOutPlayerId: sessionId,
-            penalty: "forfeit",
-          },
-        });
-        break;
-      }
-      case "skip-and-penalty": {
-        this.state.timerWarningActive = false;
-        this.broadcast(TURN_TIMER_WARNING_MESSAGE, {
-          playerId: sessionId,
-          message: `Penalty applied: ${penalty.penaltyType}`,
-          penaltyType: penalty.penaltyType,
-        });
-        const handled = this.plugin.lifecycle.onAutoPass?.(this.state, sessionId) ?? false;
-        if (!handled) {
-          this.advanceTurn();
-        } else {
-          const gameResult = this.plugin.conditions.checkGameEnd(this.state);
-          if (gameResult) {
-            await this.endGame(gameResult);
-            return;
-          }
-          this.resetTurnTimer();
-        }
-        break;
-      }
-    }
-  }
-
-  private resetTurnTimer() {
-    if (!this.turnManager?.isActive()) {
-      return;
-    }
-
-    this.turnManager.resetTimer();
-    this.updateTurnTimeRemaining();
   }
 
   private async handleReconnectionTimeout(sessionId: string) {
@@ -959,20 +844,12 @@ export class BaseGameRoom extends Room {
       && this.getConnectedParticipants().length >= this.expectedPlayers;
   }
 
-  private pauseTurnTimerFor(sessionId: string) {
-    if (!this.turnManager?.isActive() || !this.isTurnControlledBy(sessionId)) {
-      return;
-    }
-
-    this.turnManager.pause();
+  private pauseTurnTimerFor(_sessionId: string) {
+    // Turn timers removed — chess clocks handle timing now.
   }
 
-  private resumeTurnTimerFor(sessionId: string) {
-    if (!this.turnManager?.isActive() || !this.isTurnControlledBy(sessionId)) {
-      return;
-    }
-
-    this.turnManager.resume();
+  private resumeTurnTimerFor(_sessionId: string) {
+    // Turn timers removed — chess clocks handle timing now.
   }
 
   private isTurnControlledBy(sessionId: string) {
@@ -989,7 +866,6 @@ export class BaseGameRoom extends Room {
     if (this.turnManager?.isActive() && this.turnManager.getPlayerCount() > 0) {
       this.state.currentTurn = this.turnManager.getCurrentPlayer();
       this.state.turnNumber = this.turnManager.getTurnNumber();
-      this.updateTurnTimeRemaining();
       this.queueCpuTurnIfNeeded();
       return;
     }
@@ -1001,11 +877,7 @@ export class BaseGameRoom extends Room {
   }
 
   private updateTurnTimeRemaining() {
-    if (this.turnManager?.isActive()) {
-      this.state.turnTimeRemaining = this.turnManager.getRemainingTimeSeconds();
-    } else {
-      this.state.turnTimeRemaining = 0;
-    }
+    this.state.turnTimeRemaining = 0;
   }
 
   private orderTurnPlayers(playerIds: string[]) {

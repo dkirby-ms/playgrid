@@ -12,7 +12,6 @@ import { selectCpuAction, type CpuAction } from "../CpuOpponent.js";
 import { setPlayerHand } from "../DominosPlugin.js";
 import {
   getValidEnds,
-  placeTileOnBoard,
   type RawTile,
 } from "../dominosLogic.js";
 

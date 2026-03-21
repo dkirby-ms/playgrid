@@ -144,26 +144,30 @@ export function isValidMove(
     if (playerColor === BLACK && pieces <= 0) return false;
     if (playerColor === RED && pieces >= 0) return false;
     
-    // Check if exact die roll or highest piece
+    // Check if exact die roll or farthest piece from bearing-off edge
     if (playerColor === BLACK) {
+      // Black bears off past 23; home board is 18-23; 18 is farthest from edge
       const exactPoint = BOARD_SIZE - die;
       if (fromPoint === exactPoint) return true;
       
-      // Can bear off from lower point if no pieces on higher points
+      // Die is too small to reach off the board from this point
       if (fromPoint < exactPoint) return false;
       
-      for (let i = fromPoint + 1; i < BOARD_SIZE; i++) {
+      // Over-roll: only valid if no piece sits farther from the edge (lower index in home)
+      for (let i = 18; i < fromPoint; i++) {
         if (points[i] > 0) return false;
       }
       return true;
     } else {
+      // Red bears off past 0; home board is 0-5; 5 is farthest from edge
       const exactPoint = die - 1;
       if (fromPoint === exactPoint) return true;
       
-      // Can bear off from higher point if no pieces on lower points
+      // Die is too small to reach off the board from this point
       if (fromPoint > exactPoint) return false;
       
-      for (let i = 0; i < fromPoint; i++) {
+      // Over-roll: only valid if no piece sits farther from the edge (higher index in home)
+      for (let i = fromPoint + 1; i <= 5; i++) {
         if (points[i] < 0) return false;
       }
       return true;
@@ -340,6 +344,82 @@ export function hasValidMoves(
     }
   }
   
+  return false;
+}
+
+/**
+ * Check if a player can use firstDie and then still have a valid move with secondDie.
+ */
+function canPlayDieThenOther(
+  points: number[],
+  blackBar: number,
+  redBar: number,
+  blackBorneOff: number,
+  redBorneOff: number,
+  firstDie: number,
+  secondDie: number,
+  playerColor: number,
+): boolean {
+  const barCount = playerColor === BLACK ? blackBar : redBar;
+
+  const possibleMoves: Array<{ from: number | "bar"; to: number | "off" }> = [];
+
+  if (barCount > 0) {
+    const entryPoint = playerColor === BLACK ? firstDie - 1 : BOARD_SIZE - firstDie;
+    if (isValidMove(points, blackBar, redBar, blackBorneOff, redBorneOff, "bar", entryPoint, firstDie, playerColor)) {
+      possibleMoves.push({ from: "bar", to: entryPoint });
+    }
+  } else {
+    for (let fromPoint = 0; fromPoint < BOARD_SIZE; fromPoint++) {
+      const pieces = points[fromPoint];
+      if (playerColor === BLACK && pieces <= 0) continue;
+      if (playerColor === RED && pieces >= 0) continue;
+
+      const toPoint = playerColor === BLACK ? fromPoint + firstDie : fromPoint - firstDie;
+      if (toPoint >= 0 && toPoint < BOARD_SIZE) {
+        if (isValidMove(points, blackBar, redBar, blackBorneOff, redBorneOff, fromPoint, toPoint, firstDie, playerColor)) {
+          possibleMoves.push({ from: fromPoint, to: toPoint });
+        }
+      }
+
+      if (canBearOff(points, barCount, playerColor)) {
+        if (isValidMove(points, blackBar, redBar, blackBorneOff, redBorneOff, fromPoint, "off", firstDie, playerColor)) {
+          possibleMoves.push({ from: fromPoint, to: "off" });
+        }
+      }
+    }
+  }
+
+  for (const move of possibleMoves) {
+    const result = applyMove(points, blackBar, redBar, blackBorneOff, redBorneOff, move.from, move.to, playerColor);
+    if (hasValidMoves(result.points, result.blackBar, result.redBar, result.blackBorneOff, result.redBorneOff, [secondDie], playerColor)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Check if a player can use both dice in sequence (in either order).
+ * Returns true if there exists any ordering where both dice can be played.
+ */
+export function canPlayBothDice(
+  points: number[],
+  blackBar: number,
+  redBar: number,
+  blackBorneOff: number,
+  redBorneOff: number,
+  die1: number,
+  die2: number,
+  playerColor: number,
+): boolean {
+  if (canPlayDieThenOther(points, blackBar, redBar, blackBorneOff, redBorneOff, die1, die2, playerColor)) {
+    return true;
+  }
+  if (canPlayDieThenOther(points, blackBar, redBar, blackBorneOff, redBorneOff, die2, die1, playerColor)) {
+    return true;
+  }
   return false;
 }
 

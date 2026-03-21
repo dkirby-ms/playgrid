@@ -830,3 +830,34 @@ permissions:
 
 **Validation:** Workflow YAML reviewed for correctness. Version revert pushed to dev. Workflow fix pushed to dev.
 
+---
+
+### 2025-07-21: Push to UAT Workflow
+
+**Task:** Create a manual dispatch workflow that pushes the `dev` branch to `uat`, triggering the existing `deploy-uat.yml` (which fires on push to `uat`).
+
+**Solution:** Created `.github/workflows/push-to-uat.yml`:
+- `workflow_dispatch` trigger only — manual promotion.
+- Checks out `dev` with `fetch-depth: 0` and pushes to `uat` via `git push origin HEAD:uat`.
+- Minimal permissions: `contents: write`.
+- Uses the same pinned `actions/checkout` SHA as all other workflows.
+- Concurrency group `push-to-uat` with `cancel-in-progress: false` (consistent with team style).
+- No deployment logic — this is purely a branch sync. `deploy-uat.yml` handles the actual deployment.
+
+**Design choice — `git push` vs force push:** Used regular `git push` (fast-forward). If `uat` has diverged from `dev`, the push will fail — this is intentional. If a force push is ever needed, it should be a deliberate manual action, not automated.
+
+**Validation:** YAML parsed successfully via Python `yaml.safe_load`.
+
+
+---
+
+### 2026-03-20: Orchestration Complete (Scribe)
+
+Session finalized: Orchestration logs created, decisions merged, cross-agent references propagated. See `.squad/log/2026-03-20T15-15-24Z-scribe-session.md`.
+
+**Related work:**
+- Pemulis: CPU opponent chess clock guards (parallel)
+- Gately: Board coordinate labels (completed earlier, merged in this session)
+
+**Decisions merged:** `marathe-dev-to-uat.md` → decisions.md
+

@@ -149,16 +149,6 @@ type RoomErrorPayload = {
   message: string;
 };
 
-type OutcomeSnapshot = {
-  result: {
-    type: string;
-    winnerId?: string;
-    metadata?: Record<string, unknown>;
-  };
-  overlayTitle: string | null;
-  overlaySubtitle: string | null;
-};
-
 // ---------------------------------------------------------------------------
 // DOM helpers
 // ---------------------------------------------------------------------------
@@ -357,41 +347,6 @@ async function waitForRoomError(page: Page): Promise<RoomErrorPayload> {
 
     room.onMessage("error", (payload) => {
       resolve(payload as RoomErrorPayload);
-    });
-  }));
-}
-
-async function waitForOutcome(page: Page): Promise<OutcomeSnapshot> {
-  return page.evaluate(() => new Promise<OutcomeSnapshot>((resolve) => {
-    const remoteWindow = window as E2EWindow;
-    const remoteApp = remoteWindow.__PLAYGRID_E2E__?.app;
-    if (!remoteApp) {
-      throw new Error("E2E harness is not available.");
-    }
-
-    const room = remoteApp.gameRoom;
-    if (!room) {
-      throw new Error("Missing active game room.");
-    }
-
-    room.onMessage("game-end", (payload) => {
-      const latestApp = (window as E2EWindow).__PLAYGRID_E2E__?.app;
-      const renderer = latestApp?.gameScene?.renderer;
-      const overlayTitle = typeof renderer?.getGameOverTitle === "function"
-        ? renderer.getGameOverTitle()
-        : typeof renderer?.overlayTitleText?.text === "string"
-          ? renderer.overlayTitleText.text
-          : null;
-      const overlaySubtitle = typeof renderer?.getGameOverSubtitle === "function"
-        ? renderer.getGameOverSubtitle()
-        : typeof renderer?.overlaySubtitleText?.text === "string"
-          ? renderer.overlaySubtitleText.text
-          : null;
-      resolve({
-        result: payload as OutcomeSnapshot["result"],
-        overlayTitle,
-        overlaySubtitle,
-      });
     });
   }));
 }

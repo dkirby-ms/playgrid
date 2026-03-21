@@ -1,35 +1,9 @@
-import type { ClockTimer as Clock, Delayed } from "@colyseus/timer";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { TurnManager } from "../game/TurnManager";
 
-function createMockClock(): Clock {
-  return {
-    setTimeout(callback: (...args: unknown[]) => void, delayMs: number): Delayed {
-      const id = setTimeout(callback, delayMs);
-      return {
-        clear: () => clearTimeout(id),
-      } as Delayed;
-    },
-    setInterval(callback: (...args: unknown[]) => void, delayMs: number): Delayed {
-      const id = setInterval(callback, delayMs);
-      return {
-        clear: () => clearInterval(id),
-      } as Delayed;
-    },
-  } as Clock;
-}
-
 describe("TurnManager", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it("starts with the first player and advances in round-robin order", () => {
-    const manager = new TurnManager(["player-1", "player-2", "player-3"], createMockClock());
+    const manager = new TurnManager(["player-1", "player-2", "player-3"]);
 
     manager.startTurns();
 
@@ -45,7 +19,7 @@ describe("TurnManager", () => {
   });
 
   it("advances immediately when removing the current player", () => {
-    const manager = new TurnManager(["player-1", "player-2", "player-3"], createMockClock());
+    const manager = new TurnManager(["player-1", "player-2", "player-3"]);
 
     manager.startTurns();
     manager.nextTurn();
@@ -57,125 +31,12 @@ describe("TurnManager", () => {
   });
 
   it("stops when the last remaining player is removed", () => {
-    const manager = new TurnManager(["solo"], createMockClock());
+    const manager = new TurnManager(["solo"]);
 
     manager.startTurns();
     manager.removePlayer("solo");
 
     expect(manager.getPlayerCount()).toBe(0);
     expect(manager.isActive()).toBe(false);
-  });
-
-  it("fires the timeout callback for the active player", () => {
-    const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1", "player-2"], createMockClock(), {
-      turnTimeLimit: 5,
-      onTimeout,
-    });
-
-    manager.startTurns();
-    vi.advanceTimersByTime(5_000);
-
-    expect(onTimeout).toHaveBeenCalledWith("player-1");
-    expect(onTimeout).toHaveBeenCalledTimes(1);
-  });
-
-  it("uses the default 60-second timeout when turnTimeLimit is provided without a value", () => {
-    const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1"], createMockClock(), {
-      turnTimeLimit: undefined,
-      onTimeout,
-    });
-
-    manager.startTurns();
-    vi.advanceTimersByTime(59_000);
-    expect(onTimeout).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(1_000);
-    expect(onTimeout).toHaveBeenCalledWith("player-1");
-  });
-
-  it("does not start a timer unless turnTimeLimit is configured", () => {
-    const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1"], createMockClock(), { onTimeout });
-
-    manager.startTurns();
-    vi.advanceTimersByTime(120_000);
-
-    expect(onTimeout).not.toHaveBeenCalled();
-  });
-
-  it("pauses and resumes the active turn timer", () => {
-    const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1", "player-2"], createMockClock(), {
-      turnTimeLimit: 5,
-      onTimeout,
-    });
-
-    manager.startTurns();
-    vi.advanceTimersByTime(2_000);
-    manager.pause();
-
-    expect(manager.isPaused()).toBe(true);
-    vi.advanceTimersByTime(10_000);
-    expect(onTimeout).not.toHaveBeenCalled();
-
-    manager.resume();
-    expect(manager.isPaused()).toBe(false);
-    vi.advanceTimersByTime(2_999);
-    expect(onTimeout).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(1);
-    expect(onTimeout).toHaveBeenCalledWith("player-1");
-  });
-
-  it("clears the timer when stopped", () => {
-    const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1"], createMockClock(), {
-      turnTimeLimit: 1,
-      onTimeout,
-    });
-
-    manager.startTurns();
-    manager.stop();
-    vi.advanceTimersByTime(1_000);
-
-    expect(onTimeout).not.toHaveBeenCalled();
-    expect(manager.isActive()).toBe(false);
-  });
-
-  it("resets the timer for the current player without advancing turns", () => {
-    const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1", "player-2"], createMockClock(), {
-      turnTimeLimit: 5,
-      onTimeout,
-    });
-
-    manager.startTurns();
-    vi.advanceTimersByTime(3_000);
-
-    manager.resetTimer();
-
-    expect(manager.getCurrentPlayer()).toBe("player-1");
-    expect(manager.getTurnNumber()).toBe(1);
-    expect(manager.getRemainingTimeSeconds()).toBe(5);
-
-    vi.advanceTimersByTime(4_999);
-    expect(onTimeout).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(1);
-    expect(onTimeout).toHaveBeenCalledWith("player-1");
-  });
-
-  it("does nothing when resetTimer is called on an inactive manager", () => {
-    const onTimeout = vi.fn();
-    const manager = new TurnManager(["player-1"], createMockClock(), {
-      turnTimeLimit: 5,
-      onTimeout,
-    });
-
-    manager.resetTimer();
-    vi.advanceTimersByTime(10_000);
-    expect(onTimeout).not.toHaveBeenCalled();
   });
 });

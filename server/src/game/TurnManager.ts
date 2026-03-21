@@ -1,41 +1,12 @@
-import type { ClockTimer as Clock, Delayed } from "@colyseus/timer";
-
-export interface TurnManagerOptions {
-  turnTimeLimit?: number;
-  onTimeout?: (sessionId: string) => void;
-}
-
-const DEFAULT_TURN_TIME_LIMIT_SECONDS = 60;
-
 export class TurnManager {
   private readonly playerIds: string[];
-  private readonly clock: Clock;
-  private readonly onTimeout?: (sessionId: string) => void;
-  private readonly turnTimeLimitMs?: number;
 
   private currentIndex = -1;
   private turnNumber = 0;
   private active = false;
-  private paused = false;
-  private timeoutDelayed: Delayed | null = null;
-  private timerStartedAt: number | null = null;
-  private remainingTurnTimeMs?: number;
 
-  constructor(playerIds: string[], clock: Clock, options: TurnManagerOptions = {}) {
+  constructor(playerIds: string[]) {
     this.playerIds = [...playerIds];
-    this.clock = clock;
-    this.onTimeout = options.onTimeout;
-
-    if (Object.hasOwn(options, "turnTimeLimit")) {
-      const turnTimeLimit =
-        typeof options.turnTimeLimit === "number"
-        && Number.isFinite(options.turnTimeLimit)
-        && options.turnTimeLimit > 0
-          ? options.turnTimeLimit
-          : DEFAULT_TURN_TIME_LIMIT_SECONDS;
-
-      this.turnTimeLimitMs = turnTimeLimit * 1000;
-    }
   }
 
   startTurns(): void {
@@ -43,13 +14,9 @@ export class TurnManager {
       throw new Error("Cannot start turns without players.");
     }
 
-    this.stopTimer();
     this.active = true;
-    this.paused = false;
     this.currentIndex = 0;
     this.turnNumber = 1;
-    this.remainingTurnTimeMs = this.turnTimeLimitMs;
-    this.startTimer();
   }
 
   nextTurn(): string {
@@ -57,23 +24,9 @@ export class TurnManager {
       throw new Error("Turns are not active.");
     }
 
-    this.paused = false;
     this.currentIndex = (this.currentIndex + 1) % this.playerIds.length;
     this.turnNumber += 1;
-    this.remainingTurnTimeMs = this.turnTimeLimitMs;
-    this.startTimer();
     return this.playerIds[this.currentIndex];
-  }
-
-  /** Restart the turn timer for the current player without advancing turns. */
-  resetTimer(): void {
-    if (!this.active || this.currentIndex === -1 || this.turnTimeLimitMs === undefined) {
-      return;
-    }
-
-    this.paused = false;
-    this.remainingTurnTimeMs = this.turnTimeLimitMs;
-    this.startTimer();
   }
 
   getCurrentPlayer(): string {
@@ -106,11 +59,8 @@ export class TurnManager {
     }
 
     if (wasCurrentPlayer) {
-      this.paused = false;
       this.currentIndex %= this.playerIds.length;
       this.turnNumber += 1;
-      this.remainingTurnTimeMs = this.turnTimeLimitMs;
-      this.startTimer();
       return;
     }
 
@@ -127,108 +77,12 @@ export class TurnManager {
     return this.turnNumber;
   }
 
-  getRemainingTimeSeconds(): number {
-    if (!this.active || this.turnTimeLimitMs === undefined) {
-      return 0;
-    }
-
-    if (this.paused) {
-      return Math.ceil((this.remainingTurnTimeMs ?? 0) / 1000);
-    }
-
-    if (this.timerStartedAt !== null && this.remainingTurnTimeMs !== undefined) {
-      const elapsedMs = Date.now() - this.timerStartedAt;
-      const remaining = Math.max(0, this.remainingTurnTimeMs - elapsedMs);
-      return Math.ceil(remaining / 1000);
-    }
-
-    return Math.ceil((this.turnTimeLimitMs ?? 0) / 1000);
-  }
-
   isActive(): boolean {
     return this.active;
   }
 
-  isPaused(): boolean {
-    return this.paused;
-  }
-
-  pause(): void {
-    if (
-      !this.active
-      || this.paused
-      || this.turnTimeLimitMs === undefined
-      || this.currentIndex === -1
-    ) {
-      return;
-    }
-
-    if (this.remainingTurnTimeMs === undefined) {
-      this.remainingTurnTimeMs = this.turnTimeLimitMs;
-    }
-
-    if (this.timerStartedAt !== null) {
-      const elapsedMs = Date.now() - this.timerStartedAt;
-      this.remainingTurnTimeMs = Math.max(0, this.remainingTurnTimeMs - elapsedMs);
-    }
-
-    this.paused = true;
-    this.stopTimer();
-  }
-
-  resume(): void {
-    if (
-      !this.active
-      || !this.paused
-      || this.turnTimeLimitMs === undefined
-      || this.currentIndex === -1
-    ) {
-      return;
-    }
-
-    this.paused = false;
-    this.startTimer(this.remainingTurnTimeMs ?? this.turnTimeLimitMs);
-  }
-
   stop(): void {
     this.active = false;
-    this.paused = false;
     this.currentIndex = -1;
-    this.remainingTurnTimeMs = this.turnTimeLimitMs;
-    this.stopTimer();
-  }
-
-  private startTimer(delayMs = this.turnTimeLimitMs): void {
-    this.stopTimer();
-
-    if (
-      !this.active
-      || this.paused
-      || delayMs === undefined
-      || this.currentIndex === -1
-    ) {
-      return;
-    }
-
-    const sessionId = this.playerIds[this.currentIndex];
-    this.remainingTurnTimeMs = delayMs;
-    this.timerStartedAt = Date.now();
-    this.timeoutDelayed = this.clock.setTimeout(() => {
-      this.timeoutDelayed = null;
-      this.timerStartedAt = null;
-      this.remainingTurnTimeMs = this.turnTimeLimitMs;
-      this.onTimeout?.(sessionId);
-    }, delayMs);
-  }
-
-  private stopTimer(): void {
-    if (!this.timeoutDelayed) {
-      this.timerStartedAt = null;
-      return;
-    }
-
-    this.timeoutDelayed.clear();
-    this.timeoutDelayed = null;
-    this.timerStartedAt = null;
   }
 }

@@ -149,7 +149,6 @@ function injectStyles(): void {
       flex-direction: column;
       gap: var(--space-sm);
       min-height: 0;
-      max-height: min(320px, calc(100vh - 140px));
       padding: var(--space-md);
       box-shadow: var(--shadow-card);
       pointer-events: auto;
@@ -177,30 +176,15 @@ function injectStyles(): void {
       flex-direction: column;
       gap: var(--space-sm);
       min-height: 0;
-      overflow-y: auto;
+      overflow: hidden;
       color: var(--text-secondary);
       font-size: var(--font-sm);
       line-height: 1.5;
       white-space: normal;
-      scrollbar-width: thin;
-      scrollbar-color: var(--glass-border) transparent;
     }
 
     .sidebar-panel-content > * {
       margin: 0;
-    }
-
-    .sidebar-panel-content::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    .sidebar-panel-content::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    .sidebar-panel-content::-webkit-scrollbar-thumb {
-      background: var(--glass-border);
-      border-radius: var(--radius-pill);
     }
 
     .sidebar-stat-list,

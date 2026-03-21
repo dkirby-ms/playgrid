@@ -3,8 +3,6 @@ import type { MoveEntry } from "@eschaton/shared";
 
 vi.mock("@eschaton/shared", async () => await import("../../../../../shared/src/index.ts"));
 
-const shared = await import("../../../../../shared/src/index.ts");
-const { BLACK, CheckersState, EMPTY, RED } = shared;
 const { checkersPlugin } = await import("../CheckersPlugin");
 
 const BOARD_WIDTH = 8;

@@ -1312,3 +1312,80 @@ Promoted chess clock from checkers-specific to generic base-layer system:
 - Zero breaking changes
 
 **Learning:** Two-pass implementation strategy (specific → generic) balances speed of initial feedback with long-term reusability. Copilot directive provided clear scope adjustment (base-layer design).
+
+### Disable chess clock for CPU games (2026-03-20)
+
+- Added `!this.cpuOpponentEnabled` guard to all three chess-clock code paths in `BaseGameRoom.ts`: the simulation interval registration (`onCreate`), the clock initialization (`startGame`), and the timeout check (`processAction`).
+- The `cpuOpponentEnabled` flag is already set from room options at `onCreate` time, so no new state or flags were needed — just three `&&` clauses.
+- Important subtlety: without the guard on `checkChessClockTimeout()`, skipping clock initialization alone would cause an immediate timeout (clocks default to 0, and `<= 0` triggers forfeit).
+- Added 3 integration tests to `chess-clock.test.ts` using the BaseGameRoom mock infrastructure: CPU game clocks stay at 0, no simulation interval registered for CPU games, human-vs-human clocks still work.
+- Build, lint (no new errors), and all 776 tests pass.
+
+---
+
+### 2026-03-20: Orchestration Complete (Scribe)
+
+Session finalized: Orchestration logs created, decisions merged, cross-agent references propagated. See `.squad/log/2026-03-20T15-15-24Z-scribe-session.md`.
+
+**Related work:**
+- Marathe: Dev→UAT workflow dispatch (parallel)
+- Gately: Board coordinate labels (completed earlier, merged in this session)
+
+**Decisions merged:** `pemulis-cpu-no-timer.md` → decisions.md
+
+**Test Results:** 776 tests passing (all green)
+
+
+## Learnings
+
+### Turn Timer Removal (2026-03-21)
+
+- The turn timer penalty escalation system (~200 lines across `shared/src/gamePlugin.ts` + `server/src/game/BaseGameRoom.ts` + `server/src/games/risk/RiskPlugin.ts`) was cleanly removable because chess clock was already a separate, independent system.
+- `TurnManager` is still needed for turn sequencing even without timers. Passing no `turnTimeLimit` to TurnManager means it never starts a countdown — the turn management logic (nextTurn, getCurrentPlayer, pause/resume) continues to work.
+- Schema fields (`timerWarningActive`, `turnTimeRemaining`) were kept on `BaseGameState` to avoid Colyseus serialization breakage. They default to 0/false and are harmless.
+- CPU opponents already have a guard (`!this.cpuOpponentEnabled`) preventing chess clock initialization. This pattern was already correct and untouched.
+- The `handleTurnTimeout` method is still needed as a fallback for CPU opponents when they can't find a valid move — it triggers a game forfeit.
+
+## Team Updates (2026-03-21)
+
+**Turn Timer Removal Session:** Implemented Hal's scope analysis. Removed turn timer penalty escalation (~200 lines) from shared types, BaseGameRoom, and Risk plugin. Added chess clock config to Backgammon (10min) and Dominos (8min). Risk migrated from turn timer to chess clock. Schema preserved for stability. All 768 tests pass. Orchestration log: `.squad/orchestration-log/2026-03-21T12-29-57Z-pemulis.md`. Outstanding: TurnManager.test.ts dead code cleanup deferred.
+
+### Backgammon Rules Audit (2026-03-21)
+
+**Requested by:** dkirby-ms  
+**Scope:** Full audit of bar/hitting mechanics, move direction, bear-off logic.
+
+**Findings:**
+
+1. 🔴 **Bear-off over-roll loop direction is inverted** (GAME-BREAKING) — `isValidMove()` lines 148–170 in `backgammonLogic.ts`. Both Black and Red's bear-off with higher-than-needed die checks pieces in the WRONG direction. Black checks `fromPoint+1 → 23` (closer to edge) instead of `18 → fromPoint-1` (farther from edge). Red has the symmetric bug. Result: wrong checker gets borne off in endgame. Existing tests at `backgammon.test.ts:370–376` validate incorrect behavior.
+
+2. 🟡 **No "must use larger die" enforcement** (MEDIUM) — `BackgammonPlugin.ts` move action. When only one die is usable, player should be forced to use the larger one. Code allows free choice.
+
+3. ✅ Bar/hitting mechanics: fully correct — schema has bar fields, blot capture works, must-enter-from-bar enforced, re-entry points correct for both players.
+
+4. ✅ Move direction: Black 0→23, Red 23→0 — correct.
+
+5. ✅ Board setup, home boards, exact bear-off, doubles, win condition — all correct.
+
+**Decision filed:** `.squad/decisions/inbox/pemulis-backgammon-audit.md`
+
+### Backgammon Bear-off & Larger-Die Fix (2026-03-21)
+
+**Requested by:** dkirby-ms  
+**Scope:** Fix two server-side logic bugs from backgammon audit.
+
+**Fix 1: Bear-off over-roll loop direction (GAME-BREAKING)**
+- `backgammonLogic.ts` `isValidMove()` — Fixed inverted loop direction in bear-off with over-roll for both Black and Red.
+- Black: Changed loop from `fromPoint+1 → 23` (closer to edge) to `18 → fromPoint-1` (farther from edge).
+- Red: Changed loop from `0 → fromPoint-1` (closer to edge) to `fromPoint+1 → 5` (farther from edge).
+- Now correctly enforces: over-roll bear-off only valid from the FARTHEST piece when exact point is empty.
+- Fixed 3 existing tests that validated wrong behavior. Added 6 new bear-off unit tests covering: farthest piece over-roll, closest-piece rejection, single-piece bear-off.
+
+**Fix 2: Must-use-larger-die enforcement (MEDIUM)**
+- `BackgammonPlugin.ts` `validateAction()` — Added rule: when only one of two different dice can be used (not both in sequence), the larger die must be chosen.
+- `backgammonLogic.ts` — Added `canPlayBothDice()` helper that tries all possible move+follow-up combinations in both orderings.
+- Only triggers when: dice are different, both available, both individually have valid moves, but no ordering allows both to be played.
+- Added 6 new tests: forces larger die, allows either when both sequenceable, no restriction on doubles, allows smaller when larger blocked, canPlayBothDice unit tests.
+- Fixed 2 pre-existing tests that were using the smaller die in must-use-larger scenarios.
+
+**Validation:** Build ✓, Lint ✓, Tests ✓ (773 pass, 12 todo)

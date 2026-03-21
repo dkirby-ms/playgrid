@@ -35,6 +35,7 @@
 - **Player Info Bars (P0):** Verified working across all games. Already had data flow (GameScene → updatePlayerInfoBars), mount points (game-info-top/bottom), and visibility toggle. Added subtle pulse animation to "Your Turn" status badge (2s ease-in-out with box-shadow glow). The bars follow glass-morphism pattern: `var(--glass-bg)`, `var(--shadow-card)`, `var(--border-light)`.
 - **Game Header (P1):** Created new `GameHeader.ts` component for game scene chrome. Three-section layout: Back to Lobby (left) + Game Title (center) + Resign (right). Uses `var(--glass-bg-strong)` and `var(--glass-blur)` for header bar. Both actions trigger `leave_game` event (resign logic refinement deferred). Mount point `#game-header` added to game layout ABOVE `#game-info-top`. GameScene manages lifecycle: `initGameHeader()` / `destroyGameHeader()`. HUD's Leave button hidden when GameHeader is active (chat toggle stays visible).
 - **Game chrome architecture:** Layout order is now: GameHeader → Opponent Info Bar → Canvas → Player Info Bar. All chrome components use the same glass-morphism token system and lifecycle pattern (init on enter, destroy on exit, visibility toggle via `display: none/flex`).
+- **No scrollbars in sidebar status panes:** Removed `overflow-y: auto` and all scrollbar pseudo-element styling from `.sidebar-panel-content`. Changed to `overflow: hidden`. Also removed `max-height` constraint from `.game-sidebar-panel` so panels size naturally to their content. The outer `.game-sidebar` container retains `overflow-y: auto` for full-sidebar scroll when many panels are present. Rule: individual status panes must never show scrollbars.
 - **HistoryScreen P6.4 Polish:** Player color palette expanded from 4 to 6 (players 0–5) for Risk support. Colors: blue, amber, purple, green, red, cyan — applied consistently to turn badges (`.hs-player-N`), player name labels, and stat bar fills (`.player-N`). The stat bar `buildStatBar` was clamped at `Math.min(playerIdx, 1)` — fixed to `Math.min(playerIdx, 5)`. Move cards upgraded to `rounded-lg` with subtle borders and `rgba(15,23,42,0.5)` slate background matching Figma's `bg-slate-900/50` pattern. Stats cards got `box-shadow`, `border-bottom` separators on titles, uppercase letter-spacing. Turn badges show `#N` format (matching Figma) at 40×40px. Mobile responsive: sidebar stacks below move list at `<768px` with `max-height: 300px` and `order: 2`. Overall container upgraded to `border-radius: var(--radius-2xl)` with ring shadow.
 
 ---
@@ -588,3 +589,21 @@ CheckersState (player1/2TimeRemainingMs)
 **Testing:** Manual verification checklist (turn switching, critical state, animations, responsive).
 
 **Learning:** Componentizing state extraction (getChessClockMarkup, extractChessClockTime) enables reuse across multiple game renderers. Design spec as executable contract prevents rework.
+
+### Chess Clock Generalization & Turn Timer Removal (Client)
+
+**Date:** 2026-03-21
+**Context:** Turn timer fully replaced by chess clock for all 4 games
+
+**Changes Made:**
+- `RiskSetupConfig.ts` — Removed turn timer stepper from Advanced Settings
+- `GameScene.ts` — Removed `extractTurnTimeRemaining()`, removed turn timer data from HUD init/update, removed turn timer fallback in `buildPlayerInfoData()`. Chess clock now sole timer source.
+- `mockStates.ts` — Replaced `turnTimeRemaining` with `player1TimeRemainingMs`/`player2TimeRemainingMs` (600s default) on all mock states
+
+**Key Insight:** The chess clock in `extractChessClockTime()` was already generic (not Checkers-specific). It maps playerIndex 0→player1, 1→player2, and returns null for index ≥2. This means Risk/Dominos with >2 players correctly show clocks for active pair only.
+
+**Learning:** The HUD timer infrastructure (`gameTimer`/`showTimer` in HUD.ts) is now dead code — it only served the old turn timer. Can be cleaned up in a future pass once shared types are also updated.
+
+## Team Updates (2026-03-21)
+
+**Turn Timer Removal Session:** Removed client-side turn timer display (HUD countdown, Risk setup stepper) and updated mocks to chess clock schema. Coordinated with Pemulis on server-side removal. GameSidebar, PlayerInfoBar, all renderers already compatible with chess clock (no changes needed). HUD timer infrastructure is now dead code. Orchestration log: `.squad/orchestration-log/2026-03-21T12-29-57Z-ortho.md`.

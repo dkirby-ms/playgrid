@@ -28,7 +28,6 @@ import {
 } from "./scenes/SetupScene";
 import {
   WaitingRoomScene,
-  type WaitingRoomSceneEnterData,
   type WaitingRoomSceneEvent,
 } from "./scenes/WaitingRoomScene";
 import { SandboxScene } from "./scenes/SandboxScene";

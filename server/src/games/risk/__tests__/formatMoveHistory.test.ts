@@ -3,8 +3,6 @@ import type { MoveEntry } from "@eschaton/shared";
 
 vi.mock("@eschaton/shared", async () => await import("../../../../../../shared/src/index.ts"));
 
-const shared = await import("../../../../../../shared/src/index.ts");
-const { RiskState } = shared;
 const { riskPlugin } = await import("../RiskPlugin");
 
 function createGameState() {

@@ -10,6 +10,7 @@ import {
 } from "@eschaton/shared";
 import {
   applyMove,
+  canPlayBothDice,
   checkWinCondition,
   getAvailableDice,
   getPlayerColor,
@@ -70,8 +71,8 @@ function formatMoveEntries(
     const stats = playerStats[move.playerId];
     
     if (move.actionType === "roll") {
-      const die1 = move.payload.die1 as number | undefined;
-      const die2 = move.payload.die2 as number | undefined;
+      const die1 = move.payload?.die1 as number | undefined;
+      const die2 = move.payload?.die2 as number | undefined;
       
       if (typeof die1 === "number" && typeof die2 === "number") {
         if (die1 === die2) {
@@ -90,9 +91,9 @@ function formatMoveEntries(
         formatted.push({ ...move });
       }
     } else if (move.actionType === "move") {
-      const from = move.payload.from;
-      const to = move.payload.to;
-      const hit = move.payload.hit as boolean | undefined;
+      const from = move.payload?.from;
+      const to = move.payload?.to;
+      const hit = move.payload?.hit as boolean | undefined;
       
       if (from === "bar" && typeof to === "number") {
         const hitSuffix = hit ? " (hit)" : "";
@@ -225,6 +226,10 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
     mode: "sequential",
     turnOrder: { type: "round-robin" },
     allowPass: false,
+  },
+  chessClockConfig: {
+    enabled: true,
+    initialTimeBankMs: 600_000,
   },
   lifecycle: {
     onGameStart(state) {
@@ -442,7 +447,58 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
       }
 
       if (actionType === "move") {
-        return validateMoveAction(state, client.sessionId, payload);
+        if (!validateMoveAction(state, client.sessionId, payload)) {
+          return false;
+        }
+
+        // Must-use-larger-die rule: when both dice are available, different,
+        // and only one can be used (playing either blocks the other), force the larger.
+        const movePayload = payload as MovePayload;
+        const [die1, die2] = state.dice;
+        const availableDice = getAvailableDice(
+          Array.from(state.dice),
+          Array.from(state.usedDice),
+          state.doublesMovesUsed,
+        );
+
+        if (die1 !== die2 && availableDice.length === 2) {
+          const player = state.players.get(client.sessionId);
+          if (!player) return false;
+          const playerColor = getPlayerColor(player.playerIndex);
+          if (playerColor === null) return false;
+
+          const points = Array.from(state.points);
+          const bothPlayable = canPlayBothDice(
+            points,
+            state.blackBar,
+            state.redBar,
+            state.blackBorneOff,
+            state.redBorneOff,
+            die1,
+            die2,
+            playerColor,
+          );
+
+          if (!bothPlayable) {
+            const die1HasMoves = hasValidMoves(
+              points, state.blackBar, state.redBar,
+              state.blackBorneOff, state.redBorneOff, [die1], playerColor,
+            );
+            const die2HasMoves = hasValidMoves(
+              points, state.blackBar, state.redBar,
+              state.blackBorneOff, state.redBorneOff, [die2], playerColor,
+            );
+
+            if (die1HasMoves && die2HasMoves) {
+              const largerDie = Math.max(die1, die2);
+              if (movePayload.die !== largerDie) {
+                return false;
+              }
+            }
+          }
+        }
+
+        return true;
       }
 
       if (actionType === "pass") {
