@@ -1,7 +1,7 @@
 export type NodeEnv = "development" | "production";
 
 const DEFAULT_PORT = 2567;
-const DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/playgrid";
+const DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@localhost:5433/playgrid";
 
 const portFromEnv = Number.parseInt(process.env.PORT ?? "", 10);
 const databaseUrlFromEnv = process.env.DATABASE_URL?.trim();
