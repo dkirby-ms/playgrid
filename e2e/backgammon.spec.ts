@@ -345,6 +345,24 @@ async function findAndMakeMove(
   die: number,
   isBlack: boolean,
 ): Promise<boolean> {
+  // Must enter from bar before any board moves
+  const barCount = isBlack ? snap.blackBar : snap.redBar;
+  if (barCount > 0) {
+    const entryPoint = isBlack ? die - 1 : 24 - die;
+    if (entryPoint < 0 || entryPoint >= 24) return false;
+    const destPieces = snap.points[entryPoint];
+    const blocked = isBlack ? destPieces <= -2 : destPieces >= 2;
+    if (blocked) return false;
+
+    const prevPoints = snap.points.join(",");
+    await sendAction(page, "move", { from: "bar", to: entryPoint, die });
+    await expect.poll(async () => {
+      const s = await getSnapshot(page);
+      return s.points.join(",") !== prevPoints || s.currentTurn !== snap.currentTurn;
+    }, { timeout: 3_000 }).toBe(true);
+    return true;
+  }
+
   for (let pt = 0; pt < 24; pt++) {
     const pieces = snap.points[pt];
     const hasPiece = isBlack ? pieces > 0 : pieces < 0;
@@ -643,11 +661,10 @@ test.describe("Backgammon E2E — Win condition", () => {
     const match = await startMatch(browser, `BG-win-${Date.now()}`);
 
     try {
-      // Play turns until one player can bear off pieces.
-      // Since dice are random, we play a few full turns to verify the
-      // roll → move → turn-advance lifecycle works end-to-end.
-      // A deterministic full game is impractical due to random dice,
-      // so we verify the game lifecycle and outcome message pipeline.
+      // Play several turns to verify the full roll → move → turn-advance lifecycle.
+      // Uses the same robust move-finding pattern as the bearing-off test:
+      // read fresh state each step, sort dice largest-first (must-use-larger-die rule),
+      // and pass when no valid moves found.
 
       let turnsPlayed = 0;
       const maxTurns = 10;
@@ -655,115 +672,45 @@ test.describe("Backgammon E2E — Win condition", () => {
       while (turnsPlayed < maxTurns) {
         const turnPage = await getCurrentTurnPage(match);
         const turnSnapshot = await getSnapshot(turnPage);
-        const isBlack = turnSnapshot.currentTurn === match.blackSessionId;
+        const isBlackTurn = turnSnapshot.currentTurn === match.blackSessionId;
 
         // Roll dice
         await sendAction(turnPage, "roll");
-        const rolled = await waitForDiceRoll(turnPage);
+        await waitForDiceRoll(turnPage);
 
-        // Find a valid move from available pieces
-        let moved = false;
-        const dice = [rolled.dice[0], rolled.dice[1]];
-        const usedDiceLocal = [false, false];
-        const isDoubles = dice[0] === dice[1];
-        const maxMoves = isDoubles ? 4 : 2;
+        // Make up to 4 moves (doubles give 4). Each iteration reads fresh state,
+        // determines available dice (sorted largest-first for must-use-larger-die rule),
+        // finds any valid move, and executes it.
+        for (let step = 0; step < 4; step++) {
+          const snap = await getSnapshot(turnPage);
+          if (snap.currentTurn !== turnSnapshot.currentTurn || snap.dice[0] === 0) break;
 
-        for (let moveIdx = 0; moveIdx < maxMoves; moveIdx++) {
-          // For non-doubles, pick the die index (0 or 1) that hasn't been used
-          // For doubles, both dice are the same value
-          let die: number;
+          const isDoubles = snap.dice[0] === snap.dice[1];
+          const availableDice: number[] = [];
           if (isDoubles) {
-            die = dice[0];
+            availableDice.push(snap.dice[0]);
           } else {
-            if (moveIdx === 0 && !usedDiceLocal[0]) {
-              die = dice[0];
-            } else if (!usedDiceLocal[1]) {
-              die = dice[1];
-            } else {
-              break;
-            }
+            if (snap.dice[0] > 0 && !snap.usedDice[0]) availableDice.push(snap.dice[0]);
+            if (snap.dice[1] > 0 && !snap.usedDice[1]) availableDice.push(snap.dice[1]);
+            // Sort descending so the larger die is tried first (must-use-larger-die rule)
+            availableDice.sort((a, b) => b - a);
           }
 
-          // Bar entry: must enter from bar before any board moves
-          const barCount = isBlack ? rolled.blackBar : rolled.redBar;
-          let foundMove = false;
-
-          if (barCount > 0) {
-            const entryPoint = isBlack ? die - 1 : 24 - die;
-            const dest = rolled.points[entryPoint];
-            const blocked = isBlack ? dest < -1 : dest > 1;
-
-            if (!blocked) {
-              await sendAction(turnPage, "move", { from: "bar", to: entryPoint, die });
-
-              const beforePoints = rolled.points.join(",");
-              await expect.poll(async () => {
-                const s = await getSnapshot(turnPage);
-                return s.points.join(",") !== beforePoints || s.dice[0] === 0;
-              }).toBe(true);
-
-              usedDiceLocal[isDoubles ? 0 : (moveIdx === 0 ? 0 : 1)] = true;
-              foundMove = true;
-              moved = true;
-
-              const refreshed = await getSnapshot(turnPage);
-              rolled.points = refreshed.points;
-              rolled.dice = refreshed.dice;
-              rolled.usedDice = refreshed.usedDice;
-              rolled.blackBar = refreshed.blackBar;
-              rolled.redBar = refreshed.redBar;
-
-              if (refreshed.dice[0] === 0) { break; }
-            }
-          } else {
-            // Try all source points for the current player
-            const sources = isBlack
-              ? Array.from({ length: 24 }, (_, i) => i).filter((i) => rolled.points[i] > 0)
-              : Array.from({ length: 24 }, (_, i) => i).filter((i) => rolled.points[i] < 0);
-
-            for (const from of sources) {
-              const to = isBlack ? from + die : from - die;
-              if (to < 0 || to >= 24) continue;
-
-              // Check destination isn't blocked (2+ opponent pieces)
-              const dest = rolled.points[to];
-              if (isBlack && dest < -1) continue;
-              if (!isBlack && dest > 1) continue;
-
-              await sendAction(turnPage, "move", { from, to, die });
-
-              // Wait for state change
-              const beforePoints = rolled.points.join(",");
-              await expect.poll(async () => {
-                const s = await getSnapshot(turnPage);
-                return s.points.join(",") !== beforePoints || s.dice[0] === 0;
-              }).toBe(true);
-
-              usedDiceLocal[isDoubles ? 0 : (moveIdx === 0 ? 0 : 1)] = true;
-              foundMove = true;
-              moved = true;
-
-              // Refresh rolled state for next die
-              const refreshed = await getSnapshot(turnPage);
-              rolled.points = refreshed.points;
-              rolled.dice = refreshed.dice;
-              rolled.usedDice = refreshed.usedDice;
-              rolled.blackBar = refreshed.blackBar;
-              rolled.redBar = refreshed.redBar;
-
-              // If turn ended (dice reset to 0), stop trying dice
-              if (refreshed.dice[0] === 0) break;
-              break;
-            }
+          if (availableDice.length === 0) {
+            await sendAction(turnPage, "pass");
+            break;
           }
 
-          if (rolled.dice[0] === 0) break;
-          if (!foundMove) continue;
-        }
+          let moved = false;
+          for (const die of availableDice) {
+            if (moved) break;
+            moved = await findAndMakeMove(turnPage, snap, die, isBlackTurn);
+          }
 
-        // If no valid move was possible, pass
-        if (!moved) {
-          await sendAction(turnPage, "pass");
+          if (!moved) {
+            await sendAction(turnPage, "pass");
+            break;
+          }
         }
 
         // Wait for turn to advance
