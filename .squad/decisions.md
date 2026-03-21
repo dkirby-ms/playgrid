@@ -5924,3 +5924,100 @@ Algebraic coordinate labels (A–H, 8–1) placed inside the 24px board frame us
 
 **Impact:** Reusable pattern for any game needing board annotations (e.g., Chess). No changes to drag/drop, piece rendering, or hit detection. Build, lint, tests all pass.
 
+---
+
+## Session: Turn Timer Removal → Chess Clock for All Games (2026-03-21)
+
+### Hal: Scope Analysis — Replace Turn Timer with Chess Clock
+
+**Status:** Implemented  
+**Date:** 2026-03-21  
+**Scope:** Full system audit + per-game chess clock design
+
+Comprehensive analysis of turn timer (penalty escalation in Risk only) vs. chess clock (generic per-player time banks). Chess clock is already extensible; only Risk plugin needs migration. Per-game time configs: Checkers/Backgammon/Risk 10 min, Dominos 8 min.
+
+**Key Findings:**
+- Turn timer: 474–491 (handleTurnTimeout) + 509–576 (penalty escalation) in BaseGameRoom (~200 lines)
+- Chess clock: Already generic, 36 tests in place, zero game-specific branches
+- Risk behavior change: Auto-pass → forfeit on timeout (document for release notes)
+
+**Impact:**
+- 6 files modified, ~200 lines deleted, ~50 added, ~10 tests removed
+- No client-side changes needed (already chess-clock compatible)
+- CPU opponent modes unaffected (remain untimed)
+
+**Files Touched:** shared/gamePlugin.ts, BaseGameRoom.ts, RiskPlugin.ts, BackgammonPlugin.ts, DominosPlugin.ts, BaseGameRoom.test.ts
+
+---
+
+### Pemulis: Turn Timer Removal & Chess Clock Configuration
+
+**Status:** Implemented  
+**Date:** 2026-03-21  
+**PR:** (Part of squad workflow)
+
+Removed turn timer penalty escalation (~200 lines) and configured chess clock for all 4 games.
+
+**Changes:**
+- **Shared:** Removed `TurnTimerPenalty` type, `TurnTimerConfig` interface, `onAutoPass` lifecycle hook
+- **BaseGameRoom:** Removed `playerTimeoutCounts` map, `applyTurnTimerPenalty()`, `handleLegacyTurnTimeout()`, `resetTurnTimer()`
+- **Risk:** Removed `turnTimerConfig` + `onAutoPass`, added `chessClockConfig: 600s`
+- **Backgammon:** Added `chessClockConfig: 600s`
+- **Dominos:** Removed `turnTimeLimit: 60`, added `chessClockConfig: 480s`
+- **Checkers:** No changes (already had chess clock)
+
+**Chess Clock Config:**
+| Game | Time | Ms |
+| Checkers | 10 min | 600,000 |
+| Backgammon | 10 min | 600,000 |
+| Risk | 10 min | 600,000 |
+| Dominos | 8 min | 480,000 |
+
+**Schema Compatibility:** `turnTimeRemaining`, `timerWarningActive` kept (no mutations, schema stable).
+
+**Validation:** ✅ 768 tests pass, build clean, lint clean.
+
+---
+
+### Steeply: Turn Timer Test Removal
+
+**Status:** Implemented  
+**Date:** 2026-03-21  
+**Scope:** Turn timer test surface audit + removal
+
+Removed 8 turn-timer-specific tests from `BaseGameRoom.test.ts`, preserving non-timer assertions. Verified 36 chess clock tests remain intact.
+
+**Removed Tests:** "pauses turn timer on disconnect/reconnect" + "turn timer penalty system" block (7 tests covering warnings, onAutoPass callback, forfeit, reset counts, legacy instant-loss).
+
+**Outstanding:** `TurnManager.test.ts` has 6 `turnTimeLimit` tests flagged as dead code (cleanup deferred until TurnManager.ts impl removed).
+
+**Validation:** ✅ 768 tests pass, clean audit surface ready for Phase 4.
+
+---
+
+### Ortho: Chess Clock as Universal Timer — Turn Timer Removal (Client)
+
+**Status:** Implemented  
+**Date:** 2026-03-21  
+**Scope:** Client-side turn timer removal + schema updates
+
+Removed turn timer display (HUD countdown, Risk setup stepper) from client. Chess clock (`player1TimeRemainingMs`, `player2TimeRemainingMs`) is now sole timing mechanism in UI.
+
+**Changes:**
+- **RiskSetupConfig:** Removed turn timer stepper (chess clock config server-side only)
+- **GameScene:** Removed `extractTurnTimeRemaining()` pipeline (kept `extractChessClockTime()`)
+- **mockStates:** Updated to chess clock schema (removed `turnTimeRemaining`, added per-player time fields)
+
+**Rationale:** `extractChessClockTime()` already game-agnostic (keyed on playerIndex). PlayerInfoBar naturally shows per-player clocks. For >2 player games, players ≥2 get no clock display (matches server 2-clock model).
+
+**Impact:** GameSidebar, PlayerInfoBar, all renderers already work with chess clock (no changes needed). HUD timer infrastructure is now dead code.
+
+---
+
+### Copilot Directive (2026-03-21T12-14-41Z)
+
+**Status:** Implemented  
+**Date:** 2026-03-21  
+
+User request (dkirby-ms via Copilot): Replace turn timer system with chess clock for all games. Turn timer provides less intuitive UX than per-player time banks; chess clock already proven in Checkers, generic, extensible.
+

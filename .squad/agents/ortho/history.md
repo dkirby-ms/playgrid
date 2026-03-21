@@ -588,3 +588,21 @@ CheckersState (player1/2TimeRemainingMs)
 **Testing:** Manual verification checklist (turn switching, critical state, animations, responsive).
 
 **Learning:** Componentizing state extraction (getChessClockMarkup, extractChessClockTime) enables reuse across multiple game renderers. Design spec as executable contract prevents rework.
+
+### Chess Clock Generalization & Turn Timer Removal (Client)
+
+**Date:** 2026-03-21
+**Context:** Turn timer fully replaced by chess clock for all 4 games
+
+**Changes Made:**
+- `RiskSetupConfig.ts` — Removed turn timer stepper from Advanced Settings
+- `GameScene.ts` — Removed `extractTurnTimeRemaining()`, removed turn timer data from HUD init/update, removed turn timer fallback in `buildPlayerInfoData()`. Chess clock now sole timer source.
+- `mockStates.ts` — Replaced `turnTimeRemaining` with `player1TimeRemainingMs`/`player2TimeRemainingMs` (600s default) on all mock states
+
+**Key Insight:** The chess clock in `extractChessClockTime()` was already generic (not Checkers-specific). It maps playerIndex 0→player1, 1→player2, and returns null for index ≥2. This means Risk/Dominos with >2 players correctly show clocks for active pair only.
+
+**Learning:** The HUD timer infrastructure (`gameTimer`/`showTimer` in HUD.ts) is now dead code — it only served the old turn timer. Can be cleaned up in a future pass once shared types are also updated.
+
+## Team Updates (2026-03-21)
+
+**Turn Timer Removal Session:** Removed client-side turn timer display (HUD countdown, Risk setup stepper) and updated mocks to chess clock schema. Coordinated with Pemulis on server-side removal. GameSidebar, PlayerInfoBar, all renderers already compatible with chess clock (no changes needed). HUD timer infrastructure is now dead code. Orchestration log: `.squad/orchestration-log/2026-03-21T12-29-57Z-ortho.md`.

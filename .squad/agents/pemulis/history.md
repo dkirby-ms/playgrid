@@ -1335,3 +1335,17 @@ Session finalized: Orchestration logs created, decisions merged, cross-agent ref
 
 **Test Results:** 776 tests passing (all green)
 
+
+## Learnings
+
+### Turn Timer Removal (2026-03-21)
+
+- The turn timer penalty escalation system (~200 lines across `shared/src/gamePlugin.ts` + `server/src/game/BaseGameRoom.ts` + `server/src/games/risk/RiskPlugin.ts`) was cleanly removable because chess clock was already a separate, independent system.
+- `TurnManager` is still needed for turn sequencing even without timers. Passing no `turnTimeLimit` to TurnManager means it never starts a countdown — the turn management logic (nextTurn, getCurrentPlayer, pause/resume) continues to work.
+- Schema fields (`timerWarningActive`, `turnTimeRemaining`) were kept on `BaseGameState` to avoid Colyseus serialization breakage. They default to 0/false and are harmless.
+- CPU opponents already have a guard (`!this.cpuOpponentEnabled`) preventing chess clock initialization. This pattern was already correct and untouched.
+- The `handleTurnTimeout` method is still needed as a fallback for CPU opponents when they can't find a valid move — it triggers a game forfeit.
+
+## Team Updates (2026-03-21)
+
+**Turn Timer Removal Session:** Implemented Hal's scope analysis. Removed turn timer penalty escalation (~200 lines) from shared types, BaseGameRoom, and Risk plugin. Added chess clock config to Backgammon (10min) and Dominos (8min). Risk migrated from turn timer to chess clock. Schema preserved for stability. All 768 tests pass. Orchestration log: `.squad/orchestration-log/2026-03-21T12-29-57Z-pemulis.md`. Outstanding: TurnManager.test.ts dead code cleanup deferred.
