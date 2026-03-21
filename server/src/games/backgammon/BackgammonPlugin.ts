@@ -70,8 +70,8 @@ function formatMoveEntries(
     const stats = playerStats[move.playerId];
     
     if (move.actionType === "roll") {
-      const die1 = move.payload.die1 as number | undefined;
-      const die2 = move.payload.die2 as number | undefined;
+      const die1 = move.payload?.die1 as number | undefined;
+      const die2 = move.payload?.die2 as number | undefined;
       
       if (typeof die1 === "number" && typeof die2 === "number") {
         if (die1 === die2) {
@@ -90,9 +90,9 @@ function formatMoveEntries(
         formatted.push({ ...move });
       }
     } else if (move.actionType === "move") {
-      const from = move.payload.from;
-      const to = move.payload.to;
-      const hit = move.payload.hit as boolean | undefined;
+      const from = move.payload?.from;
+      const to = move.payload?.to;
+      const hit = move.payload?.hit as boolean | undefined;
       
       if (from === "bar" && typeof to === "number") {
         const hitSuffix = hit ? " (hit)" : "";

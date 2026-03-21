@@ -335,6 +335,40 @@ async function waitForRoomError(page: Page): Promise<RoomErrorPayload> {
 }
 
 /**
+ * Finds and executes a valid backgammon move for the given die value.
+ * Scans all 24 points for a piece belonging to the current player and an
+ * unblocked target. Returns true if a move was made, false otherwise.
+ */
+async function findAndMakeMove(
+  page: Page,
+  snap: BackgammonSnapshot,
+  die: number,
+  isBlack: boolean,
+): Promise<boolean> {
+  for (let pt = 0; pt < 24; pt++) {
+    const pieces = snap.points[pt];
+    const hasPiece = isBlack ? pieces > 0 : pieces < 0;
+    if (!hasPiece) continue;
+
+    const target = isBlack ? pt + die : pt - die;
+    if (target < 0 || target >= 24) continue;
+
+    const destPieces = snap.points[target];
+    const blocked = isBlack ? destPieces <= -2 : destPieces >= 2;
+    if (blocked) continue;
+
+    const prevPoints = snap.points.join(",");
+    await sendAction(page, "move", { from: pt, to: target, die });
+    await expect.poll(async () => {
+      const s = await getSnapshot(page);
+      return s.points.join(",") !== prevPoints || s.currentTurn !== snap.currentTurn;
+    }, { timeout: 3_000 }).toBe(true);
+    return true;
+  }
+  return false;
+}
+
+/**
  * Wait until the snapshot's dice reflect a completed roll (both > 0).
  * Returns the refreshed snapshot.
  */
@@ -536,57 +570,39 @@ test.describe("Backgammon E2E — Bearing off", () => {
       const snapshot = await getSnapshot(currentPage);
       const isBlackTurn = snapshot.currentTurn === match.blackSessionId;
 
-      // Roll and make the first die move
+      // Roll dice, then complete the turn by scanning the board for valid moves
       await sendAction(currentPage, "roll");
-      const rolled = await waitForDiceRoll(currentPage);
-      const die1 = rolled.dice[0];
-      const die2 = rolled.dice[1];
+      await waitForDiceRoll(currentPage);
 
-      if (isBlackTurn) {
-        // Move Black piece from point 0 forward by die1
-        await sendAction(currentPage, "move", { from: 0, to: 0 + die1, die: die1 });
+      // Make up to 4 moves (doubles give 4). Each iteration reads fresh state,
+      // determines available dice, finds any valid move, and executes it.
+      for (let step = 0; step < 4; step++) {
+        const snap = await getSnapshot(currentPage);
+        if (snap.currentTurn !== snapshot.currentTurn || snap.dice[0] === 0) break;
 
-        // Wait for the move to process
-        await expect.poll(async () => {
-          const s = await getSnapshot(currentPage);
-          return s.usedDice[0] || s.dice[0] === 0;
-        }).toBe(true);
-
-        const afterFirst = await getSnapshot(currentPage);
-
-        // If turn hasn't ended, make the second move
-        if (afterFirst.currentTurn === snapshot.currentTurn && afterFirst.dice[0] > 0) {
-          // Use second die, move another piece from point 0
-          if (afterFirst.points[0] > 0) {
-            await sendAction(currentPage, "move", { from: 0, to: 0 + die2, die: die2 });
-          } else {
-            // Move the piece we just placed
-            const newPos = 0 + die1;
-            if (afterFirst.points[newPos] > 0) {
-              await sendAction(currentPage, "move", { from: newPos, to: newPos + die2, die: die2 });
-            }
-          }
+        const isDoubles = snap.dice[0] === snap.dice[1];
+        const availableDice: number[] = [];
+        if (isDoubles) {
+          availableDice.push(snap.dice[0]);
+        } else {
+          if (snap.dice[0] > 0 && !snap.usedDice[0]) availableDice.push(snap.dice[0]);
+          if (snap.dice[1] > 0 && !snap.usedDice[1]) availableDice.push(snap.dice[1]);
         }
-      } else {
-        // White (Red) moves from point 23 backward by die1
-        await sendAction(currentPage, "move", { from: 23, to: 23 - die1, die: die1 });
 
-        await expect.poll(async () => {
-          const s = await getSnapshot(currentPage);
-          return s.usedDice[0] || s.dice[0] === 0;
-        }).toBe(true);
+        if (availableDice.length === 0) {
+          await sendAction(currentPage, "pass");
+          break;
+        }
 
-        const afterFirst = await getSnapshot(currentPage);
+        let moved = false;
+        for (const die of availableDice) {
+          if (moved) break;
+          moved = await findAndMakeMove(currentPage, snap, die, isBlackTurn);
+        }
 
-        if (afterFirst.currentTurn === snapshot.currentTurn && afterFirst.dice[0] > 0) {
-          if (afterFirst.points[23] < 0) {
-            await sendAction(currentPage, "move", { from: 23, to: 23 - die2, die: die2 });
-          } else {
-            const newPos = 23 - die1;
-            if (afterFirst.points[newPos] < 0) {
-              await sendAction(currentPage, "move", { from: newPos, to: newPos - die2, die: die2 });
-            }
-          }
+        if (!moved) {
+          await sendAction(currentPage, "pass");
+          break;
         }
       }
 

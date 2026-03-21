@@ -353,6 +353,80 @@ async function sendBackgammonAction(page: Page, actionType: string, payload?: un
   }, { action: actionType, data: payload });
 }
 
+/**
+ * Completes the human player's backgammon turn by scanning the board for valid
+ * moves. Handles normal rolls and doubles (up to 4 moves). Respects usedDice
+ * state to only attempt moves with available dice.
+ */
+async function completeHumanBackgammonTurn(
+  page: Page,
+  humanSessionId: string,
+  isHumanBlack: boolean,
+): Promise<void> {
+  for (let step = 0; step < 4; step++) {
+    const snap = await getBackgammonSnapshot(page);
+    if (snap.currentTurn !== humanSessionId || snap.dice[0] === 0) return;
+
+    // Determine available dice
+    const isDoubles = snap.dice[0] === snap.dice[1];
+    const availableDice: number[] = [];
+    if (isDoubles) {
+      // For doubles, usedDice stays [false,false] — server tracks via doublesMovesUsed.
+      // Just provide the die value; server will reject when all 4 are used.
+      availableDice.push(snap.dice[0]);
+    } else {
+      if (snap.dice[0] > 0 && !snap.usedDice[0]) availableDice.push(snap.dice[0]);
+      if (snap.dice[1] > 0 && !snap.usedDice[1]) availableDice.push(snap.dice[1]);
+    }
+
+    if (availableDice.length === 0) {
+      await sendBackgammonAction(page, "pass");
+      await page.waitForTimeout(200);
+      return;
+    }
+
+    let moved = false;
+    for (const die of availableDice) {
+      if (moved) break;
+      for (let pt = 0; pt < 24; pt++) {
+        const pieces = snap.points[pt];
+        const hasPiece = isHumanBlack ? pieces > 0 : pieces < 0;
+        if (!hasPiece) continue;
+
+        const target = isHumanBlack ? pt + die : pt - die;
+        if (target < 0 || target >= 24) continue;
+
+        const destPieces = snap.points[target];
+        const blocked = isHumanBlack ? destPieces <= -2 : destPieces >= 2;
+        if (blocked) continue;
+
+        const prevPoints = snap.points.join(",");
+        await sendBackgammonAction(page, "move", { from: pt, to: target, die });
+        // Wait for state to reflect the move or turn to change
+        await expect.poll(async () => {
+          const s = await getBackgammonSnapshot(page);
+          return s.points.join(",") !== prevPoints || s.currentTurn !== humanSessionId;
+        }, { timeout: 3_000 }).toBe(true);
+        moved = true;
+        break;
+      }
+    }
+
+    if (!moved) {
+      await sendBackgammonAction(page, "pass");
+      await page.waitForTimeout(200);
+      return;
+    }
+  }
+
+  // If still our turn after 4 moves, pass
+  const final = await getBackgammonSnapshot(page);
+  if (final.currentTurn === humanSessionId && final.dice[0] > 0) {
+    await sendBackgammonAction(page, "pass");
+    await page.waitForTimeout(200);
+  }
+}
+
 // ── Checkers CPU tests ─────────────────────────────────────────────────
 
 test.describe("CPU Opponent — Checkers", () => {
@@ -606,45 +680,8 @@ test.describe("CPU Opponent — Backgammon", () => {
         return s.dice[0] > 0 && s.dice[1] > 0;
       }).toBe(true);
 
-      const rolled = await getBackgammonSnapshot(player.page);
-      const die1 = rolled.dice[0];
-      const die2 = rolled.dice[1];
-
-      // Make a move based on which color we are
-      if (isHumanBlack) {
-        await sendBackgammonAction(player.page, "move", { from: 0, to: 0 + die1, die: die1 });
-      } else {
-        await sendBackgammonAction(player.page, "move", { from: 23, to: 23 - die1, die: die1 });
-      }
-
-      // Wait for state to update
-      await expect.poll(async () => {
-        const s = await getBackgammonSnapshot(player.page);
-        return s.points.join(",") !== rolled.points.join(",") || s.dice[0] === 0;
-      }).toBe(true);
-
-      // Try second die or pass to end turn
-      const afterFirst = await getBackgammonSnapshot(player.page);
-      if (afterFirst.currentTurn === humanSessionId && afterFirst.dice[0] > 0) {
-        if (isHumanBlack) {
-          if (afterFirst.points[0] > 0) {
-            await sendBackgammonAction(player.page, "move", { from: 0, to: 0 + die2, die: die2 });
-          } else {
-            await sendBackgammonAction(player.page, "pass");
-          }
-        } else {
-          if (afterFirst.points[23] < 0) {
-            await sendBackgammonAction(player.page, "move", { from: 23, to: 23 - die2, die: die2 });
-          } else {
-            await sendBackgammonAction(player.page, "pass");
-          }
-        }
-      }
-
-      // Wait for turn to pass to CPU, then back to human
-      if ((await getBackgammonSnapshot(player.page)).currentTurn === humanSessionId) {
-        await sendBackgammonAction(player.page, "pass");
-      }
+      // Complete human turn by scanning the board for valid moves
+      await completeHumanBackgammonTurn(player.page, humanSessionId, isHumanBlack);
 
       // CPU takes its turn automatically — wait for control to return
       await expect.poll(async () => {

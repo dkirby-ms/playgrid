@@ -362,7 +362,15 @@ export class BaseGameRoom extends Room {
       return false;
     }
 
-    this.recordMove(actionType, actingClient.sessionId, payload);
+    // Enrich recorded payload for backgammon roll actions (dice are generated
+    // server-side and aren't part of the client payload, but move history needs them)
+    let recordPayload = payload;
+    if (actionType === "roll" && this.plugin.id === "backgammon") {
+      const bgState = this.state as BackgammonState;
+      recordPayload = { die1: bgState.dice[0], die2: bgState.dice[1] };
+    }
+
+    this.recordMove(actionType, actingClient.sessionId, recordPayload);
 
     this.broadcastPlayerMessages();
 
