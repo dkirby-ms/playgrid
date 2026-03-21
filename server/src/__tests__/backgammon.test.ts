@@ -15,6 +15,7 @@ const {
   hasValidMoves,
   getAvailableDice,
   getPlayerColor,
+  canPlayBothDice,
 } = await import("../games/backgammon/backgammonLogic");
 
 type BackgammonStateInstance = InstanceType<typeof BackgammonState>;
@@ -367,20 +368,22 @@ describe("Backgammon Logic — Pure Functions", () => {
       expect(isValidMove(board, 0, 0, 0, 0, 1, "off", 2, RED)).toBe(true);
     });
 
-    it("allows bearing off with higher die when no higher pieces for Black", () => {
+    it("allows bearing off with higher die when no farther pieces for Black", () => {
       const board = Array.from({ length: 24 }, () => 0);
-      board[18] = 5;
-      board[19] = 5;
-      board[20] = 5;
-      expect(isValidMove(board, 0, 0, 0, 0, 20, "off", 6, BLACK)).toBe(true);
+      board[21] = 5;
+      board[22] = 5;
+      board[23] = 5;
+      // die=6, exactPoint=18 (empty). fromPoint=21, loop checks 18-20 (all empty) → valid
+      expect(isValidMove(board, 0, 0, 0, 0, 21, "off", 6, BLACK)).toBe(true);
     });
 
-    it("allows bearing off with higher die when no higher pieces for Red", () => {
+    it("allows bearing off with higher die when no farther pieces for Red", () => {
       const board = Array.from({ length: 24 }, () => 0);
-      board[3] = -5;
-      board[4] = -5;
-      board[5] = -5;
-      expect(isValidMove(board, 0, 0, 0, 0, 3, "off", 6, RED)).toBe(true);
+      board[0] = -5;
+      board[1] = -5;
+      board[2] = -5;
+      // die=6, exactPoint=5 (empty). fromPoint=2, loop checks 3-5 (all empty) → valid
+      expect(isValidMove(board, 0, 0, 0, 0, 2, "off", 6, RED)).toBe(true);
     });
 
     it("blocks bearing off from lower point when higher pieces exist for Black", () => {
@@ -397,6 +400,52 @@ describe("Backgammon Logic — Pure Functions", () => {
       board[4] = -5;
       board[5] = -5;
       expect(isValidMove(board, 0, 0, 0, 0, 5, "off", 1, RED)).toBe(false);
+    });
+
+    it("blocks over-roll bear-off from closest piece when farther pieces exist for Black", () => {
+      const board = Array.from({ length: 24 }, () => 0);
+      board[20] = 3;
+      board[22] = 3;
+      // die=6, exactPoint=18 (empty). fromPoint=22 is closer to edge; point 20 is farther → invalid
+      expect(isValidMove(board, 0, 0, 0, 0, 22, "off", 6, BLACK)).toBe(false);
+    });
+
+    it("blocks over-roll bear-off from closest piece when farther pieces exist for Red", () => {
+      const board = Array.from({ length: 24 }, () => 0);
+      board[1] = -3;
+      board[3] = -3;
+      // die=6, exactPoint=5 (empty). fromPoint=1 is closer to edge; point 3 is farther → invalid
+      expect(isValidMove(board, 0, 0, 0, 0, 1, "off", 6, RED)).toBe(false);
+    });
+
+    it("allows over-roll bear-off when piece is the only one left for Black", () => {
+      const board = Array.from({ length: 24 }, () => 0);
+      board[22] = 1;
+      // die=6, exactPoint=18 (empty). fromPoint=22, loop checks 18-21 (all empty) → valid
+      expect(isValidMove(board, 0, 0, 0, 0, 22, "off", 6, BLACK)).toBe(true);
+    });
+
+    it("allows over-roll bear-off when piece is the only one left for Red", () => {
+      const board = Array.from({ length: 24 }, () => 0);
+      board[1] = -1;
+      // die=6, exactPoint=5 (empty). fromPoint=1, loop checks 2-5 (all empty) → valid
+      expect(isValidMove(board, 0, 0, 0, 0, 1, "off", 6, RED)).toBe(true);
+    });
+
+    it("allows over-roll from farthest piece when closer pieces also exist for Black", () => {
+      const board = Array.from({ length: 24 }, () => 0);
+      board[20] = 3;
+      board[22] = 3;
+      // die=6, exactPoint=18 (empty). fromPoint=20 is farthest with over-roll, loop checks 18-19 → valid
+      expect(isValidMove(board, 0, 0, 0, 0, 20, "off", 6, BLACK)).toBe(true);
+    });
+
+    it("allows over-roll from farthest piece when closer pieces also exist for Red", () => {
+      const board = Array.from({ length: 24 }, () => 0);
+      board[1] = -3;
+      board[3] = -3;
+      // die=6, exactPoint=5 (empty). fromPoint=3 is farthest with over-roll, loop checks 4-5 → valid
+      expect(isValidMove(board, 0, 0, 0, 0, 3, "off", 6, RED)).toBe(true);
     });
   });
 
@@ -663,10 +712,11 @@ describe("Backgammon Plugin — Integration", () => {
       state.currentTurn = "player-1";
       setDice(state, 3, 5);
 
+      // Must use larger die (5) since only one die can be used
       const move = performRoomMove(state, mockClient("player-1"), {
         from: 0,
-        to: 3,
-        die: 3,
+        to: 5,
+        die: 5,
       });
 
       expect(move.actionResult.endsTurn).toBe(true);
@@ -884,22 +934,23 @@ describe("Backgammon Plugin — Integration", () => {
       ).toBe(false);
     });
 
-    it("allows bearing off with higher die when no higher pieces", () => {
+    it("allows bearing off with higher die when no farther pieces", () => {
       const state = createStartedGame();
       setBoard(state, Array.from({ length: 24 }, () => 0));
-      state.points[20] = 5;
-      state.points[19] = 5;
-      state.points[18] = 5;
+      state.points[21] = 5;
+      state.points[22] = 5;
+      state.points[23] = 5;
       state.currentTurn = "player-1";
       setDice(state, 6, 6);
 
+      // die=6, exactPoint=18 (empty). fromPoint=21, no pieces on 18-20 → valid
       performRoomMove(state, mockClient("player-1"), {
-        from: 20,
+        from: 21,
         to: "off",
         die: 6,
       });
 
-      expect(state.points[20]).toBe(4);
+      expect(state.points[21]).toBe(4);
       expect(state.blackBorneOff).toBe(1);
     });
   });
@@ -912,10 +963,11 @@ describe("Backgammon Plugin — Integration", () => {
       state.currentTurn = "player-1";
       setDice(state, 1, 2);
 
+      // Must use larger die (2) since only one die can be used (one piece left)
       const move = performRoomMove(state, mockClient("player-1"), {
         from: 23,
         to: "off",
-        die: 1,
+        die: 2,
       });
 
       expect(move.actionResult.endsGame).toBe(true);
@@ -1058,6 +1110,122 @@ describe("Backgammon Plugin — Integration", () => {
         undefined,
       );
       expect(isValid).toBe(false);
+    });
+  });
+
+  describe("Must use larger die rule", () => {
+    it("forces larger die when only one die can be used", () => {
+      const state = createStartedGame();
+      setBoard(state, Array.from({ length: 24 }, () => 0));
+      // Black piece on point 0, Red blocks at 4 (2+ pieces) and 6 (2+ pieces)
+      // die=4 lands on blocked point 4, die=6 lands on blocked point 6
+      // But wait — we need a case where both dice individually work but not together.
+      // Single Black piece on 0. Red blocks at 4 (2 pieces). Open at 6.
+      // die=4 → point 4 blocked. die=6 → point 6 open.
+      // Only die=6 works. Since only one has valid moves, no restriction needed.
+      // Better scenario: two black pieces needed.
+      // Black on 0 (1 piece). Red blocks at 10 (2 pieces). 
+      // die=4 → point 4 (open). Then die=6 → from 4 to 10 (blocked). From 0 to 6 but no piece on 0 anymore.
+      // die=6 → point 6 (open). Then die=4 → from 6 to 10 (blocked). From 0 to 4 but no piece on 0 anymore.
+      // So only one die can be used, both individually work → must use larger (6).
+      state.points[0] = 1;
+      state.points[10] = -2;
+      state.currentTurn = "player-1";
+      setDice(state, 4, 6);
+
+      // Using die=4 should be rejected (must use larger die=6)
+      expect(
+        backgammonPlugin.conditions.validateAction(state, mockClient("player-1"), "move", {
+          from: 0,
+          to: 4,
+          die: 4,
+        }),
+      ).toBe(false);
+
+      // Using die=6 should be allowed
+      expect(
+        backgammonPlugin.conditions.validateAction(state, mockClient("player-1"), "move", {
+          from: 0,
+          to: 6,
+          die: 6,
+        }),
+      ).toBe(true);
+    });
+
+    it("allows either die when both can be played in sequence", () => {
+      const state = createStartedGame();
+      setBoard(state, Array.from({ length: 24 }, () => 0));
+      // Two Black pieces on point 0. No blockers. Both dice can be played in sequence.
+      state.points[0] = 2;
+      state.currentTurn = "player-1";
+      setDice(state, 3, 5);
+
+      // Both should be allowed since both can be played in sequence
+      expect(
+        backgammonPlugin.conditions.validateAction(state, mockClient("player-1"), "move", {
+          from: 0,
+          to: 3,
+          die: 3,
+        }),
+      ).toBe(true);
+
+      expect(
+        backgammonPlugin.conditions.validateAction(state, mockClient("player-1"), "move", {
+          from: 0,
+          to: 5,
+          die: 5,
+        }),
+      ).toBe(true);
+    });
+
+    it("does not apply larger-die rule to doubles", () => {
+      const state = createStartedGame();
+      setBoard(state, Array.from({ length: 24 }, () => 0));
+      state.points[0] = 1;
+      state.currentTurn = "player-1";
+      setDice(state, 4, 4);
+
+      expect(
+        backgammonPlugin.conditions.validateAction(state, mockClient("player-1"), "move", {
+          from: 0,
+          to: 4,
+          die: 4,
+        }),
+      ).toBe(true);
+    });
+
+    it("allows smaller die when larger die has no valid moves", () => {
+      const state = createStartedGame();
+      setBoard(state, Array.from({ length: 24 }, () => 0));
+      // Black piece on 0, Red blocks at point 6 (2 pieces). die=6 is blocked entirely.
+      state.points[0] = 1;
+      state.points[6] = -2;
+      state.currentTurn = "player-1";
+      setDice(state, 3, 6);
+
+      // Only die=3 has valid moves; die=6 is blocked → no restriction, allow die=3
+      expect(
+        backgammonPlugin.conditions.validateAction(state, mockClient("player-1"), "move", {
+          from: 0,
+          to: 3,
+          die: 3,
+        }),
+      ).toBe(true);
+    });
+
+    it("canPlayBothDice returns false when only one die is usable", () => {
+      const board = Array.from({ length: 24 }, () => 0);
+      board[0] = 1;
+      board[10] = -2;
+      // die=4 → 0→4 works, then die=6 → 4→10 blocked, no other piece → false
+      // die=6 → 0→6 works, then die=4 → 6→10 blocked, no other piece → false
+      expect(canPlayBothDice(board, 0, 0, 0, 0, 4, 6, BLACK)).toBe(false);
+    });
+
+    it("canPlayBothDice returns true when both can be sequenced", () => {
+      const board = Array.from({ length: 24 }, () => 0);
+      board[0] = 2;
+      expect(canPlayBothDice(board, 0, 0, 0, 0, 3, 5, BLACK)).toBe(true);
     });
   });
 });

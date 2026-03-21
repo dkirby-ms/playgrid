@@ -1912,3 +1912,105 @@ The chess clock UI demonstrates reusable patterns that apply to any game rendere
 - Used stone-400 (`0xa8a29e`) for label color to match the Figma design spec
 - Labels are positioned in the board frame area (centered in the 24px frame band above/left of the grid)
 - Pattern is reusable: any future game with algebraic notation (Chess) can follow the same approach
+
+## 2026-03-21: Backgammon Board Orientation Audit (Investigation Only)
+
+**From:** Gately (requested by dkirby-ms)
+**Task:** Audit backgammon renderer for board orientation issues
+
+### Board Layout Analysis
+
+The renderer maps points 0-23 to a visual grid:
+```
+Top row (L→R):    [0] [1] [2] [3] [4] [5]  |BAR|  [6] [7] [8] [9] [10] [11]
+Bottom row (L→R): [12][13][14][15][16][17]  |BAR|  [18][19][20][21][22] [23]
+```
+
+Server conventions (from `backgammonLogic.ts`):
+- Black (positive) moves 0→23 (increasing indices), home board = 18-23
+- Red/White (negative) moves 23→0 (decreasing indices), home board = 0-5
+- Black enters bar at 0-5, Red enters bar at 18-23
+
+### Issues Found
+
+**Issue 1 — Top row is reversed (Z-path instead of U-path)**
+`getPointGeometry()` (line 1554) lays out BOTH rows left-to-right by increasing index. In standard backgammon the top row should go right-to-left (11→0) so movement forms a continuous U-shaped horseshoe. Instead, the code creates a Z-pattern: Black moves left→right on top, then JUMPS from top-right (index 11) to bottom-left (index 12), then continues left→right on bottom. This jump is visually jarring and incorrect.
+
+Correct layout (from Black's perspective):
+```
+Top (L→R):    [11][10][9][8][7][6]  |BAR|  [5][4][3][2][1][0]
+Bottom (L→R): [12][13][14][15][16][17] |BAR| [18][19][20][21][22][23]
+```
+
+**Issue 2 — No player perspective flipping**
+There is NO code to flip/mirror the board based on which player you are. Grep for "flip|mirror|isFlipped|perspective|orient" returns zero matches. Both Black and Red see the identical board orientation. In real backgammon, each player should see their own home board in the bottom-right corner. Currently:
+- Black sees their home (18-23) at bottom-right ✓ (if top row were corrected)
+- Red/White sees their home (0-5) at top-left ✗ — should be bottom-right
+
+This means Red/White's pieces visually move "backward" (toward the top-left), which is the reported bug.
+
+**Issue 3 — Off areas disconnected from home boards**
+- Black's off area = top-right (`getOffAreaRect`, line 1639), but Black's home board (18-23) = bottom-right
+- Red's off area = bottom-right, but Red's home board (0-5) = top-left (in current layout)
+- Neither off area is adjacent to its corresponding home board
+
+**Issue 4 — Home area background highlights misplaced**
+`homeX` (line 626) highlights the right-of-bar quadrants (top-right = points 6-11, bottom-right = points 18-23). Only the bottom-right correctly shows a home board (Black's). The top-right quadrant (6-11) is not any player's home.
+
+**Issue 5 — Bar zone assignments are fixed**
+`barTopArea` always maps to BLACK, `barBottomArea` always maps to RED (constructor lines 450-468). Without perspective flipping these are hardcoded to one orientation. If the board were flipped for Red, the bar zones would need to swap too.
+
+### Key File Locations
+- Point geometry mapping: `BackgammonRenderer.ts:1554-1569` (`getPointGeometry`)
+- Move direction: `BackgammonRenderer.ts:1409` and `:272` (`playerColor === BLACK ? source + die : source - die`)
+- Bar entry: `BackgammonRenderer.ts:1387` (`die - 1` for Black, `24 - die` for Red)
+- Off area rects: `BackgammonRenderer.ts:1639-1655`
+- Bar zone rects: `BackgammonRenderer.ts:1628-1637`
+- Home area background: `BackgammonRenderer.ts:626, 649-663`
+- Server initial board: `backgammonLogic.ts:28-44`
+- Server move validation: `backgammonLogic.ts:185-186`
+
+### Recommended Fixes (for future implementation)
+1. Reverse the top row in `getPointGeometry()` so the column for top-row points maps `11 - index` instead of `index`. This fixes the Z→U path.
+2. Add an `isFlipped` property (like CheckersRenderer has) driven by `getLocalPlayerColor() === RED`. When flipped, swap top/bottom row assignments and mirror columns.
+3. Swap off area rects and bar zone assignments when flipped.
+4. Fix home area background to highlight the correct quadrants based on perspective.
+
+## Learnings
+
+- **Backgammon board horseshoe path:** Standard backgammon boards have the top row indices decreasing left-to-right so that movement forms a continuous counterclockwise U-shape. Both rows going left-to-right creates a Z-pattern with a visual jump at the midpoint.
+- **Player perspective is essential:** Unlike checkers where both players see the same board (just flipped), backgammon REQUIRES per-player perspective so each player's home board appears in the bottom-right. The renderer currently has no flip/mirror logic at all.
+- **Off area must be adjacent to home board:** Bear-off targets should be visually next to the home board points for intuitive piece movement. The current placement puts Black's off at the top-right while Black's home is bottom-right.
+
+## 2026-03-21: Backgammon Board Orientation Fix (Implementation)
+
+**From:** Gately (requested by dkirby-ms)
+**Task:** Fix the two board orientation issues identified in the audit
+
+### Fix 1 — Reverse top row (Z-path → U-path)
+Changed `getPointGeometry()` so the top row column maps as `(11 - visualIndex)` instead of `index`. This makes the top row display indices 11→0 left-to-right, creating the standard horseshoe/counterclockwise path. Updated `isDarkPoint()` to use the same visual column derivation for consistent triangle coloring.
+
+### Fix 2 — Player perspective flipping
+Added `isFlipped` property (set when `getLocalPlayerColor() === RED`), following the same pattern as CheckersRenderer. When flipped, visual index is `23 - index`, which mirrors the entire board:
+- Red's home (0-5) moves from top-right to bottom-right
+- Black's home (18-23) moves from bottom-right to top-right
+- Bar zones swap via `(zoneColor === BLACK) !== isFlipped`
+- Off areas swap via `(zoneColor === BLACK) === isFlipped`
+- Bar piece rendering Y-positions and stack directions swap
+- Off text labels reposition to stay adjacent to their off area
+
+### Key insight
+The `23 - index` visual mapping elegantly handles perspective flipping because both home boards always remain in the right-of-bar quadrants. This means the home highlight backgrounds don't need to change at all — they correctly highlight both home quadrants regardless of flip state.
+
+### Files modified
+- `client/src/renderers/BackgammonRenderer.ts`
+
+### Validation
+- Build: ✅ clean
+- Lint: ✅ clean  
+- Tests: ✅ 773 passed
+
+## Learnings
+
+- **Visual index mapping for board flipping:** Using `23 - index` to flip a 24-point backgammon board is cleaner than swapping row assignments because it preserves the horseshoe path direction for both players. The same formula works for both `getPointGeometry()` and `isDarkPoint()`.
+- **Bar/Off zone position formulas:** Bar zones follow entry points: `isTop = (color === BLACK) !== isFlipped`. Off areas follow home boards: `isTop = (color === BLACK) === isFlipped`. These are opposites because entry points are at the far end of the board from the home board.

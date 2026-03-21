@@ -10,6 +10,7 @@ import {
 } from "@eschaton/shared";
 import {
   applyMove,
+  canPlayBothDice,
   checkWinCondition,
   getAvailableDice,
   getPlayerColor,
@@ -446,7 +447,58 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
       }
 
       if (actionType === "move") {
-        return validateMoveAction(state, client.sessionId, payload);
+        if (!validateMoveAction(state, client.sessionId, payload)) {
+          return false;
+        }
+
+        // Must-use-larger-die rule: when both dice are available, different,
+        // and only one can be used (playing either blocks the other), force the larger.
+        const movePayload = payload as MovePayload;
+        const [die1, die2] = state.dice;
+        const availableDice = getAvailableDice(
+          Array.from(state.dice),
+          Array.from(state.usedDice),
+          state.doublesMovesUsed,
+        );
+
+        if (die1 !== die2 && availableDice.length === 2) {
+          const player = state.players.get(client.sessionId);
+          if (!player) return false;
+          const playerColor = getPlayerColor(player.playerIndex);
+          if (playerColor === null) return false;
+
+          const points = Array.from(state.points);
+          const bothPlayable = canPlayBothDice(
+            points,
+            state.blackBar,
+            state.redBar,
+            state.blackBorneOff,
+            state.redBorneOff,
+            die1,
+            die2,
+            playerColor,
+          );
+
+          if (!bothPlayable) {
+            const die1HasMoves = hasValidMoves(
+              points, state.blackBar, state.redBar,
+              state.blackBorneOff, state.redBorneOff, [die1], playerColor,
+            );
+            const die2HasMoves = hasValidMoves(
+              points, state.blackBar, state.redBar,
+              state.blackBorneOff, state.redBorneOff, [die2], playerColor,
+            );
+
+            if (die1HasMoves && die2HasMoves) {
+              const largerDie = Math.max(die1, die2);
+              if (movePayload.die !== largerDie) {
+                return false;
+              }
+            }
+          }
+        }
+
+        return true;
       }
 
       if (actionType === "pass") {
