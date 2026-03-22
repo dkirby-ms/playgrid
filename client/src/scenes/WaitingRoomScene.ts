@@ -45,6 +45,7 @@ export class WaitingRoomScene implements Scene {
   }
 
   onExit(): void {
+    this.waitingRoom.cleanup();
     this.waitingRoom.onEvent(() => undefined);
     this.waitingRoom.hide();
   }

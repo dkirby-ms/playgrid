@@ -607,3 +607,64 @@ CheckersState (player1/2TimeRemainingMs)
 ## Team Updates (2026-03-21)
 
 **Turn Timer Removal Session:** Removed client-side turn timer display (HUD countdown, Risk setup stepper) and updated mocks to chess clock schema. Coordinated with Pemulis on server-side removal. GameSidebar, PlayerInfoBar, all renderers already compatible with chess clock (no changes needed). HUD timer infrastructure is now dead code. Orchestration log: `.squad/orchestration-log/2026-03-21T12-29-57Z-ortho.md`.
+
+### Time Control UI Wiring Fix (Client)
+
+**Date:** 2025-03-21
+**Context:** Chess clock time selection was disconnected — host's selection not sent to server, joining players saw wrong value
+
+**Changes Made:**
+
+1. **Shared types** (`shared/src/lobbyTypes.ts`):
+   - Added `TimeControl` type: `"no-limit" | "blitz" | "rapid" | "classical"`
+   - Added `TIME_CONTROL_MS` constant mapping TimeControl → milliseconds (no-limit uses MAX_SAFE_INTEGER for compatibility with number-typed state)
+   - Added `timeControl?: TimeControl` to `CreateGamePayload`
+   - Added `timeControl?: TimeControl` to `GameSessionInfo`
+
+2. **CheckersSetupConfig.ts** (`client/src/ui/setup/CheckersSetupConfig.ts`):
+   - Fixed `getPayloadOverrides()` to include `timeControl: timeGroup.getValue()`
+   - Time selector options already matched TimeControl values ("no-limit", "blitz", "rapid", "classical")
+
+3. **WaitingRoom.ts** (`client/src/ui/WaitingRoom.ts`):
+   - Added `gameInfoEl` display element in header
+   - Added `updateGameInfo()` method to display time control and head-to-head mode as chips
+   - Time labels: "⏱ No Time Limit", "⏱ Blitz (3:00)", "⏱ Rapid (10:00)", "⏱ Classical (30:00)"
+   - Display format: "⏱ Blitz (3:00) • 🖥 Shared Device" (space-separated chips)
+
+4. **Styles** (`client/index.html`):
+   - Added `.waiting-room-game-info` CSS (matches subtitle style with 8px top margin)
+
+**Other Setup Configs:** Backgammon, Dominos, Risk don't have time selectors — no changes needed.
+
+**Key Insight:** TIME_CONTROL_MS uses `Number.MAX_SAFE_INTEGER` for "no-limit" (not null) because BaseGameState's `player1TimeRemainingMs`/`player2TimeRemainingMs` are typed as `number`. Server code treats large values as unlimited.
+
+**Learning:** When adding optional payload fields, check both the creation flow (host setup) AND the join flow (WaitingRoom display). The setup config collects the value, but the waiting room must show it to all players.
+
+## Cross-Agent Update — Chess Clock Time Control Selection UI Wiring (2026-03-21)
+
+**Event:** Time control selection wired from setup config through server payload to WaitingRoom display.
+
+**Summary:** Ortho completed client-side wiring to send time control selection to server and display it to joining players. Fixed CheckersSetupConfig.getPayloadOverrides() to include timeControl field. Added WaitingRoom.updateGameInfo() to show time control chip alongside head-to-head mode setting. Established reusable pattern for future game config options.
+
+**Outputs (Client):**
+- `client/src/ui/setup/CheckersSetupConfig.ts` — timeControl included in payload overrides
+- `client/src/ui/WaitingRoom.ts` — updateGameInfo() displays time control (e.g., "⏱ Blitz (3:00)")
+- `client/index.html` — .waiting-room-game-info CSS styling
+
+**Pattern Established:**
+For adding new game config options:
+1. Add to CreateGamePayload and GameSessionInfo in shared types
+2. Include in setup config's getPayloadOverrides()
+3. Display in WaitingRoom's updateGameInfo()
+
+Benefits: All players see same config before game starts, no surprises, consistent extension pattern.
+
+**Key Design:**
+- TIME_CONTROL_MS uses MAX_SAFE_INTEGER for "no-limit" (number type requirement)
+- Other setup configs (Backgammon, Dominos, Risk) unchanged (no time selectors)
+- Display format combines time control with head-to-head mode: "⏱ Blitz (3:00) • 🖥 Shared Device"
+
+**Status:** Client integration complete. All tests pass. Server-side plumbing (Pemulis) ready. Tests in progress (Steeply).
+
+**Decisions merged:** chess-clock-time-control-selection, time-control-ui-pattern, no-scrollbars-sidebar
+

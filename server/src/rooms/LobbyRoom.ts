@@ -265,6 +265,7 @@ export class LobbyRoom extends Room {
       cpuOpponent,
       headToHeadMode,
       quickstart: gameType === "risk" && payload.quickstart === true,
+      timeControl: payload.timeControl,
     };
 
     const waitingPlayers = new Map<string, PreGamePlayerInfo>([
@@ -476,6 +477,7 @@ export class LobbyRoom extends Room {
         gameType: game.gameType,
         ...(game.headToHeadMode ? { headToHeadMode: true } : {}),
         ...(game.quickstart ? { quickstart: true } : {}),
+        ...(game.timeControl ? { timeControl: game.timeControl } : {}),
         maxPlayers: game.maxPlayers,
         expectedPlayers: players.size,
         cpuOpponent: game.cpuOpponent === true,
@@ -815,6 +817,7 @@ export class LobbyRoom extends Room {
       canSpectate: game.status === "in_progress" && !!game.roomId,
       cpuOpponent: game.cpuOpponent,
       headToHeadMode: game.headToHeadMode,
+      timeControl: game.timeControl,
     };
   }
 

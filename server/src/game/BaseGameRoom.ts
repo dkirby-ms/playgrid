@@ -3,6 +3,7 @@ import { Client, CloseCode, Room } from "colyseus";
 import {
   BaseGameState,
   PlayerInfo,
+  TIME_CONTROL_MS,
   type ActionHandler,
   type BackgammonState,
   type CheckersState,
@@ -11,6 +12,7 @@ import {
   type GamePlugin,
   type GameResult,
   type MoveEntry,
+  type TimeControl,
 } from "@eschaton/shared";
 import * as gameRepository from "../db/gameRepository.js";
 import { getPool } from "../db.js";
@@ -30,6 +32,7 @@ interface BaseGameRoomOptions extends GameOptions {
   maxPlayers?: number;
   expectedPlayers?: number;
   reconnectionTimeout?: number;
+  timeControl?: TimeControl;
 }
 
 const CPU_OPPONENT_DISPLAY_NAME = "CPU Opponent";
@@ -57,6 +60,7 @@ export class BaseGameRoom extends Room {
   private pendingCpuTurn?: Delayed;
   private headToHeadMode = false;
   private moveHistory: MoveEntry[] = [];
+  private timeControlOption?: TimeControl;
 
   override async onCreate(options: BaseGameRoomOptions = {}) {
     const gameType = typeof options.gameType === "string" ? options.gameType.trim() : "";
@@ -82,6 +86,10 @@ export class BaseGameRoom extends Room {
 
     if (typeof options.reconnectionTimeout === "number" && options.reconnectionTimeout > 0) {
       this.reconnectionTimeout = options.reconnectionTimeout;
+    }
+
+    if (options.timeControl) {
+      this.timeControlOption = options.timeControl;
     }
 
     if (typeof options.gameId === "string") {
@@ -418,9 +426,23 @@ export class BaseGameRoom extends Room {
     this.plugin.lifecycle.onGameStart(this.state);
     
     // Initialize chess clocks if enabled (skip for CPU games — they are untimed)
-    if (this.plugin.chessClockConfig?.enabled && !this.cpuOpponentEnabled) {
-      this.state.player1TimeRemainingMs = this.plugin.chessClockConfig.initialTimeBankMs;
-      this.state.player2TimeRemainingMs = this.plugin.chessClockConfig.initialTimeBankMs;
+    // If timeControl is "no-limit", disable clock even if plugin enables it
+    const shouldEnableClock = this.plugin.chessClockConfig?.enabled 
+      && !this.cpuOpponentEnabled 
+      && this.timeControlOption !== "no-limit";
+
+    if (shouldEnableClock) {
+      // Use player's time control choice if provided, otherwise fall back to plugin default
+      let timeMs: number;
+      if (this.timeControlOption) {
+        const configuredTime = TIME_CONTROL_MS[this.timeControlOption];
+        timeMs = configuredTime ?? this.plugin.chessClockConfig!.initialTimeBankMs;
+      } else {
+        timeMs = this.plugin.chessClockConfig!.initialTimeBankMs;
+      }
+      
+      this.state.player1TimeRemainingMs = timeMs;
+      this.state.player2TimeRemainingMs = timeMs;
     }
     
     this.turnManager.startTurns();

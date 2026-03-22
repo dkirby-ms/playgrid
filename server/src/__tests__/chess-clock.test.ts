@@ -605,4 +605,135 @@ describe("Chess Clock Feature", () => {
       expect(room.state.player2TimeRemainingMs).toBe(600_000);
     });
   });
+
+  describeRoom("time control configuration", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("initializes clock to 3 minutes for blitz time control", () => {
+      const room = createRoom();
+      const plugin = createPlugin({
+        chessClockConfig: { enabled: true, initialTimeBankMs: 600_000 },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2, timeControl: "blitz" });
+
+      const p1 = createClient("player-1");
+      const p2 = createClient("player-2");
+      room.clients.push(p1, p2);
+      room.onJoin(p1, { displayName: "Alice" });
+      room.onJoin(p2, { displayName: "Bob" });
+
+      expect(room.state.phase).toBe("playing");
+      expect(room.state.player1TimeRemainingMs).toBe(180_000);
+      expect(room.state.player2TimeRemainingMs).toBe(180_000);
+    });
+
+    it("initializes clock to 10 minutes for rapid time control", () => {
+      const room = createRoom();
+      const plugin = createPlugin({
+        chessClockConfig: { enabled: true, initialTimeBankMs: 600_000 },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2, timeControl: "rapid" });
+
+      const p1 = createClient("player-1");
+      const p2 = createClient("player-2");
+      room.clients.push(p1, p2);
+      room.onJoin(p1, { displayName: "Alice" });
+      room.onJoin(p2, { displayName: "Bob" });
+
+      expect(room.state.phase).toBe("playing");
+      expect(room.state.player1TimeRemainingMs).toBe(600_000);
+      expect(room.state.player2TimeRemainingMs).toBe(600_000);
+    });
+
+    it("initializes clock to 30 minutes for classical time control", () => {
+      const room = createRoom();
+      const plugin = createPlugin({
+        chessClockConfig: { enabled: true, initialTimeBankMs: 600_000 },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2, timeControl: "classical" });
+
+      const p1 = createClient("player-1");
+      const p2 = createClient("player-2");
+      room.clients.push(p1, p2);
+      room.onJoin(p1, { displayName: "Alice" });
+      room.onJoin(p2, { displayName: "Bob" });
+
+      expect(room.state.phase).toBe("playing");
+      expect(room.state.player1TimeRemainingMs).toBe(1_800_000);
+      expect(room.state.player2TimeRemainingMs).toBe(1_800_000);
+    });
+
+    it("disables clock for no-limit time control", () => {
+      const room = createRoom();
+      const plugin = createPlugin({
+        chessClockConfig: { enabled: true, initialTimeBankMs: 600_000 },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2, timeControl: "no-limit" });
+
+      const p1 = createClient("player-1");
+      const p2 = createClient("player-2");
+      room.clients.push(p1, p2);
+      room.onJoin(p1, { displayName: "Alice" });
+      room.onJoin(p2, { displayName: "Bob" });
+
+      expect(room.state.phase).toBe("playing");
+      // Clock should remain at 0 (disabled)
+      expect(room.state.player1TimeRemainingMs).toBe(0);
+      expect(room.state.player2TimeRemainingMs).toBe(0);
+    });
+
+    it("falls back to plugin default when no time control specified", () => {
+      const room = createRoom();
+      const plugin = createPlugin({
+        chessClockConfig: { enabled: true, initialTimeBankMs: 600_000 },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
+
+      const p1 = createClient("player-1");
+      const p2 = createClient("player-2");
+      room.clients.push(p1, p2);
+      room.onJoin(p1, { displayName: "Alice" });
+      room.onJoin(p2, { displayName: "Bob" });
+
+      expect(room.state.phase).toBe("playing");
+      // Should use plugin default of 600_000
+      expect(room.state.player1TimeRemainingMs).toBe(600_000);
+      expect(room.state.player2TimeRemainingMs).toBe(600_000);
+    });
+
+    it("CPU games remain untimed regardless of time control", () => {
+      const room = createRoom();
+      const plugin = createPlugin({
+        chessClockConfig: { enabled: true, initialTimeBankMs: 600_000 },
+      });
+
+      mockGameRegistry.get.mockReturnValue(plugin);
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2, cpuOpponent: true, timeControl: "blitz" });
+
+      const human = createClient("player-1");
+      room.clients.push(human);
+      room.onJoin(human, { displayName: "Alice" });
+
+      expect(room.state.phase).toBe("playing");
+      // CPU games should always have clocks at 0
+      expect(room.state.player1TimeRemainingMs).toBe(0);
+      expect(room.state.player2TimeRemainingMs).toBe(0);
+    });
+  });
 });

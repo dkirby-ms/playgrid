@@ -796,7 +796,29 @@ export class BackgammonRenderer implements GameRenderer {
     const dieGap = dieSize * 0.24;
     const totalWidth = (dieSize * 2) + dieGap;
     const startX = this.diceCenterX - (totalWidth / 2);
-    const y = this.playY + (this.playHeight / 2) - (dieSize / 2);
+    
+    // Position dice on the current player's side
+    const currentPlayer = this.players.get(this.currentTurn);
+    const currentPlayerColor = currentPlayer ? getPlayerColorFromPlayerIndex(currentPlayer.playerIndex) : null;
+    const isBlackTurn = currentPlayerColor === BLACK;
+    const isRedTurn = currentPlayerColor === RED;
+    
+    let y: number;
+    if (isBlackTurn) {
+      // Black's home is bottom (points 0-5), place dice in bottom quarter
+      y = this.isFlipped
+        ? this.playY + (this.playHeight * 0.25) - (dieSize / 2)
+        : this.playY + (this.playHeight * 0.75) - (dieSize / 2);
+    } else if (isRedTurn) {
+      // Red's home is top (points 18-23), place dice in top quarter
+      y = this.isFlipped
+        ? this.playY + (this.playHeight * 0.75) - (dieSize / 2)
+        : this.playY + (this.playHeight * 0.25) - (dieSize / 2);
+    } else {
+      // No current player, center the dice
+      y = this.playY + (this.playHeight / 2) - (dieSize / 2);
+    }
+    
     const trayPadding = dieSize * 0.32;
     const trayX = startX - trayPadding;
     const trayY = y - (trayPadding * 0.55);
@@ -897,10 +919,17 @@ export class BackgammonRenderer implements GameRenderer {
     }
 
     const barCenterX = this.playX + (POINTS_PER_QUADRANT * this.pointWidth) + (this.barWidth / 2);
-    const blackBarStartY = this.isFlipped
-      ? this.playY + this.playHeight - discRadius - edgePadding
-      : this.playY + discRadius + edgePadding;
-    const blackBarDirection = this.isFlipped ? -1 : 1;
+    
+    // Center bar pieces in their half of the bar area
+    const visibleBlackCount = Math.min(this.blackBar, MAX_VISIBLE_STACK);
+    const blackStackHeight = visibleBlackCount > 0 ? (visibleBlackCount - 1) * stackSpacing + discRadius * 2 : 0;
+    const blackBarHalfHeight = (this.playHeight - this.centerGap) / 2;
+    const blackBarCenterY = this.isFlipped
+      ? this.playY + this.playHeight - this.centerGap / 2 - blackBarHalfHeight / 2
+      : this.playY + this.centerGap / 2 + blackBarHalfHeight / 2;
+    const blackBarStartY = blackBarCenterY - (blackStackHeight / 2) + discRadius;
+    const blackBarDirection = 1;
+    
     this.drawStack(
       pieceGraphics,
       this.blackBar,
@@ -913,10 +942,16 @@ export class BackgammonRenderer implements GameRenderer {
       outlineWidth,
       stackSpacing,
     );
-    const redBarStartY = this.isFlipped
-      ? this.playY + discRadius + edgePadding
-      : this.playY + this.playHeight - discRadius - edgePadding;
-    const redBarDirection = this.isFlipped ? 1 : -1;
+    
+    const visibleRedCount = Math.min(this.redBar, MAX_VISIBLE_STACK);
+    const redStackHeight = visibleRedCount > 0 ? (visibleRedCount - 1) * stackSpacing + discRadius * 2 : 0;
+    const redBarHalfHeight = (this.playHeight - this.centerGap) / 2;
+    const redBarCenterY = this.isFlipped
+      ? this.playY + this.centerGap / 2 + redBarHalfHeight / 2
+      : this.playY + this.playHeight - this.centerGap / 2 - redBarHalfHeight / 2;
+    const redBarStartY = redBarCenterY - (redStackHeight / 2) + discRadius;
+    const redBarDirection = 1;
+    
     this.drawStack(
       pieceGraphics,
       this.redBar,
@@ -1690,6 +1725,44 @@ export class BackgammonRenderer implements GameRenderer {
     return typeof target === "number" ? `point:${target}` : "off";
   }
 
+  private hasAnyValidMoves(): boolean {
+    const playerColor = this.getLocalPlayerColor();
+    if (playerColor === null) {
+      return false;
+    }
+
+    const availableDice = getAvailableDice(this.dice, this.usedDice, this.doublesMovesUsed);
+    if (availableDice.length === 0) {
+      return false;
+    }
+
+    const barCount = this.getBarCount(playerColor);
+    if (barCount > 0) {
+      return this.getMovesForSource("bar").length > 0;
+    }
+
+    for (let i = 0; i < BOARD_POINT_COUNT; i += 1) {
+      if (this.getMovesForSource(i).length > 0) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private shouldShowPassButton(): boolean {
+    if (!this.isLocalPlayersTurn()) {
+      return false;
+    }
+
+    const [die1, die2] = this.dice;
+    if (die1 <= 0 || die2 <= 0) {
+      return false;
+    }
+
+    return !this.hasAnyValidMoves();
+  }
+
   private updateSidebar(): void {
     if (!this.sidebar) {
       return;
@@ -1729,9 +1802,15 @@ export class BackgammonRenderer implements GameRenderer {
       : '<div class="sidebar-empty">Moves will appear here after the opening roll.</div>';
     this.sidebar.updatePanel("move-history", historyMarkup);
 
+    const showPassButton = this.shouldShowPassButton();
+    const passButtonMarkup = showPassButton
+      ? '<button type="button" class="sidebar-button" data-action="pass">Pass (No Valid Moves)</button>'
+      : '';
+
     this.sidebar.updatePanel(
       "controls",
       `<div class="sidebar-button-group">
+        ${passButtonMarkup}
         <button type="button" class="sidebar-button sidebar-button--danger" data-action="resign"${this.requestLeave ? "" : " disabled"}>Resign</button>
       </div>
       <div class="sidebar-note">Click the dice on the board to roll at the start of your turn. Use resign to concede the match.</div>`,
@@ -1742,6 +1821,13 @@ export class BackgammonRenderer implements GameRenderer {
     if (resignButton instanceof HTMLButtonElement) {
       resignButton.onclick = () => {
         this.requestLeave?.();
+      };
+    }
+
+    const passButton = controlsPanel?.querySelector('[data-action="pass"]');
+    if (passButton instanceof HTMLButtonElement) {
+      passButton.onclick = () => {
+        this.room?.send("pass");
       };
     }
   }

@@ -6021,3 +6021,253 @@ Removed turn timer display (HUD countdown, Risk setup stepper) from client. Ches
 
 User request (dkirby-ms via Copilot): Replace turn timer system with chess clock for all games. Turn timer provides less intuitive UX than per-player time banks; chess clock already proven in Checkers, generic, extensible.
 
+---
+
+## Decision: Chess Clock Time Control Selection
+
+**Date:** 2026-03-21  
+**Agents:** Pemulis (Systems Dev), Ortho (Frontend Dev)  
+**Status:** Implemented
+
+## Context
+
+Players could select time controls in the UI (3min, 10min, 30min, no-limit), but the selection was never sent to the server. Server always initialized chess clocks with plugin defaults. Additionally, joining players couldn't see what time control the host had selected.
+
+## Decision
+
+Implemented full server-side plumbing and client UI wiring for time control preferences:
+
+### Type System
+- Added `TimeControl` type to shared types: `"no-limit" | "blitz" | "rapid" | "classical"`
+- Added `TIME_CONTROL_MS` constant mapping:
+  - "blitz" → 180000 (3 min)
+  - "rapid" → 600000 (10 min)
+  - "classical" → 1800000 (30 min)
+  - "no-limit" → Number.MAX_SAFE_INTEGER (for compatibility with number-typed state)
+- Extended `CreateGamePayload` and `GameSessionInfo` with optional `timeControl` field
+
+### Server Data Flow
+1. LobbyRoom captures `timeControl` from CREATE_GAME message payload
+2. Stores on LobbyGameEntry (inherits from GameSessionInfo)
+3. Forwards to matchMaker.createRoom() when starting game
+4. BaseGameRoom reads from options and overrides plugin clock config
+
+### Clock Initialization Logic
+```typescript
+const shouldEnableClock = 
+  plugin.chessClockConfig?.enabled 
+  && !cpuOpponentEnabled 
+  && timeControlOption !== "no-limit";
+
+if (shouldEnableClock) {
+  const timeMs = timeControlOption 
+    ? (TIME_CONTROL_MS[timeControlOption] ?? pluginDefault)
+    : pluginDefault;
+  // Set player1/player2 time
+}
+```
+
+### Client UI Wiring
+1. **CheckersSetupConfig:** Fixed `getPayloadOverrides()` to include `timeControl: timeGroup.getValue()`
+2. **WaitingRoom:** Added `updateGameInfo()` to display time control chip to all players
+3. **Display format:** "⏱ Blitz (3:00) • 🖥 Shared Device" (space-separated chips with emojis)
+
+## Rationale
+
+- **"no-limit" as explicit option**: Maps to MAX_SAFE_INTEGER. Allows players to disable chess clock even for games where plugin enables it by default.
+- **Optional field**: If `timeControl` undefined, server falls back to plugin default. Preserves backward compatibility if client doesn't send field.
+- **CPU games unaffected**: Time control selection has no effect on CPU opponents (blocked by `!cpuOpponentEnabled` check).
+- **Plugin defaults respected**: If time control isn't specified, behavior is unchanged (plugin's initialTimeBankMs used).
+- **All players see config**: WaitingRoom displays time control to host and all joining players before game starts.
+
+## Validation
+
+- Build: ✅ Passes across shared, server, client
+- Tests: ✅ 773 tests pass
+- Lint: ✅ No violations
+- Type safety: ✅ Full strong typing, no unsafe casts
+
+## Implementation Pattern for Future Config Options
+
+When adding new game configuration options:
+
+1. Add field to `CreateGamePayload` and `GameSessionInfo` in shared types
+2. Include field in setup config's `getPayloadOverrides()`
+3. Display field in WaitingRoom's `updateGameInfo()`
+4. Wire from host selection → server → joining player display
+
+---
+
+## Decision: Time Control UI Pattern
+
+**Date:** 2026-03-21  
+**Agent:** Ortho (Frontend Dev)  
+**Status:** Implemented
+
+## Pattern
+
+When adding new game configuration options (like time control):
+
+1. **Setup Config** must include the field in `getPayloadOverrides()` to send it to the server
+2. **WaitingRoom** must display the setting so all players see the host's choice
+3. **Shared Types** must include the field in both `CreateGamePayload` and `GameSessionInfo`
+
+## Context
+
+The time control selector was added to CheckersSetupConfig but wasn't wired to actually send the value to the server. Additionally, joining players couldn't see what time control the host had selected.
+
+## Pattern for Future Config Options
+
+### 1. Add to Shared Types
+```typescript
+// shared/src/lobbyTypes.ts
+export interface CreateGamePayload {
+  // ... existing fields
+  yourNewOption?: YourType;
+}
+
+export interface GameSessionInfo {
+  // ... existing fields  
+  yourNewOption?: YourType;
+}
+```
+
+### 2. Include in Setup Config Payload
+```typescript
+// client/src/ui/setup/YourGameSetupConfig.ts
+getPayloadOverrides(): Partial<CreateGamePayload> {
+  return {
+    // ... existing fields
+    yourNewOption: yourControl.getValue(),
+  };
+}
+```
+
+### 3. Display in WaitingRoom
+```typescript
+// client/src/ui/WaitingRoom.ts updateGameInfo()
+if (this.gameInfo.yourNewOption) {
+  infoParts.push(`🔧 ${formatYourOption(this.gameInfo.yourNewOption)}`);
+}
+```
+
+## Benefits
+
+- All players see the same configuration before game starts
+- No surprises when game begins (everyone knows the settings)
+- Consistent pattern for adding new options
+- Server receives configuration immediately at game creation
+
+## Implementation Note
+
+The WaitingRoom's `updateGameInfo()` method provides a consistent place to display all game-specific settings as formatted chips (e.g., "⏱ Blitz (3:00) • 🖥 Shared Device").
+
+---
+
+## Decision: Backgammon Rules Audit — Findings
+
+**Author:** Pemulis (Systems Dev)  
+**Date:** 2026-03-21  
+**Requested by:** dkirby-ms  
+**Scope:** Bar/hitting mechanics, move direction, bear-off logic
+
+### 🔴 BUG 1: Bear-off with over-roll selects wrong checker (GAME-BREAKING)
+
+**Location:** `server/src/games/backgammon/backgammonLogic.ts`, `isValidMove()` lines 148–170
+
+**The rule:** When a player rolls a die higher than the distance of any remaining checker, they must bear off the checker **farthest from the edge** (highest-numbered point in player's home board notation). This only applies when the exact point is unoccupied AND no checkers exist on any point farther from the edge.
+
+**The bug:** The loop direction is inverted for both players. The code checks for pieces **closer to the edge** instead of **farther from the edge**.
+
+- **Black (lines 155–157):** Checks `fromPoint + 1` to `23` (closer to edge). Should check `18` to `fromPoint - 1` (farther from edge).
+- **Red (lines 166–168):** Checks `0` to `fromPoint - 1` (closer to edge). Should check `fromPoint + 1` to `5` (farther from edge).
+
+**Impact:** In the endgame bear-off phase:
+1. Players CAN bear off from the **wrong** point (closest to edge) — invalid moves accepted.
+2. Players CANNOT bear off from the **correct** point (farthest from edge) when closer pieces also exist — valid moves rejected.
+
+**Severity:** Game-breaking. Affects every game that reaches the bear-off phase with non-trivial positions.
+
+### 🟡 BUG 2: No "must use larger die" enforcement (MEDIUM)
+
+**Location:** `server/src/games/backgammon/BackgammonPlugin.ts`, `move` action handler lines 340–358
+
+**The rule:** When a player can only use one of two dice (not both), they must use the **larger** die.
+
+**The bug:** The code lets the player freely choose either die. After using one die, it checks if the other can still be used — if not, the turn ends. But it never enforces that the larger die must be preferred when only one can be used.
+
+**Severity:** Medium. Rarely triggers but is a real rules violation that could affect game outcomes.
+
+### ✅ Correctly Implemented
+
+- Bar/hitting mechanics — ALL CORRECT (blot capture, re-entry, blocked entry)
+- Move direction — CORRECT (Black 0→23, Red 23→0)
+- Board setup — CORRECT (standard opening position)
+- Home boards — CORRECT (Black 18–23, Red 0–5)
+- Bearing off (exact match) — CORRECT
+- Doubles — CORRECT (4 moves tracked)
+- Turn management — CORRECT
+- Win condition — CORRECT (15 pieces borne off)
+
+---
+
+## Decision: Backgammon Bear-off & Larger-Die Fixes
+
+**Author:** Pemulis (Systems Dev)  
+**Date:** 2026-03-21  
+**Status:** Implemented
+
+### Fix 1: Bear-off over-roll loop direction
+
+**Problem:** `isValidMove()` checked pieces in the wrong direction when validating over-roll bear-offs. The loop searched toward the board edge (closer pieces) instead of away from it (farther pieces). This allowed bearing off wrong checkers in every endgame.
+
+**Fix:** Reversed both loops:
+- Black: now checks points 18 through `fromPoint-1` (farther from edge)
+- Red: now checks points `fromPoint+1` through 5 (farther from edge)
+
+**Impact:** Game-breaking bug fixed. All bear-off endgames now follow correct backgammon rules.
+
+### Fix 2: Must-use-larger-die rule
+
+**Problem:** When a player could only use one of two different dice (using either blocks the other), backgammon rules require using the larger die. No enforcement existed.
+
+**Fix:** Added `canPlayBothDice()` to `backgammonLogic.ts` that enumerates all possible first-moves with each die and checks if the other die has any follow-up. When both dice are individually playable but no sequence allows both, `validateAction()` rejects moves using the smaller die.
+
+**Design decision:** The check runs in `validateAction` (pre-move validation) rather than post-move, so invalid moves are rejected before state mutation. The `canPlayBothDice` helper lives in the logic layer alongside other pure functions.
+
+**Impact:** Medium severity rules violation fixed. Applies only to non-doubles with two available dice where sequencing is impossible.
+
+### Test changes
+
+- 3 existing tests updated (validated wrong bear-off behavior)
+- 2 existing tests updated (used smaller die in must-use-larger scenarios)
+- 12 new tests added (6 bear-off, 6 larger-die)
+- All 773 tests pass
+
+---
+
+## Decision: No Scrollbars in Sidebar Status Panes
+
+**Author:** Ortho (Frontend Dev)  
+**Date:** 2026-03-21  
+**Status:** Applied
+
+### Context
+
+User reported scrollbars appearing in the game info tab/panel in the sidebar. The general rule is: **no scrollbars in status panes**.
+
+### Decision
+
+- `.sidebar-panel-content` uses `overflow: hidden` — never `overflow-y: auto`
+- `.game-sidebar-panel` has no `max-height` — panels size to their content naturally
+- The outer `.game-sidebar` container keeps `overflow-y: auto` so the sidebar itself scrolls if panels collectively exceed viewport height
+- All webkit scrollbar pseudo-element styling removed from `.sidebar-panel-content`
+
+### Rationale
+
+Status panes (game info, players, stats) should display all their content without internal scrolling. They are compact by design and should never need their own scrollbar. If the sidebar as a whole gets too tall, the outer container handles it.
+
+### Files Changed
+
+- `client/src/ui/GameSidebar.ts` — CSS in `injectStyles()`
+

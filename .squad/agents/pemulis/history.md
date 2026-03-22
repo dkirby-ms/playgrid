@@ -1389,3 +1389,50 @@ Session finalized: Orchestration logs created, decisions merged, cross-agent ref
 - Fixed 2 pre-existing tests that were using the smaller die in must-use-larger scenarios.
 
 **Validation:** Build ✓, Lint ✓, Tests ✓ (773 pass, 12 todo)
+
+### Chess Clock Time Selection Fix (2026-03-21)
+
+**Requested by:** dkirby-ms  
+**Scope:** Fix server-side plumbing to respect player's time control choice in timed games.
+
+**Problem:** UI collected time values but never sent them to server. Server always used 10-minute hardcoded default.
+
+**Implementation:**
+
+1. **Shared types** (`shared/src/lobbyTypes.ts`) — Added `TimeControl` type ("no-limit" | "blitz" | "rapid" | "classical") and `TIME_CONTROL_MS` constant mapping to milliseconds (null | 180k | 600k | 1800k). Added `timeControl?: TimeControl` field to both `CreateGamePayload` and `GameSessionInfo`.
+
+2. **LobbyRoom** (`server/src/rooms/LobbyRoom.ts`) — Captured `timeControl` from CREATE_GAME payload and stored on `LobbyGameEntry`. Forwarded `timeControl` in matchMaker.createRoom() options when starting game.
+
+3. **BaseGameRoom** (`server/src/game/BaseGameRoom.ts`) — Added `timeControl` to `BaseGameRoomOptions` interface. Stored incoming option in `timeControlOption` field. Modified chess clock initialization logic:
+   - If `timeControl === "no-limit"`, disable clock even if plugin enables it
+   - If `timeControl` is set, use `TIME_CONTROL_MS` mapping, otherwise fall back to plugin default
+   - CPU games remain untimed regardless of time control
+
+**Key decisions:**
+- "no-limit" maps to `null` in TIME_CONTROL_MS, explicitly checked in shouldEnableClock guard
+- Undefined/missing timeControl preserves current behavior (plugin default)
+- CPU opponents bypass clock regardless of time control setting
+
+**Validation:** Build ✓ (all workspaces compile)
+
+## Cross-Agent Update — Chess Clock Time Control Selection (2026-03-21)
+
+**Event:** Time control type system and server plumbing completed. Client wiring follows.
+
+**Summary:** Implemented full server-side plumbing for time control preferences. Pemulis added `TimeControl` type to shared types, `TIME_CONTROL_MS` constant (blitz→3min, rapid→10min, classical→30min, no-limit→MAX_SAFE_INTEGER), and wired through LobbyRoom and BaseGameRoom. Ortho fixed client setup config to send timeControl field and added WaitingRoom display. Steeply writing unit tests.
+
+**Outputs (Server):**
+- `shared/src/lobbyTypes.ts` — TimeControl type, TIME_CONTROL_MS constant, CreateGamePayload/GameSessionInfo updates
+- `server/src/rooms/LobbyRoom.ts` — Capture and forward time control from CREATE_GAME
+- `server/src/rooms/BaseGameRoom.ts` — Clock initialization with time control override logic
+
+**Key Design:**
+- "no-limit" maps to MAX_SAFE_INTEGER (number type compatibility)
+- Optional field with fallback to plugin default (backward compatible)
+- CPU games unaffected (blocked by !cpuOpponentEnabled check)
+- Player time set based on selected time control or plugin default
+
+**Status:** Server complete, client wiring follows (Ortho). All tests pass.
+
+**Decisions merged:** chess-clock-time-control-selection, backgammon-bearoff-fixes, no-scrollbars-sidebar
+

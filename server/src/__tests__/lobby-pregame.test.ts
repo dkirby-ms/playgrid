@@ -60,6 +60,7 @@ const {
   GAME_STARTED,
   GAME_PLAYERS,
   GAME_UPDATED,
+  GAME_REMOVED,
   ONLINE_PLAYERS,
   LOBBY_ERROR,
   LOBBY_DEFAULTS,
@@ -845,5 +846,104 @@ describeLobby("LobbyRoom pregame flow", () => {
     expect(entry?.name.length).toBeLessThanOrEqual(LOBBY_DEFAULTS.MAX_GAME_NAME_LENGTH);
     expect(entry?.maxPlayers).toBe(1);
     expect(entry?.gameType).toBe("checkers");
+  });
+
+  describe("host leave cleanup", () => {
+    it("removes a waiting game when the host leaves", async () => {
+      const gameId = await createGame(room, host);
+      room.broadcast.mockClear();
+
+      room.handleLeaveGame(host);
+
+      expect(getGames(room).has(gameId)).toBe(false);
+      expect(room.waitingPlayers.has(gameId)).toBe(false);
+      expect(getTrackedGameId(room, host.sessionId)).toBeFalsy();
+      expect(room.broadcast).toHaveBeenCalledWith(GAME_REMOVED, { gameId });
+    });
+
+    it("removes a waiting game when the host leaves even with other players present", async () => {
+      const gameId = await createGame(room, host);
+      await room.handleJoinGame(guest, { gameId });
+      room.broadcast.mockClear();
+
+      room.handleLeaveGame(host);
+
+      expect(getGames(room).has(gameId)).toBe(false);
+      expect(room.waitingPlayers.has(gameId)).toBe(false);
+      expect(getTrackedGameId(room, host.sessionId)).toBeFalsy();
+      expect(room.broadcast).toHaveBeenCalledWith(GAME_REMOVED, { gameId });
+    });
+
+    it("preserves a waiting game when a non-host player leaves", async () => {
+      const gameId = await createGame(room, host);
+      await room.handleJoinGame(guest, { gameId });
+      room.broadcast.mockClear();
+
+      room.handleLeaveGame(guest);
+
+      expect(getGames(room).has(gameId)).toBe(true);
+      expect(getGame(room, gameId)?.playerCount).toBe(1);
+      expect(getWaitingPlayers(room, gameId).has(guest.sessionId)).toBe(false);
+      expect(getWaitingPlayers(room, gameId).has(host.sessionId)).toBe(true);
+      expect(getTrackedGameId(room, guest.sessionId)).toBeFalsy();
+      expect(room.broadcast).toHaveBeenCalledWith(GAME_UPDATED, expect.objectContaining({
+        game: expect.objectContaining({ id: gameId, playerCount: 1 }),
+      }));
+    });
+
+    it("does not remove an in-progress game when the host leaves", async () => {
+      const gameId = await createGame(room, host);
+      const game = getGame(room, gameId);
+      if (!game) {
+        throw new Error("Expected game to exist");
+      }
+      game.status = "in_progress";
+      room.broadcast.mockClear();
+
+      room.handleLeaveGame(host);
+
+      expect(getGames(room).has(gameId)).toBe(true);
+      expect(getGame(room, gameId)?.status).toBe("in_progress");
+      expect(getTrackedGameId(room, host.sessionId)).toBeFalsy();
+      expect(room.broadcast).not.toHaveBeenCalledWith(GAME_REMOVED, expect.anything());
+    });
+
+    it("removes a waiting game when all non-host players leave and only host remains", async () => {
+      const gameId = await createGame(room, host);
+      const guest2 = createClient("guest2-session", "Guest2");
+      registerClient(room, guest2, { userId: "guest2-user", displayName: "Guest2" });
+      
+      await room.handleJoinGame(guest, { gameId });
+      await room.handleJoinGame(guest2, { gameId });
+      
+      expect(getWaitingPlayers(room, gameId).size).toBe(3);
+      
+      room.handleLeaveGame(guest);
+      expect(getGames(room).has(gameId)).toBe(true);
+      expect(getWaitingPlayers(room, gameId).size).toBe(2);
+      
+      room.broadcast.mockClear();
+      room.handleLeaveGame(guest2);
+
+      expect(getGames(room).has(gameId)).toBe(true);
+      expect(getWaitingPlayers(room, gameId).size).toBe(1);
+      expect(getWaitingPlayers(room, gameId).has(host.sessionId)).toBe(true);
+    });
+
+    it("clears session assignments for all players when host leaves waiting game", async () => {
+      const gameId = await createGame(room, host);
+      await room.handleJoinGame(guest, { gameId });
+
+      const hostSession = room.sessions.get(host.sessionId);
+      const guestSession = room.sessions.get(guest.sessionId);
+
+      expect(hostSession?.currentGameId).toBe(gameId);
+      expect(guestSession?.currentGameId).toBe(gameId);
+
+      room.handleLeaveGame(host);
+
+      expect(hostSession?.currentGameId).toBeUndefined();
+      expect(guestSession?.currentGameId).toBeUndefined();
+    });
   });
 });
