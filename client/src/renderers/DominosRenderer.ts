@@ -7,6 +7,7 @@ import type {
 import { Container, Graphics, Text } from "pixi.js";
 import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
 import { DragHelper } from "./DragHelper";
+import { TweenManager } from "./TweenManager";
 import {
   ACCENT_BLUE,
   AMBER_500,
@@ -91,6 +92,8 @@ const OVERLAY_BACKDROP_COLOR = BG_PRIMARY;
 const OVERLAY_BACKDROP_ALPHA = 0.66;
 
 const GAME_ENDED_MESSAGE = "game-end";
+
+const TILE_ANIM_DURATION_MS = 250;
 
 // ── Pip layout positions (normalised to 0..1 inside a half-tile) ────────────
 // Standard domino pip patterns for 0-6
@@ -259,6 +262,11 @@ export class DominosRenderer implements GameRenderer {
   private prevArmsCDLocked = true;
   private spinnerUnlockFlashTimer = 0;
 
+  // Tile placement animation
+  private readonly animLayer = new Container();
+  private readonly tweens = new TweenManager();
+  private prevBoardTileIds = new Set<number>();
+
   constructor() {
     this.container.eventMode = "static";
     this.overlayLayer.eventMode = "none";
@@ -291,6 +299,7 @@ export class DominosRenderer implements GameRenderer {
     this.container.addChild(
       this.boardBackground,
       this.boardLayer,
+      this.animLayer,
       this.spinnerIndicatorLayer,
       this.ghostLayer,
       this.endMarkerA,
@@ -327,6 +336,7 @@ export class DominosRenderer implements GameRenderer {
     this.dragTileId = null;
     this.turnClockSeconds = null;
     this.showTurnClock = false;
+    this.tweens.cancelAll();
 
     this.sidebar?.destroy();
     this.sidebar = new GameSidebar();
@@ -338,6 +348,7 @@ export class DominosRenderer implements GameRenderer {
 
     this.subscribeToRoomEvents();
     this.applyState(state);
+    this.prevBoardTileIds = new Set(this.boardTiles.map((t) => t.id));
     this.layout();
     this.redrawAll();
   }
@@ -348,7 +359,14 @@ export class DominosRenderer implements GameRenderer {
     // Detect C/D arm unlock transition (locked → active)
     const wasCDLocked = this.openEndC < 0 && this.openEndD < 0;
 
+    // Snapshot board tile IDs before state update for animation detection
+    const prevIds = this.prevBoardTileIds;
+
     this.applyState(state);
+
+    // Update prev-board snapshot for next state change
+    const currentIds = new Set(this.boardTiles.map((t) => t.id));
+    this.prevBoardTileIds = currentIds;
 
     const isCDActive = this.openEndC >= 0 || this.openEndD >= 0;
     if (wasCDLocked && isCDActive && this.spinnerTileId !== -1) {
@@ -368,9 +386,19 @@ export class DominosRenderer implements GameRenderer {
     }
 
     this.redrawAll();
+
+    // Animate newly placed tile from hand area to board position
+    if (prevIds.size > 0) {
+      const newTile = this.boardTiles.find((t) => !prevIds.has(t.id));
+      if (newTile) {
+        this.animateTilePlacement(newTile);
+      }
+    }
   }
 
   update(deltaTime: number): void {
+    this.tweens.tick(deltaTime);
+
     if (this.spinnerUnlockFlashTimer > 0) {
       this.spinnerUnlockFlashTimer -= deltaTime;
       if (this.spinnerUnlockFlashTimer <= 0) {
@@ -408,6 +436,7 @@ export class DominosRenderer implements GameRenderer {
 
   destroy(): void {
     this.unsubscribeFromRoomEvents();
+    this.tweens.cancelAll();
     this.dragHelper?.destroy();
     this.dragHelper = null;
     this.dragTileId = null;
@@ -424,6 +453,7 @@ export class DominosRenderer implements GameRenderer {
     this.sidebar?.destroy();
     this.sidebar = null;
     this.boardLayer.removeChildren();
+    this.animLayer.removeChildren();
     this.spinnerIndicatorLayer.removeChildren();
     this.ghostLayer.removeChildren();
     this.handLayer.removeChildren();
@@ -821,6 +851,71 @@ export class DominosRenderer implements GameRenderer {
     this.redrawEndMarkers();
     this.updateOverlay();
     this.updateSidebar();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Tile placement animation
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Animate a newly placed tile sliding from the hand area to its board position.
+   * Finds the tile's Graphics child inside boardLayer by index and creates a
+   * temporary clone in the animation layer that tweens into place.
+   */
+  private animateTilePlacement(tile: BoardTileSnapshot): void {
+    // Determine the board position of the new tile
+    const tileIndex = this.boardTiles.indexOf(tile);
+    if (tileIndex < 0) return;
+
+    const boardChild = this.boardLayer.children[tileIndex];
+    if (!boardChild) return;
+
+    const toX = boardChild.position.x;
+    const toY = boardChild.position.y;
+
+    // Origin: center-bottom of screen (hand area)
+    const fromX = this.width / 2;
+    const fromY = this.height - HAND_AREA_HEIGHT / 2;
+
+    // Create a temporary Graphics clone for the animation
+    const animTile = new Graphics();
+    animTile.eventMode = "none";
+
+    const scale = this.boardScale;
+    if (this.layoutMode === "linear") {
+      const w = BOARD_TILE_W * scale;
+      const h = BOARD_TILE_H * scale;
+      this.drawBoardTile(animTile, tile, 0, 0, w, h, "horizontal", scale);
+    } else {
+      const isSpinner = tile.arm === "spinner";
+      const isVerticalArm = tile.arm === "c" || tile.arm === "d";
+      if (isSpinner) {
+        const w = BOARD_TILE_H * scale;
+        const h = BOARD_TILE_W * scale;
+        this.drawBoardTile(animTile, tile, 0, 0, w, h, "vertical", scale);
+      } else if (isVerticalArm) {
+        const w = (tile.isDouble ? BOARD_TILE_W : BOARD_TILE_H) * scale;
+        const h = (tile.isDouble ? BOARD_TILE_H : BOARD_TILE_W) * scale;
+        this.drawBoardTile(animTile, tile, 0, 0, w, h, tile.isDouble ? "horizontal" : "vertical", scale);
+      } else {
+        const w = (tile.isDouble ? BOARD_TILE_H : BOARD_TILE_W) * scale;
+        const h = (tile.isDouble ? BOARD_TILE_W : BOARD_TILE_H) * scale;
+        this.drawBoardTile(animTile, tile, 0, 0, w, h, tile.isDouble ? "vertical" : "horizontal", scale);
+      }
+    }
+
+    this.animLayer.addChild(animTile);
+
+    this.tweens.animate(animTile, {
+      fromX,
+      fromY,
+      toX,
+      toY,
+      duration: TILE_ANIM_DURATION_MS,
+      onComplete: () => {
+        animTile.destroy();
+      },
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
