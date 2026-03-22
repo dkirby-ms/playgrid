@@ -387,8 +387,10 @@ export class DominosRenderer implements GameRenderer {
 
     this.redrawAll();
 
-    // Animate newly placed tile from hand area to board position
-    if (prevIds.size > 0) {
+    // Animate newly placed tile only for opponent moves.
+    // After applyState, isLocalPlayersTurn() means it's now OUR turn —
+    // i.e. the opponent just played.
+    if (prevIds.size > 0 && this.isLocalPlayersTurn()) {
       const newTile = this.boardTiles.find((t) => !prevIds.has(t.id));
       if (newTile) {
         this.animateTilePlacement(newTile);
@@ -858,9 +860,8 @@ export class DominosRenderer implements GameRenderer {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Animate a newly placed tile sliding from the hand area to its board position.
-   * Finds the tile's Graphics child inside boardLayer by index and creates a
-   * temporary clone in the animation layer that tweens into place.
+   * Animate a newly placed tile dropping into its board position.
+   * Hides the real tile during the tween to prevent visual doubling.
    */
   private animateTilePlacement(tile: BoardTileSnapshot): void {
     const boardChild = this.boardLayer.children.find(
@@ -871,9 +872,13 @@ export class DominosRenderer implements GameRenderer {
     const toX = boardChild.position.x;
     const toY = boardChild.position.y;
 
-    // Origin: center-bottom of screen (hand area)
-    const fromX = this.width / 2;
-    const fromY = this.height - HAND_AREA_HEIGHT / 2;
+    // Animate from slightly above — a short "drop-in" effect
+    const dropOffset = 50;
+    const fromX = toX;
+    const fromY = toY - dropOffset;
+
+    // Hide the real tile so we don't see a doubled image
+    boardChild.visible = false;
 
     // Create a temporary Graphics clone for the animation
     const animTile = new Graphics();
@@ -912,6 +917,7 @@ export class DominosRenderer implements GameRenderer {
       duration: TILE_ANIM_DURATION_MS,
       onComplete: () => {
         animTile.destroy();
+        boardChild.visible = true;
       },
     });
   }
