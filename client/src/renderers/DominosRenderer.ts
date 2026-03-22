@@ -70,6 +70,19 @@ const END_MARKER_COLOR = ACCENT_BLUE;
 const END_MARKER_ACTIVE_ALPHA = 0.85;
 const END_LABEL_FONT_SIZE = 14;
 
+// Spinner arm indicators (C/D arm discoverability)
+const SPINNER_IND_LENGTH = 28;
+const SPINNER_IND_DASH_LEN = 5;
+const SPINNER_IND_GAP_LEN = 4;
+const SPINNER_IND_ARROW_SIZE = 5;
+const SPINNER_IND_LOCKED_COLOR = SLATE_700;
+const SPINNER_IND_LOCKED_ALPHA = 0.35;
+const SPINNER_IND_ACTIVE_COLOR = ACCENT_BLUE;
+const SPINNER_IND_ACTIVE_ALPHA = 0.6;
+const SPINNER_IND_FLASH_COLOR = BLUE_400;
+const SPINNER_IND_FLASH_ALPHA = 1.0;
+const SPINNER_UNLOCK_FLASH_MS = 1500;
+
 const BONEYARD_BG = BG_CARD;
 const BONEYARD_BORDER = BORDER_LIGHT;
 const BONEYARD_RADIUS = 10;
@@ -241,6 +254,11 @@ export class DominosRenderer implements GameRenderer {
   private linearCenterY = 0;
   private layoutMode: "empty" | "linear" | "cross" = "empty";
 
+  // Spinner arm indicators (C/D discoverability)
+  private readonly spinnerIndicatorLayer = new Container();
+  private prevArmsCDLocked = true;
+  private spinnerUnlockFlashTimer = 0;
+
   constructor() {
     this.container.eventMode = "static";
     this.overlayLayer.eventMode = "none";
@@ -273,6 +291,7 @@ export class DominosRenderer implements GameRenderer {
     this.container.addChild(
       this.boardBackground,
       this.boardLayer,
+      this.spinnerIndicatorLayer,
       this.ghostLayer,
       this.endMarkerA,
       this.endMarkerB,
@@ -325,7 +344,17 @@ export class DominosRenderer implements GameRenderer {
 
   onStateChange(state: unknown): void {
     this.actionPending = false;
+
+    // Detect C/D arm unlock transition (locked → active)
+    const wasCDLocked = this.openEndC < 0 && this.openEndD < 0;
+
     this.applyState(state);
+
+    const isCDActive = this.openEndC >= 0 || this.openEndD >= 0;
+    if (wasCDLocked && isCDActive && this.spinnerTileId !== -1) {
+      this.spinnerUnlockFlashTimer = SPINNER_UNLOCK_FLASH_MS;
+    }
+
     this.syncSelection();
 
     // Only cancel a drag if the tile is no longer in hand or it's no longer our turn.
@@ -341,8 +370,14 @@ export class DominosRenderer implements GameRenderer {
     this.redrawAll();
   }
 
-  update(_deltaTime: number): void {
-    // No per-frame animation needed currently
+  update(deltaTime: number): void {
+    if (this.spinnerUnlockFlashTimer > 0) {
+      this.spinnerUnlockFlashTimer -= deltaTime;
+      if (this.spinnerUnlockFlashTimer <= 0) {
+        this.spinnerUnlockFlashTimer = 0;
+        this.redrawSpinnerIndicators();
+      }
+    }
   }
 
   resize(width: number, height: number): void {
@@ -389,6 +424,7 @@ export class DominosRenderer implements GameRenderer {
     this.sidebar?.destroy();
     this.sidebar = null;
     this.boardLayer.removeChildren();
+    this.spinnerIndicatorLayer.removeChildren();
     this.ghostLayer.removeChildren();
     this.handLayer.removeChildren();
     this.validEnds = [];
@@ -778,6 +814,7 @@ export class DominosRenderer implements GameRenderer {
   private redrawAll(): void {
     this.redrawBoardBackground();
     this.redrawBoard();
+    this.redrawSpinnerIndicators();
     this.drawGhostTiles();
     this.redrawHand();
     this.redrawBoneyard();
@@ -1003,6 +1040,130 @@ export class DominosRenderer implements GameRenderer {
     this.endPositions.b = { x: armBEndX + BOARD_TILE_GAP * scale, y: spinnerCY };
     this.endPositions.c = { x: spinnerCX, y: armCEndY - BOARD_TILE_GAP * scale };
     this.endPositions.d = { x: spinnerCX, y: armDEndY + BOARD_TILE_GAP * scale };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Spinner arm indicators (C/D discoverability)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Draws subtle visual indicators above/below the spinner to hint that
+   * perpendicular arms (C up, D down) exist and whether they are locked or
+   * playable. Indicators hide once a tile has been placed on the arm.
+   */
+  private redrawSpinnerIndicators(): void {
+    for (const child of this.spinnerIndicatorLayer.removeChildren()) {
+      child.destroy();
+    }
+
+    if (this.layoutMode !== "cross" || this.spinnerTileId === -1) {
+      return;
+    }
+
+    const scale = this.boardScale;
+    const spinnerHalfH = (BOARD_TILE_W * scale) / 2;
+    const cx = this.crossSpinnerCX;
+    const cy = this.crossSpinnerCY;
+
+    const hasArmCTiles = this.boardTiles.some((t) => t.arm === "c");
+    const hasArmDTiles = this.boardTiles.some((t) => t.arm === "d");
+    const armCActive = this.openEndC >= 0;
+    const armDActive = this.openEndD >= 0;
+
+    // C indicator — extends UP from spinner
+    if (!hasArmCTiles) {
+      this.drawSpinnerArmIndicator(cx, cy - spinnerHalfH, -1, scale, armCActive, "C");
+    }
+
+    // D indicator — extends DOWN from spinner
+    if (!hasArmDTiles) {
+      this.drawSpinnerArmIndicator(cx, cy + spinnerHalfH, 1, scale, armDActive, "D");
+    }
+  }
+
+  private drawSpinnerArmIndicator(
+    x: number,
+    edgeY: number,
+    direction: 1 | -1,
+    scale: number,
+    isActive: boolean,
+    label: string,
+  ): void {
+    const g = new Graphics();
+    g.eventMode = "none";
+
+    const isFlashing = this.spinnerUnlockFlashTimer > 0 && isActive;
+
+    let color: number;
+    let alpha: number;
+    if (isFlashing) {
+      color = SPINNER_IND_FLASH_COLOR;
+      alpha = SPINNER_IND_FLASH_ALPHA;
+    } else if (isActive) {
+      color = SPINNER_IND_ACTIVE_COLOR;
+      alpha = SPINNER_IND_ACTIVE_ALPHA;
+    } else {
+      color = SPINNER_IND_LOCKED_COLOR;
+      alpha = SPINNER_IND_LOCKED_ALPHA;
+    }
+
+    const gap = 4 * scale;
+    const length = SPINNER_IND_LENGTH * scale;
+    const lineStartY = edgeY + direction * gap;
+    const lineEndY = lineStartY + direction * length;
+
+    if (isActive) {
+      // Solid line for active/unlocked arms
+      g.moveTo(x, lineStartY).lineTo(x, lineEndY).stroke({ color, alpha, width: 2 });
+    } else {
+      // Dashed line for locked arms
+      const dashLen = SPINNER_IND_DASH_LEN * scale;
+      const gapLen = SPINNER_IND_GAP_LEN * scale;
+      let pos = 0;
+      while (pos < length) {
+        const segEnd = Math.min(pos + dashLen, length);
+        g.moveTo(x, lineStartY + direction * pos)
+          .lineTo(x, lineStartY + direction * segEnd);
+        pos += dashLen + gapLen;
+      }
+      g.stroke({ color, alpha, width: 2 });
+    }
+
+    // Arrow tip (filled triangle) or locked circle at the end of the line
+    const arrowSize = SPINNER_IND_ARROW_SIZE * scale;
+    if (isActive) {
+      g.moveTo(x, lineEndY + direction * arrowSize)
+        .lineTo(x - arrowSize, lineEndY)
+        .lineTo(x + arrowSize, lineEndY)
+        .closePath()
+        .fill({ color, alpha });
+    } else {
+      g.circle(x, lineEndY + direction * (arrowSize * 0.5), 3 * scale)
+        .fill({ color, alpha });
+    }
+
+    // Glow ring during unlock flash
+    if (isFlashing) {
+      g.circle(x, lineEndY + direction * arrowSize, 8 * scale)
+        .fill({ color: SPINNER_IND_FLASH_COLOR, alpha: 0.25 });
+    }
+
+    // Arm label
+    const labelText = new Text({
+      text: label,
+      style: {
+        fontFamily: "sans-serif",
+        fontSize: Math.max(10, 11 * scale),
+        fontWeight: isActive ? "700" : "500",
+        fill: color,
+      },
+    });
+    labelText.alpha = alpha;
+    labelText.anchor.set(0.5);
+    labelText.position.set(x + 12 * scale, (lineStartY + lineEndY) / 2);
+    g.addChild(labelText);
+
+    this.spinnerIndicatorLayer.addChild(g);
   }
 
   // ── Arm dimension helpers ──────────────────────────────────────────────────
