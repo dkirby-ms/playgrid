@@ -888,3 +888,51 @@ Added 6 new tests in `server/src/__tests__/lobby-pregame.test.ts` under a new "h
 - The test pattern for broadcast verification: `room.broadcast.mockClear()` before the action, then `expect(room.broadcast).toHaveBeenCalledWith(GAME_REMOVED, { gameId })` or `expect(...).toHaveBeenCalledWith(GAME_UPDATED, expect.objectContaining({ game: expect.objectContaining({ ... }) }))` for partial matches.
 - In-progress game testing pattern: create game → manually set `game.status = "in_progress"` → trigger action → assert game is NOT removed. This simulates the state after `handleStartGame()` transitions the game.
 - The `clearSessionAssignments(gameId)` method iterates through all sessions and clears `currentGameId` for any session assigned to that game. Tests can verify this by checking `room.sessions.get(sessionId)?.currentGameId` before/after.
+
+### Dominos CPU Opponent Tests — Issue #163
+
+Added 17 new tests to `server/src/games/dominos/__tests__/dominosCpu.test.ts` (38 total, was 21), covering four new areas:
+
+1. **Multi-action turn flow** (4 tests): draw→play, draw→draw, draw→pass, multiple-draws-then-play. Simulates the sequential draw loop by mutating state between `selectCpuAction` calls.
+2. **Tie-breaking determinism** (3 tests): higher pip total wins, lower tile id wins when pips equal, repeated calls produce identical results.
+3. **Scoring heuristics** (3 tests): double always beats non-double, flexibility influences choice, double+flexibility combo.
+4. **First-play edge cases** (4 tests): plays on end "a", picks highest double, picks highest-pip non-double, single tile [0-0] on empty board.
+
+**Key files:**
+- `server/src/games/dominos/CpuOpponent.ts` — `selectCpuAction()` is the public API; returns `{actionType: "play"|"draw"|"pass"}`
+- `server/src/games/dominos/__tests__/dominosCpu.test.ts` — Extended CPU test suite (38 tests)
+- `server/src/games/dominos/__tests__/cpuOpponent.test.ts` — Original CPU test suite (10 tests, uses `placeTileOnBoard` for setup)
+- `server/src/games/dominos/DominosPlugin.ts` — `setPlayerHand()` and `getPlayerHand()` are test-accessible helpers
+
+**Patterns:**
+- Dominos CPU tests use direct state field manipulation (`state.openEndA = 3`) rather than `placeTileOnBoard` for more explicit/readable board setup. Both approaches work.
+- Multi-action flow is tested by calling `selectCpuAction`, then mutating state to simulate what the room would do (add tile to hand, decrement boneyardCount), then calling again.
+- CpuOpponent scoring: DOUBLE_BONUS=200, HIGH_PIP_WEIGHT=10, FLEXIBILITY_WEIGHT=50. Double always wins over non-double.
+- `breaksTie()` uses higher pip total first, then lower tile id for determinism.
+
+
+## 2026-03-22T13-40Z: Session Orchestration — Issue #163 Test Extended
+
+**Session:** Dominos CPU Opponents Extended Tests (background task)  
+**Mode:** background  
+**Outcome:** 17 New Tests Added, 799 Passing
+
+Extended `dominosCpu.test.ts` with comprehensive scenario coverage for multi-action turn flow, tie-breaking determinism, scoring heuristics, and first-play edge cases.
+
+**Test Coverage Strategy:**
+- **Multi-action flow** (4 tests): Validates draw→play, draw→draw, draw→pass, multi-draw sequences by calling `selectCpuAction()`, simulating room state mutations (tile hand additions, boneyard decrements), then calling again. This tests the sequential turn logic without needing full room integration.
+- **Tie-breaking determinism** (3 tests): Confirms ordering is consistent (higher pip total first, then lower tile id), and repeated calls produce identical results under same state.
+- **Scoring heuristics** (3 tests): Double bonus priority (200), high pip weight (10), flexibility weight (50) — tests verify composition scoring and priority ranking.
+- **First-play edge cases** (4 tests): End "a" play, highest double play, highest-pip non-double play, single [0-0] tile on empty board.
+
+**Total Dominos CPU test suite:** 48 tests across both files (cpuOpponent.test.ts + dominosCpu.test.ts).
+
+**Regression Prevention:**
+- Scoring weight changes detected by heuristics tests
+- Multi-action loop changes caught by turn-flow tests
+- Edge case mutations flagged by edge case suite
+
+**Build Status:** 799 tests passing, no regressions introduced.
+
+**Cross-team note:** Pemulis verified no implementation work was needed — CPU logic already complete. These tests provide extended coverage to prevent future regressions.
+

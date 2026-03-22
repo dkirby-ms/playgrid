@@ -1484,3 +1484,40 @@ Session finalized: Orchestration logs created, decisions merged, cross-agent ref
 
 **Validation:** Build ✓, Lint ✓, Tests ✓ (785 passed, 12 todo)
 
+
+### Dominos CPU Opponents — Issue #163 (2026-03-22)
+
+- **Status:** Already fully implemented. All four required pieces verified in place:
+  1. `server/src/games/dominos/CpuOpponent.ts` — heuristic AI with `selectCpuAction()` returning play/draw/pass. Scoring weights: DOUBLE_BONUS (200), HIGH_PIP_WEIGHT (10), FLEXIBILITY_WEIGHT (50). Tie-breaking by pip total then tile id.
+  2. `server/src/game/BaseGameRoom.ts` — import wired (`selectCpuAction as selectDominosCpuAction`), dispatch in `executeCpuTurn()` routes to `executeDominosCpuTurn()`, which uses `queueCpuTurnIfNeeded()` loop for multi-action turns (draw → draw → play or draw → pass).
+  3. `server/src/rooms/LobbyRoom.ts` — `isCpuSupported()` already includes `"dominos"` alongside checkers and backgammon.
+  4. Test coverage: `cpuOpponent.test.ts` (unit) and `dominosCpu.test.ts` (extended scenarios) — ~30+ test cases covering play selection, draw/pass logic, spinner C/D arms, multi-player, edge cases, return value contracts.
+
+- **Key pattern:** Dominos CPU follows the backgammon multi-action pattern (not the checkers single-action pattern) because a dominos turn can involve multiple draws before a play or pass. The `queueCpuTurnIfNeeded()` loop handles this naturally.
+
+- **Validation:** Build ✓, Lint ✓, Tests ✓ (785 passed, 12 todo)
+
+
+## 2026-03-22T13-40Z: Session Orchestration — Issue #163 Complete
+
+**Session:** Dominos CPU Opponents (background task)  
+**Mode:** background  
+**Outcome:** Verified Complete — No changes needed
+
+Investigation confirmed Dominos CPU opponent support was already fully implemented across all four required integration points:
+
+1. **CpuOpponent.ts** — Heuristic-based AI with `selectCpuAction(state)` returning {action, tile, reason}. Scoring weights tuned for double bonus (200), high pip count (10), flexibility (50). Deterministic tie-breaking by pip total then tile id.
+
+2. **BaseGameRoom wiring** — `executeDominosCpuTurn()` uses the `queueCpuTurnIfNeeded()` loop to handle multi-action sequences (draw → draw → play or draw → pass) without blocking. Room correctly routes to dominos CPU action selector via type dispatch.
+
+3. **LobbyRoom gate** — `isCpuSupported("dominos")` returns true alongside checkers and backgammon. CPU opponents selectable in lobby.
+
+4. **Test coverage** — Both `cpuOpponent.test.ts` (unit) and `dominosCpu.test.ts` (scenario-based) with ~30+ cases covering play selection, draw/pass cycling, multi-player scenarios, and edge cases.
+
+**Cross-team impact:** 
+- Server: No timing changes needed. CPU games run without chess clock per existing behavior.
+- Client: CPU opponents appear as "CPU Opponent" in lobby. Existing CPU UI works — no client changes required.
+- Testing: Steeply added 17 new tests this session for extended scenario coverage.
+
+**Validation:** Build ✓, Lint ✓, 799 tests passing (Steeply's new tests included). Issue #163 closed.
+

@@ -6631,3 +6631,55 @@ The client-side fix (Pemulis) will make `WaitingRoomScene.onExit()` send `LEAVE_
 - Pattern established for testing game lifecycle cleanup behavior
 - When adding new game statuses beyond "waiting"/"in_progress", extend the test suite to cover those states
 - If adding new cleanup triggers (e.g., timeout, kick), add tests following the same assert pattern
+
+---
+
+## Session: Dominos CPU Opponent — Issue #163 Complete (2026-03-22)
+
+### Pemulis: Dominos CPU Opponent Implementation Verified
+
+**Status:** Verified Complete  
+**Date:** 2026-03-22  
+**Issue:** #163
+
+Investigation confirmed that Dominos CPU opponent support was already fully implemented across all required integration points. No code changes necessary.
+
+**Verification:**
+- **CpuOpponent.ts** — Heuristic-based AI selection logic present
+- **BaseGameRoom wiring** — Multi-action `queueCpuTurnIfNeeded()` loop correctly handles sequences
+- **LobbyRoom gate** — `isCpuSupported("dominos")` returns true
+- **Test coverage** — ~30+ existing tests with no regressions
+- **Build status** — 785 tests passing
+
+**Impact:** CPU opponents appear in lobby with existing UI. Server-side implementation complete, no client changes required.
+
+---
+
+### Steeply: Dominos CPU Opponent Test Coverage Extended
+
+**Status:** Complete  
+**Date:** 2026-03-22  
+**Issue:** #163
+
+Extended `dominosCpu.test.ts` with 17 new comprehensive tests for multi-action turn flow, tie-breaking determinism, scoring heuristics, and first-play edge cases. Total suite: 48 tests across both files.
+
+**Testing Patterns:**
+- Multi-action flow validated by calling `selectCpuAction()`, simulating room state mutations (tile draws, boneyard decrements), then calling again
+- Tie-breaking confirms deterministic ordering (higher pip total first, then lower tile id)
+- Scoring heuristics test double bonus priority, flexibility, and composition scoring weights
+- Edge cases cover first-play scenarios, empty boneyard, single-tile hand
+
+**Build Status:** 799 tests passing, no regressions.
+
+---
+
+### Copilot Directive: Move History Scrollbar
+
+**Status:** Accepted (Team Memory)  
+**Date:** 2026-03-22 12:08Z  
+**By:** dkirby-ms
+
+It's acceptable for the move history list to display a scrollbar when needed. Do not suppress or hide overflow — let the list scroll naturally per browser defaults.
+
+**Rationale:** User preference captured for team memory. Aligns with natural scrolling UX patterns.
+
