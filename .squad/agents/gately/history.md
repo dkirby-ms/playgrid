@@ -2227,3 +2227,28 @@ Added double-click protection and pending-state guards to all four game renderer
 **Outcome:** 803 tests passing. Build/lint clean. No regressions.
 
 **Cross-agent sync:** Ortho implemented same pattern on DOM buttons (LobbyScreen, SetupScreen, WaitingRoom). Ensures consistency across canvas and DOM layers.
+
+## Session Update: 2026-03-22 — Browser Back/Tab Close Lobby Cleanup
+
+**Summary:** Fixed stale lobby state when user navigates away via browser back button, tab close, or refresh.
+
+**Root Cause:** The `beforeunload`/`pagehide` handlers only called `persistSessionForRefresh()` — they saved the game session for reconnection but never cleaned up the lobby connection. When the WebSocket dropped naturally (non-consented close), the server's `onLeave()` entered a 30-second reconnection window, keeping the player's `currentGameId` and online status alive.
+
+**Fix (client-side only — server was already correct):**
+- Added `handlePageUnload()` method that: (1) persists the game session, (2) explicitly calls `lobbyRoom.leave()` with a consented close
+- Consented close triggers server's `removeSession()` immediately (no 30s wait)
+- Game room intentionally left open — its natural WebSocket drop gives the server a 30s reconnection window for refresh recovery via `tryRestoreActiveSession()`
+- Added `isPageUnloading` flag to prevent `handleLobbyRoomLeave()` from starting reconnection during teardown
+
+**Key Insight:** The server's `LobbyRoom.onLeave()` + `removeSession()` already handles full cleanup correctly. The issue was purely that the client never sent a consented close for the lobby during page unload.
+
+**Files Modified:**
+- `client/src/Application.ts`
+
+## Learnings
+- `LobbyRoom.onLeave()`: non-consented close → 30s reconnection window; consented close → immediate `removeSession()`. The reconnection window is the source of stale lobby state when WebSocket drops naturally.
+- `removeSession()` calls `handleLeaveGame()` which properly clears `currentGameId` and removes from waiting players.
+- `reclaimSession()` migrates old sessions to new ones on reconnect, carrying forward `currentGameId` and waiting room membership.
+- `room.leave()` (Colyseus SDK) defaults to `consented=true`, sending a CONSENTED close frame. Usable in `pagehide`/`beforeunload` as a best-effort synchronous close.
+- Game room reconnection is stored in `sessionStorage` via `persistActiveSession()` and restored by `tryRestoreActiveSession()` — this is separate from lobby reconnection.
+- Lobby connections are always fresh on page load (no lobby reconnection persistence) — so leaving the lobby on page unload is always safe.
