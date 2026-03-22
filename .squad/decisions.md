@@ -6271,3 +6271,363 @@ Status panes (game info, players, stats) should display all their content withou
 
 - `client/src/ui/GameSidebar.ts` — CSS in `injectStyles()`
 
+### 2026-03-22T01:00:00Z: User directive
+**By:** dkirby-ms (via Copilot)
+**What:** In backgammon: (1) Bar pieces should be centered on the bar, not placed at the top. (2) Dice should be positioned on each player's side to make it clear who is rolling.
+**Why:** User request — UX improvement for backgammon board clarity
+# Backgammon Pass Button Implementation
+
+**Date:** 2026-03-21  
+**Author:** Gately  
+**Status:** Implemented  
+
+## Context
+
+When a Backgammon player rolls dice but has no valid moves (e.g., piece on bar with all entry points blocked), they need a way to end their turn. The server already supports a `pass` action, and Pemulis is adding server-side auto-pass logic. This decision covers the client-side UX.
+
+## Decision
+
+Added a "Pass (No Valid Moves)" button in the BackgammonRenderer sidebar that appears only when:
+1. It's the local player's turn
+2. Dice have been rolled (both dice > 0)
+3. No valid moves exist for any piece
+
+The button sends `room.send("pass")` when clicked.
+
+## Rationale
+
+- **Explicit control:** Even with server auto-pass, showing a button lets the player understand what happened
+- **Reuse existing validation:** Used `getMovesForSource()` for all pieces (bar + 24 points) rather than duplicating move logic
+- **Minimal UI:** Placed in sidebar controls panel alongside resign button — no overlay or modal needed
+- **Auto-hide:** Button only appears when needed, disappears when turn ends (via `updateSidebar()` state tracking)
+
+## Implementation
+
+Added three methods to `client/src/renderers/BackgammonRenderer.ts`:
+- `hasAnyValidMoves()` — Checks bar and all 24 points for valid moves
+- `shouldShowPassButton()` — Conditions check (turn, dice, no moves)
+- Modified `updateSidebar()` — Conditionally renders button with click handler
+
+## Alternatives Considered
+
+- **Overlay/toast message:** Decided against — would obscure board unnecessarily
+- **Auto-hide pass after timeout:** Not needed — server handles turn ending
+- **Dice area button:** Sidebar is more consistent with existing controls
+
+## Related
+
+- Server auto-pass: Pemulis is implementing auto-turn-end when no moves exist after roll
+- Pass action: Already supported by server `BackgammonRoom.onPass()` handler
+# Decision: No Scrollbars in Sidebar Status Panes
+
+**Author:** Ortho (Frontend Dev)
+**Date:** 2025-07-18
+**Status:** Applied
+
+## Context
+
+User reported scrollbars appearing in the game info tab/panel in the sidebar. The general rule is: **no scrollbars in status panes**.
+
+## Decision
+
+- `.sidebar-panel-content` uses `overflow: hidden` — never `overflow-y: auto`
+- `.game-sidebar-panel` has no `max-height` — panels size to their content naturally
+- The outer `.game-sidebar` container keeps `overflow-y: auto` so the sidebar itself scrolls if panels collectively exceed viewport height
+- All webkit scrollbar pseudo-element styling removed from `.sidebar-panel-content`
+
+## Rationale
+
+Status panes (game info, players, stats) should display all their content without internal scrolling. They are compact by design and should never need their own scrollbar. If the sidebar as a whole gets too tall, the outer container handles it.
+
+## Files Changed
+
+- `client/src/ui/GameSidebar.ts` — CSS in `injectStyles()`
+# Backgammon Rules Audit — Findings
+
+**Author:** Pemulis (Systems Dev)  
+**Date:** 2026-03-21  
+**Requested by:** dkirby-ms  
+**Scope:** Bar/hitting mechanics, move direction, bear-off logic
+
+---
+
+## 🔴 BUG 1: Bear-off with over-roll selects wrong checker (GAME-BREAKING)
+
+**Location:** `server/src/games/backgammon/backgammonLogic.ts`, `isValidMove()` lines 148–170
+
+**The rule:** When a player rolls a die higher than the distance of any remaining checker, they must bear off the checker **farthest from the edge** (highest-numbered point in player's home board notation). This only applies when the exact point is unoccupied AND no checkers exist on any point farther from the edge.
+
+**The bug:** The loop direction is inverted for both players. The code checks for pieces **closer to the edge** instead of **farther from the edge**.
+
+- **Black (lines 155–157):** Checks `fromPoint + 1` to `23` (closer to edge). Should check `18` to `fromPoint - 1` (farther from edge).
+- **Red (lines 166–168):** Checks `0` to `fromPoint - 1` (closer to edge). Should check `fromPoint + 1` to `5` (farther from edge).
+
+**Impact:** In the endgame bear-off phase:
+1. Players CAN bear off from the **wrong** point (closest to edge) — invalid moves accepted.
+2. Players CANNOT bear off from the **correct** point (farthest from edge) when closer pieces also exist — valid moves rejected.
+
+**Example:** Black has pieces on points 19 and 22 (5-point and 2-point). Rolls a 6 (exact = point 18, empty). Code allows bearing off from 22 (2-point) but blocks from 19 (5-point). Real backgammon requires bearing off from 19 (the farthest piece).
+
+**Test impact:** Existing tests at `server/src/__tests__/backgammon.test.ts` lines 370–376 and 887–904 validate incorrect behavior. The test "allows bearing off with higher die when no higher pieces for Black" sets up pieces on 18, 19, 20 and asserts bearing off from 20 with die=6 is valid — but point 18 (exact match for die=6) has pieces, so this should use exact match instead.
+
+**Severity:** Game-breaking. Affects every game that reaches the bear-off phase with non-trivial positions.
+
+---
+
+## 🟡 BUG 2: No "must use larger die" enforcement (MEDIUM)
+
+**Location:** `server/src/games/backgammon/BackgammonPlugin.ts`, `move` action handler lines 340–358
+
+**The rule:** When a player can only use one of two dice (not both), they must use the **larger** die.
+
+**The bug:** The code lets the player freely choose either die. After using one die, it checks if the other can still be used — if not, the turn ends. But it never enforces that the larger die must be preferred when only one can be used.
+
+**Example:** Dice are 4 and 6. Player can only use one (using either makes the other impossible). Real backgammon requires using the 6. Code allows using the 4.
+
+**Severity:** Medium. Rarely triggers but is a real rules violation that could affect game outcomes.
+
+---
+
+## 🟢 OBSERVATION: No opening roll (LOW / Design Choice)
+
+**Location:** `BackgammonPlugin.ts` `onGameStart`, `turnConfig`
+
+Real backgammon determines who goes first by each player rolling one die; the higher roll wins and both dice are used for the first move. The implementation uses round-robin from player index 0. This is a common simplification in online backgammon.
+
+---
+
+## ✅ Correctly Implemented
+
+### Bar / Hitting Mechanics — ALL CORRECT
+- **Schema:** `blackBar` and `redBar` fields exist on `BackgammonState` (`shared/src/games/backgammon/BackgammonState.ts` lines 10–11)
+- **Blot landing:** `isValidMove` allows landing on single opponent piece (`destPieces < -1` / `> 1` checks at lines 129–131, 189–191)
+- **Capture:** `applyMove` captures blots correctly (lines 244–249: sets point to player color, increments opponent bar)
+- **Must enter from bar:** Enforced at `isValidMove` line 117 (`barCount > 0 && from !== "bar"`)
+- **Re-entry points:** Black enters points 0–5 (`die - 1`), Red enters points 18–23 (`24 - die`) — correct opponent home boards
+- **Blocked entry:** Can't enter on 2+ opponent pieces (lines 130–131)
+- **hasValidMoves:** Correctly checks bar entry first and returns false if can't enter (lines 297–305)
+- **Bar entry with capture:** Entering from bar can also hit a blot — `applyMove` handles this case
+
+### Move Direction — CORRECT
+- Black moves 0→23 (`fromPoint + die`, line 185) ✓
+- Red moves 23→0 (`fromPoint - die`, line 185) ✓
+
+### Board Setup — CORRECT (Standard opening position)
+- Black: 2@0, 5@11, 3@16, 5@18 (lines 32–35) ✓
+- Red: 2@23, 5@12, 3@7, 5@5 (lines 38–41) ✓
+
+### Home Boards — CORRECT
+- Black: 18–23 (`canBearOff` line 87) ✓
+- Red: 0–5 (`canBearOff` line 92) ✓
+
+### Bearing Off (Exact Match) — CORRECT
+- Black: `exactPoint = 24 - die` (line 149) ✓
+- Red: `exactPoint = die - 1` (line 160) ✓
+
+### Doubles — CORRECT
+- 4 moves tracked via `doublesMovesUsed` counter ✓
+
+### Turn Management — CORRECT
+- Roll → move(s) → auto-end-turn when no moves remain ✓
+- Pass only allowed when truly no valid moves ✓
+
+### Win Condition — CORRECT
+- 15 pieces borne off wins ✓
+
+---
+
+## Recommended Fix Priority
+
+1. **Bear-off loop direction** — Fix immediately. Game-breaking.
+2. **Larger die enforcement** — Fix soon. Rules violation that affects fairness.
+3. **Opening roll** — Optional enhancement. Many online implementations skip this.
+
+## Not Implemented (By Design)
+- Doubling cube
+- Gammons / backgammons (double/triple victory scoring)
+- Crawford rule (tournament play)
+# Decision: Backgammon Server-Side Auto-Pass on No Valid Moves
+
+**Status:** Implemented  
+**Date:** 2026-03-21  
+**Author:** Pemulis (Systems Dev)  
+**Requested by:** dkirby-ms
+
+## Problem
+
+When a Backgammon player has a piece on the bar and rolls dice that can't enter (all entry points blocked by 2+ opponent pieces), the game gets stuck:
+- Server correctly validates that `pass` is allowed
+- Server does not auto-pass after rolling when no moves exist
+- Client has no pass button, making all pieces un-selectable with no way to end the turn
+
+This creates a game-breaking deadlock state.
+
+## Solution
+
+Auto-pass immediately on the server after a dice roll if no valid moves exist.
+
+## Implementation
+
+Modified the `roll()` action handler in `server/src/games/backgammon/BackgammonPlugin.ts`:
+
+1. After setting dice values (`state.dice[0]`, `state.dice[1]`, `state.usedDice`, `state.doublesMovesUsed`)
+2. Compute available dice using existing `getAvailableDice()` function
+3. Check if any valid moves exist using existing `hasValidMoves()` function (from `backgammonLogic.ts`)
+4. If no valid moves:
+   - Reset dice to 0 (same logic as manual `pass` action)
+   - Return `{ success: true, endsTurn: true, endsGame: false }`
+5. If valid moves exist:
+   - Return `{ success: true, endsTurn: false, endsGame: false }` (original behavior)
+
+**No delays or timers** — auto-pass happens immediately when the roll completes.
+
+## Rationale
+
+- **Server-authoritative:** Game never gets stuck, even if client is slow or buggy
+- **Reuses existing logic:** `hasValidMoves()` already implements all the complex validation (bar entry, bearing off, etc.)
+- **Client-compatible:** Client receives dice values in state change, shows animation, then sees dice reset and turn change
+- **Simple and robust:** No complexity, no edge cases, no new state
+
+## Pattern
+
+When a game action reveals that the player cannot proceed, auto-advance the turn rather than waiting for explicit user input. This prevents deadlock states and keeps the game flowing.
+
+## Impact
+
+- Players on the bar with blocked entry points no longer get stuck
+- Turn automatically advances after dice animation on client
+- No client changes required (though a pass button would still be good UX for manual pass scenarios)
+
+## Files Modified
+
+- `server/src/games/backgammon/BackgammonPlugin.ts` — `roll()` action handler
+
+## Validation
+
+- Build ✓
+- Lint ✓  
+- Tests ✓ (785 passed, 12 todo)
+# Decision: Backgammon Bear-off & Larger-Die Fixes
+
+**Author:** Pemulis (Systems Dev)  
+**Date:** 2026-03-21  
+**Status:** Implemented
+
+---
+
+## Fix 1: Bear-off over-roll loop direction
+
+**Problem:** `isValidMove()` checked pieces in the wrong direction when validating over-roll bear-offs. The loop searched toward the board edge (closer pieces) instead of away from it (farther pieces). This allowed bearing off wrong checkers in every endgame.
+
+**Fix:** Reversed both loops:
+- Black: now checks points 18 through `fromPoint-1` (farther from edge)
+- Red: now checks points `fromPoint+1` through 5 (farther from edge)
+
+**Impact:** Game-breaking bug fixed. All bear-off endgames now follow correct backgammon rules.
+
+## Fix 2: Must-use-larger-die rule
+
+**Problem:** When a player could only use one of two different dice (using either blocks the other), backgammon rules require using the larger die. No enforcement existed.
+
+**Fix:** Added `canPlayBothDice()` to `backgammonLogic.ts` that enumerates all possible first-moves with each die and checks if the other die has any follow-up. When both dice are individually playable but no sequence allows both, `validateAction()` rejects moves using the smaller die.
+
+**Design decision:** The check runs in `validateAction` (pre-move validation) rather than post-move, so invalid moves are rejected before state mutation. The `canPlayBothDice` helper lives in the logic layer alongside other pure functions.
+
+**Impact:** Medium severity rules violation fixed. Applies only to non-doubles with two available dice where sequencing is impossible.
+
+## Test changes
+
+- 3 existing tests updated (validated wrong bear-off behavior)
+- 2 existing tests updated (used smaller die in must-use-larger scenarios)
+- 12 new tests added (6 bear-off, 6 larger-die)
+- All 773 tests pass
+# Decision: Waiting Room Host Leave Cleanup
+
+**Author:** Pemulis  
+**Date:** 2026-03-16  
+**Status:** Implemented
+
+## Context
+
+Playgrid uses a single persistent Colyseus lobby connection throughout the session. When users navigate from lobby → waiting room → game, they stay connected to the same lobby WebSocket. This means scene lifecycle (entering/exiting UI screens) doesn't align with network lifecycle (connecting/disconnecting from rooms).
+
+**Problem:** When the host navigated away from the waiting room without explicitly clicking "Leave" (e.g., browser back, clicking lobby nav), the game lobby remained open permanently. The server-side cleanup logic in `LobbyRoom.handleLeaveGame()` was correct but never triggered because the client didn't send `LEAVE_GAME`.
+
+## Decision
+
+Add client-side state tracking to distinguish between legitimate exit scenarios:
+
+1. **Game starting** (transition to GameScene) — Do NOT send LEAVE_GAME
+2. **Explicit leave** (user clicked "Leave" button) — Already sends LEAVE_GAME
+3. **Implicit navigation** (browser back, click to lobby, etc.) — NOW sends LEAVE_GAME
+
+Implementation uses two boolean flags on `WaitingRoom`:
+- `hasGameStarted` — Set when `GAME_STARTED` message received
+- `hasExplicitlyLeft` — Set when Leave button clicked
+
+A `cleanup()` method sends `LEAVE_GAME` only if neither flag is set, and is called by `WaitingRoomScene.onExit()`.
+
+## Alternatives Considered
+
+1. **Server-side timeout cleanup** — Would add complexity and delay to a client-side navigation problem
+2. **Disconnect/reconnect on scene transition** — Would break the persistent lobby connection pattern
+3. **Track scene transition destination** — More complex, requires coordination between SceneManager and scenes
+
+## Impact
+
+- **Players:** Browser back and navigation now properly clean up waiting rooms
+- **Hosts:** Abandoned waiting rooms no longer leak in the lobby
+- **Code:** Pattern established for scene lifecycle vs. network lifecycle misalignment
+- **Server:** No changes required; existing cleanup logic works correctly
+
+## Files Modified
+
+- `client/src/ui/WaitingRoom.ts` — Added flags and cleanup method
+- `client/src/scenes/WaitingRoomScene.ts` — Call cleanup on exit
+
+## Testing
+
+Verified with `npm run build && npm run lint`. Manual testing required for:
+- Browser back from waiting room
+- Clicking lobby link from waiting room
+- Normal Leave button flow
+- Game start transition (must NOT send LEAVE_GAME)
+# Test Coverage Decision: Host-Leave Cleanup
+
+**Author:** Steeply  
+**Date:** 2026-03-16  
+**Context:** Issue #TBD — Host leaves waiting room without explicit "Leave" click
+
+## Decision
+
+Added comprehensive server-side test coverage for lobby host-leave cleanup behavior in `server/src/__tests__/lobby-pregame.test.ts`. Tests are grouped in a dedicated "host leave cleanup" describe block (6 test cases).
+
+## Rationale
+
+The client-side fix (Pemulis) will make `WaitingRoomScene.onExit()` send `LEAVE_GAME` when transitioning away (except when starting the game). These tests validate the server-side cleanup that gets triggered:
+
+1. **Host leaves → game removed** — Core cleanup path
+2. **Host leaves with other players → game removed** — Validates host privilege regardless of player count
+3. **Non-host leaves → game stays** — Ensures non-host departures don't destroy the game
+4. **In-progress games preserved** — Host leaving in-progress games should NOT trigger cleanup
+5. **Last non-host leaves → game stays** — Tests that only host remaining doesn't trigger removal (host must explicitly leave)
+6. **Session clearing** — Validates `clearSessionAssignments()` clears all player `currentGameId` values
+
+## Implementation Notes
+
+- Tests use existing `handleLeaveGame(client)` seam (direct method call, not message handler)
+- Mock pattern: `room.broadcast.mockClear()` before action, then assert on GAME_REMOVED or GAME_UPDATED
+- In-progress game simulation: manually set `game.status = "in_progress"` after creation
+- All tests verify both internal state (games Map, waitingPlayers Map, session tracking) AND broadcast messages
+
+## Cross-Agent Impact
+
+- **Pemulis (Game Dev):** Client-side fix should send LEAVE_GAME on scene exit. These tests validate the server response.
+- **Gately (Game Dev):** If adding new cleanup paths, follow this test pattern for waiting vs in-progress game distinction.
+- **Hal (Code Review):** All 6 tests passing. Server-side cleanup logic is fully covered.
+
+## Test Maintenance
+
+- Pattern established for testing game lifecycle cleanup behavior
+- When adding new game statuses beyond "waiting"/"in_progress", extend the test suite to cover those states
+- If adding new cleanup triggers (e.g., timeout, kick), add tests following the same assert pattern

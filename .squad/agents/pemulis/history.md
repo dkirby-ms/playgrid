@@ -1436,3 +1436,51 @@ Session finalized: Orchestration logs created, decisions merged, cross-agent ref
 
 **Decisions merged:** chess-clock-time-control-selection, backgammon-bearoff-fixes, no-scrollbars-sidebar
 
+### Host leaving waiting room cleanup (2026-03-16)
+
+**Bug:** When the host navigated away from the waiting room (browser back, click to lobby) without explicitly clicking "Leave", the game lobby remained open permanently because the client never sent `LEAVE_GAME` to the server.
+
+**Root cause:** The single persistent lobby connection pattern means scene transitions don't disconnect from the server. `WaitingRoomScene.onExit()` was called on all exits (both "leaving" and "game starting"), but only called `hide()` without signaling departure. The server-side cleanup in `LobbyRoom.handleLeaveGame()` is correct but was never reached.
+
+**Solution (client-only):** Added state tracking to `WaitingRoom` class to distinguish between legitimate exits:
+- `hasGameStarted`: Set to `true` when `GAME_STARTED` message received
+- `hasExplicitlyLeft`: Set to `true` when user clicks "Leave" button
+- `cleanup()` method: Called by `WaitingRoomScene.onExit()`, sends `LEAVE_GAME` only if neither flag is set
+- Both flags reset in `show()` and `hide()` for clean state on each waiting room session
+
+**Pattern:** When scene lifecycle doesn't align with network lifecycle, track intent flags to distinguish between transitions. This handles the browser-back and navigation-away cases without breaking the game-start flow.
+
+**Files modified:**
+- `client/src/ui/WaitingRoom.ts` — Added flags and `cleanup()` method
+- `client/src/scenes/WaitingRoomScene.ts` — Call `cleanup()` before `hide()` in `onExit()`
+
+**Validation:** `npm run build && npm run lint` both pass. Server-side code unchanged.
+
+
+### Backgammon Server-Side Auto-Pass on No Valid Moves (2026-03-21)
+
+**Requested by:** dkirby-ms  
+**Scope:** Fix game-stuck bug when player rolls dice but cannot enter from bar.
+
+**Problem:** When a player has a piece on the bar and rolls dice that can't enter (all entry points blocked by 2+ opponent pieces), the game gets stuck. The server validates that `pass` is allowed, but:
+1. Server doesn't auto-pass after rolling when no moves exist
+2. Client has no pass button, making pieces un-selectable with no way to end turn
+
+**Solution (Server-only):** Auto-pass immediately after rolling if no valid moves exist.
+
+**Implementation:** Modified `roll()` action handler in `BackgammonPlugin.ts` (lines 283-308):
+- After setting dice values, compute available dice using `getAvailableDice()`
+- Check if any valid moves exist using existing `hasValidMoves()` function
+- If no valid moves: reset dice to 0 (same as manual pass) and return `endsTurn: true`
+- If valid moves exist: return `endsTurn: false` (original behavior)
+- No delays or complexity — immediate auto-pass keeps the game moving
+
+**Design rationale:** Client will receive dice values in state change, then immediately see dice reset and turn change. The dice animation on the client already handles this — shows rolled values during animation, turn change happens after animation settles. No server-side delays needed.
+
+**Key pattern:** Reuse existing `hasValidMoves()` validation logic — don't duplicate. Same dice reset logic as manual `pass` action.
+
+**Files modified:**
+- `server/src/games/backgammon/BackgammonPlugin.ts` — roll action handler
+
+**Validation:** Build ✓, Lint ✓, Tests ✓ (785 passed, 12 todo)
+

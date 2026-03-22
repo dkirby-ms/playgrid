@@ -862,3 +862,29 @@ Wrote comprehensive unit test suite for chess clock feature covering all critica
 
 **Decisions merged:** chess-clock-time-control-selection, time-control-ui-pattern, backgammon-bearoff-fixes, no-scrollbars-sidebar
 
+
+## Work Complete — Host Leave Cleanup Tests (2026-03-16)
+
+**Issue:** Write comprehensive tests for lobby host-leave cleanup to cover the bug fix being implemented by Pemulis (WaitingRoomScene.onExit() should send LEAVE_GAME when scene transitions away, except when starting the game).
+
+**Test Coverage Added:**
+Added 6 new tests in `server/src/__tests__/lobby-pregame.test.ts` under a new "host leave cleanup" describe block:
+
+1. **Host leaves waiting game → game removed** — Verifies game deletion, waitingPlayers cleanup, session clearing, and GAME_REMOVED broadcast
+2. **Host leaves waiting game with other players → game removed** — Confirms host departure removes the game regardless of other players present
+3. **Non-host player leaves waiting game → game stays** — Validates game persists, playerCount decrements, GAME_UPDATED broadcast
+4. **Host leaves in-progress game → game stays** — Ensures in-progress games are NOT removed when host leaves (different behavior)
+5. **All non-host players leave → game stays with host** — Tests that game persists when only host remains in waiting room
+6. **Host leaves → all session assignments cleared** — Validates `clearSessionAssignments()` is called and clears `currentGameId` for all players
+
+**Status:** ✅ All tests passing (42 total in lobby-pregame.test.ts, +6 new)
+
+## Learnings
+
+- Host-leave cleanup tests live in `server/src/__tests__/lobby-pregame.test.ts` alongside other lobby waiting-room tests. The `handleLeaveGame(client)` method is the key seam — it's the server-side handler that gets called when clients send LEAVE_GAME or disconnect with consent.
+- The cleanup logic in `LobbyRoom.handleLeaveGame()` (lines 385-427) follows this decision tree: (1) bail if no currentGameId or game not found, (2) bail if game status is not "waiting" (in-progress games are preserved), (3) remove player from waitingPlayers, (4) if leaver is host OR players.size === 0, delete game and broadcast GAME_REMOVED, (5) else update playerCount and broadcast GAME_UPDATED.
+- The critical condition `if (sessionId === game.hostId || players.size === 0)` triggers game removal. The `players.size === 0` check happens AFTER `players.delete(sessionId)`, so if host+guest and guest leaves, players still has host → game stays.
+- When adding new shared exports to tests, remember to update BOTH the `sharedExports` object in the hoisted mock AND the destructuring from `shared` (lines 14-40 and 57-67). Missing GAME_REMOVED from the destructuring would cause import errors.
+- The test pattern for broadcast verification: `room.broadcast.mockClear()` before the action, then `expect(room.broadcast).toHaveBeenCalledWith(GAME_REMOVED, { gameId })` or `expect(...).toHaveBeenCalledWith(GAME_UPDATED, expect.objectContaining({ game: expect.objectContaining({ ... }) }))` for partial matches.
+- In-progress game testing pattern: create game → manually set `game.status = "in_progress"` → trigger action → assert game is NOT removed. This simulates the state after `handleStartGame()` transitions the game.
+- The `clearSessionAssignments(gameId)` method iterates through all sessions and clears `currentGameId` for any session assigned to that game. Tests can verify this by checking `room.sessions.get(sessionId)?.currentGameId` before/after.

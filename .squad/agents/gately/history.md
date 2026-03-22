@@ -2014,3 +2014,84 @@ The `23 - index` visual mapping elegantly handles perspective flipping because b
 
 - **Visual index mapping for board flipping:** Using `23 - index` to flip a 24-point backgammon board is cleaner than swapping row assignments because it preserves the horseshoe path direction for both players. The same formula works for both `getPointGeometry()` and `isDarkPoint()`.
 - **Bar/Off zone position formulas:** Bar zones follow entry points: `isTop = (color === BLACK) !== isFlipped`. Off areas follow home boards: `isTop = (color === BLACK) === isFlipped`. These are opposites because entry points are at the far end of the board from the home board.
+
+## 2026-03-21: Backgammon Pass Button (No Valid Moves)
+
+**From:** Gately (requested by dkirby-ms)
+**Task:** Add client-side pass button for when no valid moves are available after rolling
+
+### Problem
+When a backgammon player rolls and has zero valid moves (e.g., piece on bar with all entry points blocked), the game would stall. The server already supports a `pass` action, and Pemulis is adding server-side auto-pass, but a client-side pass button is needed as a UX complement to give players explicit control.
+
+### Implementation
+Added three methods to `BackgammonRenderer.ts`:
+
+1. **`hasAnyValidMoves()`** — Checks if any moves exist for any piece (bar or board points) using the existing `getMovesForSource()` and `getAvailableDice()` helpers. Prioritizes bar moves when pieces are on the bar (since you must enter from bar before other moves).
+
+2. **`shouldShowPassButton()`** — Returns true only when:
+   - It's the local player's turn
+   - Dice have been rolled (both dice > 0)
+   - No valid moves exist
+
+3. **Modified `updateSidebar()`** — Conditionally renders a "Pass (No Valid Moves)" button in the controls panel. When clicked, sends `this.room?.send("pass")` to the server.
+
+The pass button appears above the resign button only when needed, and disappears automatically when the turn ends (since `updateSidebar()` is called on state changes).
+
+### Key decisions
+- Used existing `getMovesForSource()` helper rather than duplicating move validation logic
+- Placed button in sidebar controls panel for consistency with resign button
+- Button text "Pass (No Valid Moves)" makes it clear why the option exists
+- No visual overlay — kept it minimal since this is an edge case
+
+### Files modified
+- `client/src/renderers/BackgammonRenderer.ts`
+
+### Validation
+- Build: ✅ clean
+- Lint: ✅ clean
+- Tests: ✅ all passed
+
+## Learnings
+
+- **Reusing existing helpers over duplication:** The renderer already had robust move validation via `getMovesForSource()`. Calling it for each possible source (bar + 24 points) is cleaner than re-implementing move validation logic.
+- **Sidebar button pattern:** Sidebar buttons use `data-action` attributes and event listeners attached in `updateSidebar()`. This pattern keeps the button handlers scoped to the current state snapshot rather than persisting across re-renders.
+- **Auto-hiding UI elements:** Since `updateSidebar()` is called on every state change, conditional button rendering naturally handles showing/hiding the pass button without explicit cleanup code.
+
+## 2026-03-21: Backgammon Visual Fixes (Bar Centering + Dice Positioning)
+
+**From:** Gately (requested by dkirby-ms)
+**Task:** Fix two visual issues in BackgammonRenderer
+
+### Fix 1 — Bar pieces centered vertically
+**Problem:** Bar pieces were stacked starting from the edge of their half, creating visual imbalance when few pieces were on the bar. They should be centered in the available space.
+
+**Solution:** Calculate the total height of the visible stack (accounting for `MAX_VISIBLE_STACK` limit) and compute a starting Y position that centers the stack within each player's bar half. Changed both bar stacks to use `direction = 1` (always stack downward) since centering makes direction moot. The formula:
+- Calculate the half-height of each player's bar area: `(playHeight - centerGap) / 2`
+- Find the center Y of that half (accounting for `isFlipped`)
+- Offset by half the stack height to start the first piece: `centerY - (stackHeight / 2) + discRadius`
+
+This ensures stacks grow downward from a centered origin, looking balanced whether 1 piece or 15 pieces are on the bar.
+
+### Fix 2 — Dice positioned on current player's side
+**Problem:** Dice were always centered on the board, making it unclear whose turn it was.
+
+**Solution:** Position dice in the quarter-height zone corresponding to the current player's home board:
+- **Black's turn:** Dice appear at `playHeight * 0.75` (bottom quarter) when not flipped, or `playHeight * 0.25` (top quarter) when flipped
+- **Red's turn:** Dice appear at `playHeight * 0.25` (top quarter) when not flipped, or `playHeight * 0.75` (bottom quarter) when flipped
+- **No current player:** Dice remain centered (fallback for waiting/game-end states)
+
+The dice now visually indicate whose turn it is by appearing on their side of the board, making gameplay more intuitive.
+
+### Files modified
+- `client/src/renderers/BackgammonRenderer.ts` (lines 899-943 for bar centering, 773-860 for dice positioning)
+
+### Validation
+- Build: ✅ clean
+- Lint: ✅ clean
+
+## Learnings
+
+- **Centering stacked elements:** When stacking circular pieces with a fixed spacing, the total stack height is `(visibleCount - 1) * spacing + diameter`. To center the stack, start at `centerY - (stackHeight / 2) + radius` and stack in the positive direction.
+- **Dynamic UI positioning based on game state:** Dice position can be driven by `currentTurn` → `playerIndex` → `playerColor` → board geometry. This pattern makes turn state visible without needing explicit HUD elements.
+- **Backgammon home board locations:** Black's home is points 0-5 (bottom-right in standard orientation), Red's home is points 18-23 (top-right). Dice should appear near these zones to indicate whose turn it is.
+
