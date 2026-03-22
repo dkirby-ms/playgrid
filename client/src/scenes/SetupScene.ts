@@ -57,6 +57,7 @@ export class SetupScene implements Scene {
   }
 
   onExit(): void {
+    this.setupScreen.cleanup();
     this.setupScreen.onEvent(() => undefined);
     this.setupScreen.hide();
   }

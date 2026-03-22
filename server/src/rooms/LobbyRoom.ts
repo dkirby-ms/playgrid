@@ -215,6 +215,8 @@ export class LobbyRoom extends Room {
       return;
     }
 
+    this.clearStaleGameAssignment(session);
+
     if (session.currentGameId) {
       this.sendError(client, "Leave your current game before creating another.");
       return;
@@ -307,6 +309,8 @@ export class LobbyRoom extends Room {
       this.sendError(client, "Game not found.");
       return;
     }
+
+    this.clearStaleGameAssignment(session);
 
     if (session.currentGameId && session.currentGameId !== game.id) {
       this.sendError(client, "Leave your current game before joining another.");
@@ -673,6 +677,29 @@ export class LobbyRoom extends Room {
       if (session.currentGameId === gameId) {
         session.currentGameId = undefined;
       }
+    }
+  }
+
+  /** Clear currentGameId when it references a game that no longer exists or is already in progress. */
+  private clearStaleGameAssignment(session: LobbySession) {
+    if (!session.currentGameId) {
+      return;
+    }
+
+    const game = this.games.get(session.currentGameId);
+    if (!game) {
+      console.log(
+        `[LobbyRoom] Cleared stale game reference ${session.currentGameId} for ${session.displayName} (game no longer exists)`,
+      );
+      session.currentGameId = undefined;
+      return;
+    }
+
+    if (game.status === "in_progress") {
+      console.log(
+        `[LobbyRoom] Cleared stale game reference ${session.currentGameId} for ${session.displayName} (game in progress)`,
+      );
+      session.currentGameId = undefined;
     }
   }
 

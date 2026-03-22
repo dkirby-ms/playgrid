@@ -36,7 +36,7 @@ import { GameOverOverlay } from "./ui/GameOverOverlay";
 import { VictoryScreen, type VictoryScreenEvent, type VictoryPlayerInfo } from "./ui/VictoryScreen";
 import { HistoryScreen, type HistoryScreenData } from "./ui/HistoryScreen";
 import { ConsoleLog } from "./ui/ConsoleLog";
-import { JOIN_GAME, type JoinGamePayload, type LobbyEvent } from "./ui/LobbyScreen";
+import { JOIN_GAME, LEAVE_GAME, type JoinGamePayload, type LobbyEvent } from "./ui/LobbyScreen";
 import { GAME_LAYOUT_CHANGE_EVENT } from "./ui/gameLayout";
 
 const GAME_WIDTH = 800;
@@ -287,6 +287,7 @@ export class PlaygridApp {
     this.activeGameType = null;
     this.gameRoom = null;
 
+    this.notifyLobbyGameLeft();
     await this.connectionManager.leaveGame(room);
     console.log(`[playgrid] Left game room ${roomLabel}`);
 
@@ -563,6 +564,8 @@ export class PlaygridApp {
   private async handleGameRoomLeave(room: ColyseusRoom, code: number): Promise<void> {
     console.log(`[playgrid] Left game room ${this.getRoomLabel(room)} (code: ${code})`);
 
+    this.notifyLobbyGameLeft();
+
     if (code === CloseCode.CONSENTED) {
       this.clearActiveSession();
       this.clearReconnectOverlayFeedback();
@@ -599,6 +602,15 @@ export class PlaygridApp {
     this.setStatus("Lobby disconnected.", { tone: "error", persistent: true });
 
     this.connectionManager.attemptReconnect(() => this.connectToLobby());
+  }
+
+  /** Tell the lobby room to clear our currentGameId so we can create/join a new game. */
+  private notifyLobbyGameLeft(): void {
+    try {
+      this.lobbyRoom?.send(LEAVE_GAME);
+    } catch {
+      // Lobby room may have disconnected; server-side cleanup will handle it.
+    }
   }
 
   private async returnToLobby(notice?: Notice): Promise<void> {
