@@ -107,6 +107,7 @@ export class PlaygridApp {
   private displayName = "";
   private lobbyPlayerId = "";
   private activeGameType: string | null = null;
+  private isPageUnloading = false;
   private isDisplayNameUpdatePending = false;
   private gameContainer: HTMLElement | null = null;
   private gameCanvasFrame: HTMLElement | null = null;
@@ -207,8 +208,8 @@ export class PlaygridApp {
     this.lobbyScene.setConsoleLog(this.consoleLog);
     this.setupScene.setConsoleLog(this.consoleLog);
     this.waitingRoomScene.setConsoleLog(this.consoleLog);
-    window.addEventListener("beforeunload", () => this.persistSessionForRefresh());
-    window.addEventListener("pagehide", () => this.persistSessionForRefresh());
+    window.addEventListener("beforeunload", () => this.handlePageUnload());
+    window.addEventListener("pagehide", () => this.handlePageUnload());
     window.addEventListener("resize", () => this.scheduleViewportSync());
     window.addEventListener(GAME_LAYOUT_CHANGE_EVENT, () => this.scheduleViewportSync());
     this.observeGameContainer(canvasFrame);
@@ -596,6 +597,12 @@ export class PlaygridApp {
 
     console.log(`[playgrid] Left lobby room (code: ${code})`);
     this.lobbyRoom = null;
+
+    // During page unload we intentionally left the lobby; skip reconnection.
+    if (this.isPageUnloading) {
+      return;
+    }
+
     this.waitingRoomScene.hideOverlay();
     this.setupScene.hideOverlay();
     this.lobbyScene.showConnectionError("Lost connection to the lobby room.");
@@ -737,6 +744,28 @@ export class PlaygridApp {
     this.clearReconnectOverlayHideTimeout();
     this.clearReconnectReturnTimeout();
     this.reconnectOverlay.hide();
+  }
+
+  /**
+   * Handle page unload (browser back, tab close, refresh).
+   * Persist the game session for reconnection, then explicitly leave the
+   * lobby room so the server cleans up immediately instead of waiting for
+   * the 30-second reconnection timeout.
+   */
+  private handlePageUnload(): void {
+    this.isPageUnloading = true;
+    this.persistSessionForRefresh();
+
+    // Leave the lobby room with a consented close so the server runs
+    // removeSession() immediately, clearing the player's game assignment
+    // and online-player list. The game room is intentionally left open —
+    // its natural WebSocket drop gives the server a 30-second reconnection
+    // window, which tryRestoreActiveSession() uses on page refresh.
+    try {
+      this.lobbyRoom?.leave();
+    } catch {
+      // Best-effort during page teardown.
+    }
   }
 
   private persistSessionForRefresh(): void {
