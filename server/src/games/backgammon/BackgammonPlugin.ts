@@ -300,6 +300,38 @@ export const backgammonPlugin: GamePlugin<BackgammonState> = {
       state.usedDice[1] = false;
       state.doublesMovesUsed = 0;
 
+      // Check if any valid moves exist; auto-pass if stuck
+      const playerColor = getPlayerColor(player.playerIndex);
+      if (playerColor === null) {
+        return { success: false, error: "Invalid player index." };
+      }
+
+      const availableDice = getAvailableDice(state.dice, state.usedDice, state.doublesMovesUsed);
+      const hasAnyValidMoves = hasValidMoves(
+        state.points,
+        state.blackBar,
+        state.redBar,
+        state.blackBorneOff,
+        state.redBorneOff,
+        availableDice,
+        playerColor,
+      );
+
+      if (!hasAnyValidMoves) {
+        // Auto-pass: reset dice and end turn
+        state.dice[0] = 0;
+        state.dice[1] = 0;
+        state.usedDice[0] = false;
+        state.usedDice[1] = false;
+        state.doublesMovesUsed = 0;
+
+        return {
+          success: true,
+          endsTurn: true,
+          endsGame: false,
+        };
+      }
+
       return {
         success: true,
         endsTurn: false,

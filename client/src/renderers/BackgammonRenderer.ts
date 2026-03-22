@@ -1690,6 +1690,44 @@ export class BackgammonRenderer implements GameRenderer {
     return typeof target === "number" ? `point:${target}` : "off";
   }
 
+  private hasAnyValidMoves(): boolean {
+    const playerColor = this.getLocalPlayerColor();
+    if (playerColor === null) {
+      return false;
+    }
+
+    const availableDice = getAvailableDice(this.dice, this.usedDice, this.doublesMovesUsed);
+    if (availableDice.length === 0) {
+      return false;
+    }
+
+    const barCount = this.getBarCount(playerColor);
+    if (barCount > 0) {
+      return this.getMovesForSource("bar").length > 0;
+    }
+
+    for (let i = 0; i < BOARD_POINT_COUNT; i += 1) {
+      if (this.getMovesForSource(i).length > 0) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private shouldShowPassButton(): boolean {
+    if (!this.isLocalPlayersTurn()) {
+      return false;
+    }
+
+    const [die1, die2] = this.dice;
+    if (die1 <= 0 || die2 <= 0) {
+      return false;
+    }
+
+    return !this.hasAnyValidMoves();
+  }
+
   private updateSidebar(): void {
     if (!this.sidebar) {
       return;
@@ -1729,9 +1767,15 @@ export class BackgammonRenderer implements GameRenderer {
       : '<div class="sidebar-empty">Moves will appear here after the opening roll.</div>';
     this.sidebar.updatePanel("move-history", historyMarkup);
 
+    const showPassButton = this.shouldShowPassButton();
+    const passButtonMarkup = showPassButton
+      ? '<button type="button" class="sidebar-button" data-action="pass">Pass (No Valid Moves)</button>'
+      : '';
+
     this.sidebar.updatePanel(
       "controls",
       `<div class="sidebar-button-group">
+        ${passButtonMarkup}
         <button type="button" class="sidebar-button sidebar-button--danger" data-action="resign"${this.requestLeave ? "" : " disabled"}>Resign</button>
       </div>
       <div class="sidebar-note">Click the dice on the board to roll at the start of your turn. Use resign to concede the match.</div>`,
@@ -1742,6 +1786,13 @@ export class BackgammonRenderer implements GameRenderer {
     if (resignButton instanceof HTMLButtonElement) {
       resignButton.onclick = () => {
         this.requestLeave?.();
+      };
+    }
+
+    const passButton = controlsPanel?.querySelector('[data-action="pass"]');
+    if (passButton instanceof HTMLButtonElement) {
+      passButton.onclick = () => {
+        this.room?.send("pass");
       };
     }
   }
