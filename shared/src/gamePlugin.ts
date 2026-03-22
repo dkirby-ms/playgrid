@@ -28,6 +28,9 @@ export interface GamePlugin<TState extends Schema = Schema> {
   /** Chess clock configuration (optional) */
   chessClockConfig?: ChessClockConfiguration;
 
+  /** Turn timer configuration with escalating penalties (optional) */
+  turnTimerConfig?: TurnTimerConfiguration;
+
   /** Action handlers for player moves */
   actions: GameActionHandlers<TState>;
 
@@ -161,6 +164,28 @@ export interface ChessClockConfiguration {
 
   /** Initial time bank for each player in milliseconds */
   initialTimeBankMs: number;
+}
+
+/**
+ * Turn timer with escalating penalties.
+ * Per-turn countdown that resets on action or turn change.
+ * Timeouts escalate: warning → final warning → auto-pass or forfeit.
+ */
+export interface TurnTimerConfiguration {
+  /** Whether the turn timer is enabled */
+  enabled: boolean;
+
+  /** Duration of each turn in milliseconds */
+  turnDurationMs: number;
+
+  /** Time remaining (ms) at which to activate warning state */
+  warningThresholdMs: number;
+
+  /** Number of timeouts before the final penalty triggers */
+  maxTimeouts: number;
+
+  /** What happens when a player exhausts all timeout allowances */
+  finalTimeoutAction: "auto-pass" | "forfeit";
 }
 
 export type TurnOrderStrategy =

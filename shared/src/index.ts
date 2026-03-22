@@ -57,6 +57,7 @@ export type {
   TurnMode,
   TurnOrderStrategy,
   TurnPhase,
+  TurnTimerConfiguration,
 } from "./gamePlugin.js";
 export * from "./games/checkers/index.js";
 export { BackgammonState } from "./games/backgammon/index.js";

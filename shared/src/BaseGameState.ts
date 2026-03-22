@@ -34,6 +34,7 @@ export class BaseGameState extends Schema {
   declare players: MapSchema<PlayerInfo>;
   declare turnTimeRemaining: number;
   declare timerWarningActive: boolean;
+  declare turnTimeoutCount: number;
   declare player1TimeRemainingMs: number;
   declare player2TimeRemainingMs: number;
 
@@ -45,6 +46,7 @@ export class BaseGameState extends Schema {
     this.players = new MapSchema<PlayerInfo>();
     this.turnTimeRemaining = 0;
     this.timerWarningActive = false;
+    this.turnTimeoutCount = 0;
     this.player1TimeRemainingMs = 0;
     this.player2TimeRemainingMs = 0;
   }
@@ -56,6 +58,7 @@ defineTypes(BaseGameState, {
   players: { map: PlayerInfo },
   turnTimeRemaining: "number",
   timerWarningActive: "boolean",
+  turnTimeoutCount: "number",
   player1TimeRemainingMs: "number",
   player2TimeRemainingMs: "number",
 });

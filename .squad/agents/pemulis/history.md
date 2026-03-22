@@ -1521,3 +1521,16 @@ Investigation confirmed Dominos CPU opponent support was already fully implement
 
 **Validation:** Build ✓, Lint ✓, 799 tests passing (Steeply's new tests included). Issue #163 closed.
 
+
+### Reusable turn timer system (2026-03-19, refs #148)
+
+- **Problem:** Turn timeouts immediately ended the game with a loss — terrible UX for casual/multiplayer games like Risk.
+- **Design:** Standalone `TurnTimer` class in `server/src/game/TurnTimer.ts` with Colyseus clock integration. Per-turn countdown that resets on valid action or turn change. Escalating penalties: timeouts 1..(N-1) → warning + reset, timeout N → configurable final action (auto-pass or forfeit).
+- **Configuration:** New `TurnTimerConfiguration` interface on `GamePlugin`. Each game opts in with `turnTimerConfig: { enabled, turnDurationMs, warningThresholdMs, maxTimeouts, finalTimeoutAction }`.
+- **State sync:** `BaseGameState.turnTimeRemaining`, `timerWarningActive`, and new `turnTimeoutCount` sync to clients for countdown UI and escalation display.
+- **Integration points:** `BaseGameRoom` creates `TurnTimer` in `onCreate`, starts on turn begin, resets on valid action, pauses on disconnect, resumes on reconnect, stops on game end.
+- **Risk wiring:** 120s turns, 15s warning threshold, 3 timeouts before auto-pass. Coexists with chess clock (total time bank).
+- **Parallel to chess clock:** Turn timer is per-turn with graceful escalation (casual). Chess clock is cumulative time bank (competitive). Both can be active simultaneously.
+- **Key files:** `server/src/game/TurnTimer.ts`, `shared/src/gamePlugin.ts` (TurnTimerConfiguration), `shared/src/BaseGameState.ts` (turnTimeoutCount), `server/src/game/BaseGameRoom.ts` (integration), `server/src/games/risk/RiskPlugin.ts` (proof of concept).
+- **Tests:** 22 new unit tests in `server/src/__tests__/TurnTimer.test.ts` covering lifecycle, warning threshold, escalation, pause/resume, dispose.
+- **Validation:** Build ✓, Lint ✓, 825 tests passing.

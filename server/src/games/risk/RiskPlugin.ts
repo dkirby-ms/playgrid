@@ -271,6 +271,13 @@ export const riskPlugin: GamePlugin<RiskState> = {
     enabled: true,
     initialTimeBankMs: 600_000,
   },
+  turnTimerConfig: {
+    enabled: true,
+    turnDurationMs: 120_000,
+    warningThresholdMs: 15_000,
+    maxTimeouts: 3,
+    finalTimeoutAction: "auto-pass",
+  },
   lifecycle: {
     onPlayerJoin(state, client, playerIndex) {
       const existingPlayer = state.players.get(client.sessionId);
