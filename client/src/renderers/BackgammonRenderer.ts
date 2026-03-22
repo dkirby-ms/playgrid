@@ -1786,7 +1786,7 @@ export class BackgammonRenderer implements GameRenderer {
       `<div class="sidebar-stat-list">
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Current turn</span><span class="sidebar-stat-value">${escapeHtml(this.getCurrentTurnLabel())}</span></div>
         ${getTurnClockMarkup(this.turnClockSeconds, this.showTurnClock)}
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Pips</span><span class="sidebar-stat-value">${black} / ${red}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Pips</span><span class="sidebar-stat-value">⚫ ${black} · ⚪ ${red}</span></div>
       </div>${notes.join("")}`,
     );
 
