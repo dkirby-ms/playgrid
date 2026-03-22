@@ -668,3 +668,4 @@ Benefits: All players see same config before game starts, no surprises, consiste
 
 **Decisions merged:** chess-clock-time-control-selection, time-control-ui-pattern, no-scrollbars-sidebar
 
+- **Sandbox state panel removal:** Removed `SandboxStatePanel` overlay from `SandboxScene.ts`. The panel was a fixed-position (top-right, z-index 1000) JSON editor with "Update State" button that appeared over sandbox mode. Removed: import, `statePanel` property, instantiation/mount/event-wiring in `onEnter()`, and `destroy()` call in `cleanup()`. Kept `SandboxStatePanel.ts` and `mockStates.ts` files intact (not deleted — just disconnected). Mock state creation still used for initial renderer setup.
