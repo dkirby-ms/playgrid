@@ -511,6 +511,20 @@ function injectStyles(): void {
     .setup-add-cpu-slot:hover .setup-add-cpu-btn {
       color: var(--text-primary);
     }
+    .setup-add-cpu-slot.pending {
+      border-color: rgba(126, 207, 255, 0.3);
+      background: rgba(126, 207, 255, 0.05);
+      cursor: default;
+      animation: setup-cpu-pending-pulse 1.5s ease-in-out infinite;
+    }
+    .setup-add-cpu-slot.pending .setup-add-cpu-btn {
+      color: rgba(126, 207, 255, 0.7);
+      cursor: default;
+    }
+    @keyframes setup-cpu-pending-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
     .setup-remove-cpu-btn {
       background: none;
       border: 1px solid rgba(248, 113, 113, 0.3);
@@ -727,6 +741,14 @@ export class SetupScreen {
   private consoleLog: ConsoleLog | null = null;
   private eventCallback: SetupScreenEventCallback | null = null;
   private createTimeoutId: number | null = null;
+  private cpuAddPending = false;
+  private cpuAddTimeoutId: number | null = null;
+  private cpuRemovePending = false;
+  private cpuRemoveTimeoutId: number | null = null;
+  private startPending = false;
+  private startTimeoutId: number | null = null;
+  private leavePending = false;
+  private hasExplicitlyLeft = false;
 
   constructor() {
     injectStyles();
@@ -838,7 +860,13 @@ export class SetupScreen {
     this.isHost = true;
     this.isReady = false;
     this.isCreatePending = false;
+    this.hasExplicitlyLeft = false;
+    this.leavePending = false;
+    this.startPending = false;
     this.players = [];
+    this.clearCpuAddPending();
+    this.clearCpuRemovePending();
+    this.clearStartPending();
 
     this.bindRoom(room);
     this.buildConfigPanel(gameType);
@@ -865,7 +893,13 @@ export class SetupScreen {
     this.isHost = isHost;
     this.isReady = false;
     this.isCreatePending = false;
+    this.hasExplicitlyLeft = false;
+    this.leavePending = false;
+    this.startPending = false;
     this.players = [];
+    this.clearCpuAddPending();
+    this.clearCpuRemovePending();
+    this.clearStartPending();
 
     this.bindRoom(room);
     this.buildConfigPanel(this.gameType);
@@ -889,9 +923,24 @@ export class SetupScreen {
     this.isHost = false;
     this.isReady = false;
     this.isCreatePending = false;
+    this.leavePending = false;
     this.players = [];
+    this.clearCpuAddPending();
+    this.clearCpuRemovePending();
+    this.clearStartPending();
     this.clearCreateTimeout();
     this.clearError();
+  }
+
+  /** Send LEAVE_GAME on scene exit if the player didn't explicitly leave or start a game. */
+  cleanup(): void {
+    if (this.hasExplicitlyLeft || this.mode !== "waiting") {
+      return;
+    }
+
+    if (this.room && this.gameId) {
+      this.room.send(LEAVE_GAME, { gameId: this.gameId });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -911,6 +960,7 @@ export class SetupScreen {
 
       // If payload has roomId, game is already started (e.g. head-to-head) — join directly
       if (payload.roomId) {
+        this.hasExplicitlyLeft = true;
         this.hide();
         this.eventCallback?.({
           type: "game_started",
@@ -951,6 +1001,13 @@ export class SetupScreen {
     room.onMessage(GAME_PLAYERS, (payload: GamePlayersPayload) => {
       if (payload.gameId !== this.gameId) return;
 
+      if (this.cpuAddPending && payload.players.some((p) => p.isCPU)) {
+        this.clearCpuAddPending();
+      }
+      if (this.cpuRemovePending && !payload.players.some((p) => p.isCPU)) {
+        this.clearCpuRemovePending();
+      }
+
       this.players = payload.players;
       const localPlayer = this.players.find((p) => p.userId === room.sessionId);
       this.isReady = localPlayer?.isReady ?? this.isReady;
@@ -964,6 +1021,8 @@ export class SetupScreen {
     room.onMessage(GAME_STARTED, (payload: GameStartedPayload) => {
       if (payload.gameId !== this.gameId) return;
 
+      this.clearStartPending();
+      this.hasExplicitlyLeft = true;
       this.hide();
       this.eventCallback?.({
         type: "game_started",
@@ -977,6 +1036,18 @@ export class SetupScreen {
       if (this.isCreatePending) {
         this.clearCreateTimeout();
         this.isCreatePending = false;
+        this.renderActions();
+      }
+      if (this.cpuAddPending) {
+        this.clearCpuAddPending();
+        this.renderPlayerList();
+      }
+      if (this.cpuRemovePending) {
+        this.clearCpuRemovePending();
+        this.renderPlayerList();
+      }
+      if (this.startPending) {
+        this.clearStartPending();
         this.renderActions();
       }
       this.consoleLog?.error(payload.message);
@@ -1066,11 +1137,20 @@ export class SetupScreen {
     ) {
       // First empty slot becomes an "Add CPU" button
       const cpuSlot = el("div", "setup-add-cpu-slot");
-      const addBtn = el("button", "setup-add-cpu-btn", "🤖 Add CPU Player") as HTMLButtonElement;
+      const addBtn = el("button", "setup-add-cpu-btn") as HTMLButtonElement;
       addBtn.type = "button";
-      addBtn.addEventListener("click", () => {
-        this.room?.send(ADD_CPU_PLAYER, { gameId: this.gameId });
-      });
+
+      if (this.cpuAddPending) {
+        addBtn.textContent = "⏳ Adding CPU…";
+        addBtn.disabled = true;
+        cpuSlot.classList.add("pending");
+      } else {
+        addBtn.textContent = "🤖 Add CPU Player";
+        addBtn.addEventListener("click", () => {
+          this.requestAddCpu();
+        });
+      }
+
       cpuSlot.append(addBtn);
       this.playerListEl.append(cpuSlot);
 
@@ -1118,12 +1198,16 @@ export class SetupScreen {
     if (player.isCPU) {
       nameRow.append(el("span", "setup-player-chip", "CPU"));
       if (this.isHost) {
-        const removeBtn = el("button", "setup-remove-cpu-btn", "✕") as HTMLButtonElement;
+        const removeBtn = el("button", "setup-remove-cpu-btn") as HTMLButtonElement;
         removeBtn.type = "button";
         removeBtn.title = "Remove CPU player";
-        removeBtn.addEventListener("click", () => {
-          this.room?.send(REMOVE_CPU_PLAYER, { gameId: this.gameId });
-        });
+        if (this.cpuRemovePending) {
+          removeBtn.textContent = "⏳";
+          removeBtn.disabled = true;
+        } else {
+          removeBtn.textContent = "✕";
+          removeBtn.addEventListener("click", () => this.requestRemoveCpu());
+        }
         nameRow.append(removeBtn);
       }
     }
@@ -1155,9 +1239,14 @@ export class SetupScreen {
     } else if (this.isHost) {
       const startBtn = el("button", "setup-action-btn start") as HTMLButtonElement;
       startBtn.type = "button";
-      const canStart = this.canStartGame();
-      startBtn.textContent = canStart ? "▶ Start Game" : "Waiting for players…";
-      startBtn.disabled = !canStart;
+      if (this.startPending) {
+        startBtn.textContent = "Starting…";
+        startBtn.disabled = true;
+      } else {
+        const canStart = this.canStartGame();
+        startBtn.textContent = canStart ? "▶ Start Game" : "Waiting for players…";
+        startBtn.disabled = !canStart;
+      }
       startBtn.addEventListener("click", () => this.startGame());
       this.actionsEl.append(startBtn);
     } else {
@@ -1170,7 +1259,12 @@ export class SetupScreen {
 
     const leaveBtn = el("button", "setup-action-btn ghost") as HTMLButtonElement;
     leaveBtn.type = "button";
-    leaveBtn.textContent = "← Back to Lobby";
+    if (this.leavePending) {
+      leaveBtn.textContent = "Leaving…";
+      leaveBtn.disabled = true;
+    } else {
+      leaveBtn.textContent = "← Back to Lobby";
+    }
     leaveBtn.addEventListener("click", () => this.leave());
     this.actionsEl.append(leaveBtn);
   }
@@ -1210,14 +1304,30 @@ export class SetupScreen {
   }
 
   private startGame(): void {
-    if (!this.room || !this.gameId) return;
+    if (!this.room || !this.gameId || this.startPending) return;
+
+    this.startPending = true;
     this.room.send(START_GAME, { gameId: this.gameId });
+    this.renderActions();
+
+    this.startTimeoutId = window.setTimeout(() => {
+      this.startTimeoutId = null;
+      if (this.startPending) {
+        this.startPending = false;
+        this.consoleLog?.error("Start timed out. Try again.");
+        this.renderActions();
+      }
+    }, 5000);
   }
 
   private leave(): void {
+    if (this.leavePending) return;
+    this.hasExplicitlyLeft = true;
+    this.leavePending = true;
     if (this.room && this.gameId && this.mode === "waiting") {
       this.room.send(LEAVE_GAME, { gameId: this.gameId });
     }
+    this.renderActions();
     this.hide();
     this.eventCallback?.({ type: "leave" });
   }
@@ -1232,6 +1342,66 @@ export class SetupScreen {
 
   private supportsCpuOpponent(): boolean {
     return this.gameType === "checkers" || this.gameType === "backgammon" || this.gameType === "dominos";
+  }
+
+  private requestAddCpu(): void {
+    if (!this.room || !this.gameId || this.cpuAddPending) {
+      return;
+    }
+
+    this.cpuAddPending = true;
+    this.room.send(ADD_CPU_PLAYER, { gameId: this.gameId });
+    this.renderPlayerList();
+
+    this.cpuAddTimeoutId = window.setTimeout(() => {
+      this.cpuAddTimeoutId = null;
+      if (this.cpuAddPending) {
+        this.cpuAddPending = false;
+        this.renderPlayerList();
+      }
+    }, 5000);
+  }
+
+  private clearCpuAddPending(): void {
+    this.cpuAddPending = false;
+    if (this.cpuAddTimeoutId !== null) {
+      window.clearTimeout(this.cpuAddTimeoutId);
+      this.cpuAddTimeoutId = null;
+    }
+  }
+
+  private requestRemoveCpu(): void {
+    if (!this.room || !this.gameId || this.cpuRemovePending) {
+      return;
+    }
+
+    this.cpuRemovePending = true;
+    this.room.send(REMOVE_CPU_PLAYER, { gameId: this.gameId });
+    this.renderPlayerList();
+
+    this.cpuRemoveTimeoutId = window.setTimeout(() => {
+      this.cpuRemoveTimeoutId = null;
+      if (this.cpuRemovePending) {
+        this.cpuRemovePending = false;
+        this.renderPlayerList();
+      }
+    }, 5000);
+  }
+
+  private clearCpuRemovePending(): void {
+    this.cpuRemovePending = false;
+    if (this.cpuRemoveTimeoutId !== null) {
+      window.clearTimeout(this.cpuRemoveTimeoutId);
+      this.cpuRemoveTimeoutId = null;
+    }
+  }
+
+  private clearStartPending(): void {
+    this.startPending = false;
+    if (this.startTimeoutId !== null) {
+      window.clearTimeout(this.startTimeoutId);
+      this.startTimeoutId = null;
+    }
   }
 
   // ---------------------------------------------------------------------------

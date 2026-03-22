@@ -224,6 +224,9 @@ export class LobbyScreen {
   private createTimeout: ReturnType<typeof window.setTimeout> | null = null;
   private noticeTimeout: ReturnType<typeof window.setTimeout> | null = null;
   private isCreatePending = false;
+  private joinPending = false;
+  private joinPendingGameId: string | null = null;
+  private joinTimeoutId: number | null = null;
 
   constructor() {
     const overlay = document.getElementById("lobby-overlay");
@@ -527,6 +530,7 @@ export class LobbyScreen {
       this.pendingTransition = null;
       this.pendingCreatePayload = null;
       this.setCreatePending(false);
+      this.clearJoinPending();
       this.clearNotice();
 
       // When GAME_JOINED arrives before GAME_UPDATED, build a fallback from
@@ -569,6 +573,8 @@ export class LobbyScreen {
       this.pendingTransition = null;
       this.pendingCreatePayload = null;
       this.setCreatePending(false);
+      this.clearJoinPending();
+      this.renderGameList();
       this.consoleLog?.error(payload.message);
       this.eventCallback?.({ type: "error", message: payload.message });
     });
@@ -681,6 +687,39 @@ export class LobbyScreen {
       this.setCreatePending(false);
       this.consoleLog?.error("Game creation timed out. Try again.");
     }, 30000);
+  }
+
+  private requestJoinGame(gameId: string): void {
+    if (!this.room || this.joinPending) {
+      if (!this.room) {
+        this.consoleLog?.error("Lobby is not connected yet.");
+      }
+      return;
+    }
+
+    this.joinPending = true;
+    this.joinPendingGameId = gameId;
+    this.pendingTransition = "join";
+    this.room.send(JOIN_GAME, { gameId });
+    this.renderGameList();
+
+    this.joinTimeoutId = window.setTimeout(() => {
+      this.joinTimeoutId = null;
+      if (this.joinPending) {
+        this.clearJoinPending();
+        this.consoleLog?.error("Join timed out. Try again.");
+        this.renderGameList();
+      }
+    }, 5000);
+  }
+
+  private clearJoinPending(): void {
+    this.joinPending = false;
+    this.joinPendingGameId = null;
+    if (this.joinTimeoutId !== null) {
+      window.clearTimeout(this.joinTimeoutId);
+      this.joinTimeoutId = null;
+    }
   }
 
   private getSelectedGameType(): string {
@@ -938,16 +977,16 @@ export class LobbyScreen {
       && game.headToHeadMode !== true;
     if (canJoin) {
       const joinBtn = createElement("button", "active-game-join-btn") as HTMLButtonElement;
-      joinBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Join</span>';
-      joinBtn.addEventListener("click", () => {
-        if (!this.room) {
-          this.consoleLog?.error("Lobby is not connected yet.");
-          return;
-        }
-        const payload: JoinGamePayload = { gameId: game.id };
-        this.pendingTransition = "join";
-        this.room.send(JOIN_GAME, payload);
-      });
+      const isPending = this.joinPending && this.joinPendingGameId === game.id;
+      if (isPending) {
+        joinBtn.innerHTML = "<span>Joining…</span>";
+        joinBtn.disabled = true;
+        joinBtn.classList.add("pending");
+      } else {
+        joinBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Join</span>';
+        joinBtn.disabled = this.joinPending;
+        joinBtn.addEventListener("click", () => this.requestJoinGame(game.id));
+      }
       footer.append(joinBtn);
     }
     

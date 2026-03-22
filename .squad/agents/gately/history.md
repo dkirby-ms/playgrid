@@ -2014,3 +2014,216 @@ The `23 - index` visual mapping elegantly handles perspective flipping because b
 
 - **Visual index mapping for board flipping:** Using `23 - index` to flip a 24-point backgammon board is cleaner than swapping row assignments because it preserves the horseshoe path direction for both players. The same formula works for both `getPointGeometry()` and `isDarkPoint()`.
 - **Bar/Off zone position formulas:** Bar zones follow entry points: `isTop = (color === BLACK) !== isFlipped`. Off areas follow home boards: `isTop = (color === BLACK) === isFlipped`. These are opposites because entry points are at the far end of the board from the home board.
+
+## 2026-03-21: Backgammon Pass Button (No Valid Moves)
+
+**From:** Gately (requested by dkirby-ms)
+**Task:** Add client-side pass button for when no valid moves are available after rolling
+
+### Problem
+When a backgammon player rolls and has zero valid moves (e.g., piece on bar with all entry points blocked), the game would stall. The server already supports a `pass` action, and Pemulis is adding server-side auto-pass, but a client-side pass button is needed as a UX complement to give players explicit control.
+
+### Implementation
+Added three methods to `BackgammonRenderer.ts`:
+
+1. **`hasAnyValidMoves()`** — Checks if any moves exist for any piece (bar or board points) using the existing `getMovesForSource()` and `getAvailableDice()` helpers. Prioritizes bar moves when pieces are on the bar (since you must enter from bar before other moves).
+
+2. **`shouldShowPassButton()`** — Returns true only when:
+   - It's the local player's turn
+   - Dice have been rolled (both dice > 0)
+   - No valid moves exist
+
+3. **Modified `updateSidebar()`** — Conditionally renders a "Pass (No Valid Moves)" button in the controls panel. When clicked, sends `this.room?.send("pass")` to the server.
+
+The pass button appears above the resign button only when needed, and disappears automatically when the turn ends (since `updateSidebar()` is called on state changes).
+
+### Key decisions
+- Used existing `getMovesForSource()` helper rather than duplicating move validation logic
+- Placed button in sidebar controls panel for consistency with resign button
+- Button text "Pass (No Valid Moves)" makes it clear why the option exists
+- No visual overlay — kept it minimal since this is an edge case
+
+### Files modified
+- `client/src/renderers/BackgammonRenderer.ts`
+
+### Validation
+- Build: ✅ clean
+- Lint: ✅ clean
+- Tests: ✅ all passed
+
+## Learnings
+
+- **Reusing existing helpers over duplication:** The renderer already had robust move validation via `getMovesForSource()`. Calling it for each possible source (bar + 24 points) is cleaner than re-implementing move validation logic.
+- **Sidebar button pattern:** Sidebar buttons use `data-action` attributes and event listeners attached in `updateSidebar()`. This pattern keeps the button handlers scoped to the current state snapshot rather than persisting across re-renders.
+- **Auto-hiding UI elements:** Since `updateSidebar()` is called on every state change, conditional button rendering naturally handles showing/hiding the pass button without explicit cleanup code.
+
+## 2026-03-21: Backgammon Visual Fixes (Bar Centering + Dice Positioning)
+
+**From:** Gately (requested by dkirby-ms)
+**Task:** Fix two visual issues in BackgammonRenderer
+
+### Fix 1 — Bar pieces centered vertically
+**Problem:** Bar pieces were stacked starting from the edge of their half, creating visual imbalance when few pieces were on the bar. They should be centered in the available space.
+
+**Solution:** Calculate the total height of the visible stack (accounting for `MAX_VISIBLE_STACK` limit) and compute a starting Y position that centers the stack within each player's bar half. Changed both bar stacks to use `direction = 1` (always stack downward) since centering makes direction moot. The formula:
+- Calculate the half-height of each player's bar area: `(playHeight - centerGap) / 2`
+- Find the center Y of that half (accounting for `isFlipped`)
+- Offset by half the stack height to start the first piece: `centerY - (stackHeight / 2) + discRadius`
+
+This ensures stacks grow downward from a centered origin, looking balanced whether 1 piece or 15 pieces are on the bar.
+
+### Fix 2 — Dice positioned on current player's side
+**Problem:** Dice were always centered on the board, making it unclear whose turn it was.
+
+**Solution:** Position dice in the quarter-height zone corresponding to the current player's home board:
+- **Black's turn:** Dice appear at `playHeight * 0.75` (bottom quarter) when not flipped, or `playHeight * 0.25` (top quarter) when flipped
+- **Red's turn:** Dice appear at `playHeight * 0.25` (top quarter) when not flipped, or `playHeight * 0.75` (bottom quarter) when flipped
+- **No current player:** Dice remain centered (fallback for waiting/game-end states)
+
+The dice now visually indicate whose turn it is by appearing on their side of the board, making gameplay more intuitive.
+
+### Files modified
+- `client/src/renderers/BackgammonRenderer.ts` (lines 899-943 for bar centering, 773-860 for dice positioning)
+
+### Validation
+- Build: ✅ clean
+- Lint: ✅ clean
+
+## Learnings
+
+- **Centering stacked elements:** When stacking circular pieces with a fixed spacing, the total stack height is `(visibleCount - 1) * spacing + diameter`. To center the stack, start at `centerY - (stackHeight / 2) + radius` and stack in the positive direction.
+- **Dynamic UI positioning based on game state:** Dice position can be driven by `currentTurn` → `playerIndex` → `playerColor` → board geometry. This pattern makes turn state visible without needing explicit HUD elements.
+- **Backgammon home board locations:** Black's home is points 0-5 (bottom-right in standard orientation), Red's home is points 18-23 (top-right). Dice should appear near these zones to indicate whose turn it is.
+
+
+## Learnings — Stale Lobby State Fix (2026-03-20)
+
+**Root Cause:** When a player left an in-progress game room, the LobbyRoom's `session.currentGameId` was never cleared. The client only sent `LEAVE_GAME` for waiting-room exits (SetupScreen/WaitingRoom), not for in-progress game exits. The `GAME_ROOM_DISPOSED_TOPIC` only fires when the room fully disposes, creating a race condition.
+
+**Key File Paths:**
+- `server/src/rooms/LobbyRoom.ts` — `handleCreateGame()`, `handleJoinGame()`, `clearStaleGameAssignment()`
+- `client/src/Application.ts` — `leaveGame()`, `handleGameRoomLeave()`, `notifyLobbyGameLeft()`
+- `client/src/ui/SetupScreen.ts` — `cleanup()` method added (mirrors WaitingRoom pattern)
+- `client/src/scenes/SetupScene.ts` — `onExit()` now calls `cleanup()`
+- `server/src/__tests__/lobby-pregame.test.ts` — 4 regression tests for stale-state
+
+**Architecture Pattern: Two-pronged cleanup for Colyseus room lifecycle**
+1. Client-side notification: Always send `LEAVE_GAME` to lobby when exiting any game room
+2. Server-side defensive validation: Auto-clear `currentGameId` if it references a non-existent or in-progress game
+
+**Convention:** All scene classes that manage lobby waiting state must implement `cleanup()` and call it from `onExit()` — see WaitingRoom and SetupScreen as reference implementations.
+
+---
+
+## 2026-03-22: Stale Lobby Room State Cleanup — Complete ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass (803 tests, +4 regression tests)
+
+Fixed players seeing "Leave your current game before creating another" after already leaving a game room. Root cause: LobbyRoom's `session.currentGameId` was not being cleared because `LEAVE_GAME` messages were only sent from waiting-room UI, not from game-room exit paths.
+
+### Solution: Two-Pronged Cleanup
+
+1. **Client-side:** Added `Application.notifyLobbyGameLeft()` called whenever player exits a game room (consented leave, disconnect, or reconnect failure). Sends `LEAVE_GAME` to lobby room.
+2. **Server-side:** Added `LobbyRoom.clearStaleGameAssignment()` validation called at top of `handleCreateGame()` and `handleJoinGame()`. Auto-clears `currentGameId` if it references a game that no longer exists or is already in progress. Acts as safety net for edge cases (crashes, network drops, race conditions).
+
+### Changes
+
+- **Application.ts** — Added `notifyLobbyGameLeft()` method; called from all game-room exit paths
+- **SetupScreen.ts** — Calls `notifyLobbyGameLeft()` on leave
+- **SetupScene.ts** — Calls `notifyLobbyGameLeft()` from cleanup
+- **LobbyRoom.ts** — Added `clearStaleGameAssignment()` validation
+
+### Regression Tests Added (4)
+
+- Player leave triggers lobby notification
+- Stale game reference cleared on create attempt
+- Stale game reference cleared on join attempt
+- Double-clear is idempotent
+
+### Convention Established
+
+All scene classes managing lobby waiting state must implement `cleanup()` and call it from `onExit()`. Ensures proper state propagation to lobby on player exit.
+
+### Cross-Team Note
+
+**Ortho:** CPU Button UX fix was independent but complementary. Both agents' work passed all tests and lint without regressions.
+
+**Coordination:** Both fixes address systemic patterns—Ortho fixed DOM rebuild click loss, this fix addressed incomplete state cleanup on exit. Together, they improve game lifecycle robustness.
+
+
+## 2026-03-22: Action Pending Guards — All Game Renderers ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass (803 tests)
+
+Added double-click protection and pending-state guards to all four game renderers per UX directive. Pattern: boolean flag set BEFORE `room.send()`, early-return in handlers while flag is true, cleared on `onStateChange()` (server confirmation).
+
+### Changes by Renderer
+
+**DominosRenderer.ts:**
+- Added `actionPending` flag
+- Guarded `sendPlay()` and `sendAction()` — early-return if pending
+- Disabled draw/pass sidebar buttons while pending
+- Cleared in `onStateChange()`
+
+**CheckersRenderer.ts:**
+- Added `movePending` flag
+- Guarded all three `room.send("move")` calls (piece click, square click, drag-drop)
+- Only guards the final move send, not intermediate selection clicks (preserves multi-capture flow)
+- Cleared in `onStateChange()`
+
+**RiskRenderer.ts:**
+- Added `actionPending` flag
+- Guarded territory actions: pickTerritory, placeArmy, attack, fortify (early-return at top of handler)
+- Guarded capture-move confirm button: disables button + shows "Moving…" text
+- Guarded sidebar buttons (End Phase, Fortify, Trade Cards): disabled attribute + flag check in onclick
+- Sidebar re-renders after button action to show disabled state immediately
+- Cleared in `onStateChange()`
+
+**BackgammonRenderer.ts:**
+- Added `movePending` flag (follows `isRollingDice` pattern)
+- Guarded `sendMove()` — early-return if pending
+- Guarded pass button: disables + shows "Passing…" text
+- Did NOT touch `isRollingDice` (already correct)
+- Cleared in `onStateChange()`
+
+### Files Modified
+- `client/src/renderers/DominosRenderer.ts`
+- `client/src/renderers/CheckersRenderer.ts`
+- `client/src/renderers/RiskRenderer.ts`
+- `client/src/renderers/BackgammonRenderer.ts`
+
+## Learnings
+
+- **Pending flag pattern for canvas renderers:** Use a single boolean per renderer (e.g., `actionPending`). Set before `room.send()`, clear in `onStateChange()`. Never use timeouts — server state updates are authoritative.
+- **Don't guard drag start, only drag completion:** DragHelper has its own state management. Only the final `room.send()` in the drop handler needs the pending guard.
+- **Checkers multi-capture:** `movePending` only guards the actual move send, not piece selection clicks. The server controls multi-capture chains via `mustCaptureFrom` — the flag clears on each state update, allowing the next capture in the chain.
+- **Risk has two button systems:** PixiJS canvas buttons (endPhaseButton, tradeCardsButton) and HTML sidebar buttons. Both need guarding. Sidebar buttons use `disabled` attribute + `updateSidebar()` re-render.
+- **BackgammonRenderer `isRollingDice` is the reference pattern:** Follows the same flag-before-send / clear-on-state-change approach. New `movePending` mirrors it.
+
+## Session Update: 2026-03-22 — P3 Game Renderer Action Guards (Gately + Ortho)
+
+**Summary:** Implemented double-click protection and action pending guards across all 4 game renderers.
+
+**Scope:** BackgammonRenderer, CheckersRenderer, DominosRenderer, RiskRenderer.
+
+**Pattern Applied (Renderer Action Pending):**
+- Single boolean flag (`actionPending` or `movePending`) per renderer
+- Set flag BEFORE `room.send()` call
+- Early-return in click/interaction handlers if flag is set (double-click protection)
+- Clear flag on `onStateChange()` — server state update is authoritative confirmation
+- Sidebar DOM buttons additionally set `disabled = true` and update text (e.g., "Moving…")
+- Never use timeouts — rely on Colyseus state update for reliable clearing
+
+**Files Modified:**
+- `client/src/renderers/BackgammonRenderer.ts`
+- `client/src/renderers/CheckersRenderer.ts`
+- `client/src/renderers/DominosRenderer.ts`
+- `client/src/renderers/RiskRenderer.ts`
+
+**Decision Recorded:** "Renderer Action Pending Pattern" merged to `decisions.md`. Establishes convention for future game renderer actions.
+
+**Outcome:** 803 tests passing. Build/lint clean. No regressions.
+
+**Cross-agent sync:** Ortho implemented same pattern on DOM buttons (LobbyScreen, SetupScreen, WaitingRoom). Ensures consistency across canvas and DOM layers.

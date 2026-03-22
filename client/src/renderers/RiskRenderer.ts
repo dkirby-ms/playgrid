@@ -169,6 +169,7 @@ export class RiskRenderer implements GameRenderer {
   private readonly territoryDefMap = new Map<string, TerritoryDef>();
   private isEndPhaseButtonHovered = false;
   private isTradeCardsButtonHovered = false;
+  private actionPending = false;
 
   private turnIndicatorPulseTime = 0;
 
@@ -253,6 +254,7 @@ export class RiskRenderer implements GameRenderer {
   }
 
   onStateChange(state: unknown): void {
+    this.actionPending = false;
     this.state = state as RiskState;
     this.syncSelectionWithState();
     this.redrawMap();
@@ -795,6 +797,10 @@ export class RiskRenderer implements GameRenderer {
       const confirmBtn = controlsPanel?.querySelector('[data-action="capture-confirm"]');
       if (confirmBtn instanceof HTMLButtonElement) {
         confirmBtn.onclick = () => {
+          if (this.actionPending) return;
+          this.actionPending = true;
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = "Moving…";
           this.room?.send("captureMove", { count: captureCount });
         };
       }
@@ -804,9 +810,9 @@ export class RiskRenderer implements GameRenderer {
     this.sidebar.updatePanel(
       "controls",
       `<div class="sidebar-button-group">
-        <button type="button" class="sidebar-button" data-action="end-phase"${this.canEndPhase() ? "" : " disabled"}>${this.state.turnPhase === "fortify" ? "End Turn" : "Next Phase"}</button>
-        <button type="button" class="sidebar-button sidebar-button--secondary" data-action="fortify"${this.canEnterFortify() ? "" : " disabled"}>Fortify</button>
-        <button type="button" class="sidebar-button sidebar-button--secondary" data-action="trade-cards"${this.canTradeCards() ? "" : " disabled"}>Trade Cards${myRiskPlayer ? ` (${myRiskPlayer.cardsHeld})` : ""}</button>
+        <button type="button" class="sidebar-button" data-action="end-phase"${this.canEndPhase() && !this.actionPending ? "" : " disabled"}>${this.state.turnPhase === "fortify" ? "End Turn" : "Next Phase"}</button>
+        <button type="button" class="sidebar-button sidebar-button--secondary" data-action="fortify"${this.canEnterFortify() && !this.actionPending ? "" : " disabled"}>Fortify</button>
+        <button type="button" class="sidebar-button sidebar-button--secondary" data-action="trade-cards"${this.canTradeCards() && !this.actionPending ? "" : " disabled"}>Trade Cards${myRiskPlayer ? ` (${myRiskPlayer.cardsHeld})` : ""}</button>
       </div>
       <div class="sidebar-note">${escapeHtml(selectedCopy)} Place armies, attack, and move units directly on the redesigned map cards.</div>`,
     );
@@ -815,8 +821,10 @@ export class RiskRenderer implements GameRenderer {
     const endPhaseButton = controlsPanel?.querySelector('[data-action="end-phase"]');
     if (endPhaseButton instanceof HTMLButtonElement) {
       endPhaseButton.onclick = () => {
-        if (this.canEndPhase()) {
+        if (this.canEndPhase() && !this.actionPending) {
+          this.actionPending = true;
           this.handleEndPhase();
+          this.updateSidebar();
         }
       };
     }
@@ -824,8 +832,10 @@ export class RiskRenderer implements GameRenderer {
     const fortifyButton = controlsPanel?.querySelector('[data-action="fortify"]');
     if (fortifyButton instanceof HTMLButtonElement) {
       fortifyButton.onclick = () => {
-        if (this.canEnterFortify()) {
+        if (this.canEnterFortify() && !this.actionPending) {
+          this.actionPending = true;
           this.handleEndPhase();
+          this.updateSidebar();
         }
       };
     }
@@ -833,8 +843,10 @@ export class RiskRenderer implements GameRenderer {
     const tradeCardsButton = controlsPanel?.querySelector('[data-action="trade-cards"]');
     if (tradeCardsButton instanceof HTMLButtonElement) {
       tradeCardsButton.onclick = () => {
-        if (this.canTradeCards()) {
+        if (this.canTradeCards() && !this.actionPending) {
+          this.actionPending = true;
           this.handleTradeCards();
+          this.updateSidebar();
         }
       };
     }
@@ -918,9 +930,12 @@ export class RiskRenderer implements GameRenderer {
       return;
     }
 
+    if (this.actionPending) return;
+
     if (this.state.turnPhase === "setup-pick") {
       const territory = this.state.territories?.get(territoryId);
       if (territory && territory.owner === "") {
+        this.actionPending = true;
         this.room.send("pickTerritory", { territoryId });
         this.clearSelection();
       }
@@ -929,6 +944,7 @@ export class RiskRenderer implements GameRenderer {
 
     if (this.state.turnPhase === "setup-place" || this.state.turnPhase === "reinforce") {
       if (canPlaceArmy(this.state, territoryId, sessionId)) {
+        this.actionPending = true;
         this.room.send("placeArmy", { territoryId });
         this.clearSelection();
       }
@@ -938,6 +954,7 @@ export class RiskRenderer implements GameRenderer {
     if (this.state.turnPhase === "attack") {
       if (this.selectedTerritory) {
         if (this.validTargets.has(territoryId)) {
+          this.actionPending = true;
           this.room.send("attack", {
             from: this.selectedTerritory,
             to: territoryId,
@@ -963,6 +980,7 @@ export class RiskRenderer implements GameRenderer {
     if (this.state.turnPhase === "fortify") {
       if (this.selectedTerritory) {
         if (this.validTargets.has(territoryId)) {
+          this.actionPending = true;
           const fromTerritory = this.state.territories?.get(this.selectedTerritory);
           const moveCount = Math.max(1, (fromTerritory?.armyCount ?? 1) - 1);
           this.room.send("fortify", {

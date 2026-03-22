@@ -37,6 +37,7 @@
 - **Game chrome architecture:** Layout order is now: GameHeader → Opponent Info Bar → Canvas → Player Info Bar. All chrome components use the same glass-morphism token system and lifecycle pattern (init on enter, destroy on exit, visibility toggle via `display: none/flex`).
 - **No scrollbars in sidebar status panes:** Removed `overflow-y: auto` and all scrollbar pseudo-element styling from `.sidebar-panel-content`. Changed to `overflow: hidden`. Also removed `max-height` constraint from `.game-sidebar-panel` so panels size naturally to their content. The outer `.game-sidebar` container retains `overflow-y: auto` for full-sidebar scroll when many panels are present. Rule: individual status panes must never show scrollbars.
 - **HistoryScreen P6.4 Polish:** Player color palette expanded from 4 to 6 (players 0–5) for Risk support. Colors: blue, amber, purple, green, red, cyan — applied consistently to turn badges (`.hs-player-N`), player name labels, and stat bar fills (`.player-N`). The stat bar `buildStatBar` was clamped at `Math.min(playerIdx, 1)` — fixed to `Math.min(playerIdx, 5)`. Move cards upgraded to `rounded-lg` with subtle borders and `rgba(15,23,42,0.5)` slate background matching Figma's `bg-slate-900/50` pattern. Stats cards got `box-shadow`, `border-bottom` separators on titles, uppercase letter-spacing. Turn badges show `#N` format (matching Figma) at 40×40px. Mobile responsive: sidebar stacks below move list at `<768px` with `max-height: 300px` and `order: 2`. Overall container upgraded to `border-radius: var(--radius-2xl)` with ring shadow.
+- **CPU Button UX Fix:** Both `WaitingRoom.ts` and `SetupScreen.ts` had flaky "Add CPU Player" buttons — `renderPlayerList()` rebuilds the full DOM on every `GAME_PLAYERS` message, so clicks during a render could be lost (mousedown on old element, mouseup on new). Fix: added `cpuAddPending` flag + `requestAddCpu()` method that (1) guards against double-clicks and null room/gameId, (2) immediately shows a disabled "⏳ Adding CPU…" state with a pulse animation, (3) clears on confirmed GAME_PLAYERS with CPU or LOBBY_ERROR, (4) auto-resets after 5s timeout. Pending CSS uses `rgba(126, 207, 255, *)` accent tones matching the design system. Pattern: any server-round-trip button should have an optimistic loading state.
 
 ---
 
@@ -668,3 +669,107 @@ Benefits: All players see same config before game starts, no surprises, consiste
 
 **Decisions merged:** chess-clock-time-control-selection, time-control-ui-pattern, no-scrollbars-sidebar
 
+- **Sandbox state panel removal:** Removed `SandboxStatePanel` overlay from `SandboxScene.ts`. The panel was a fixed-position (top-right, z-index 1000) JSON editor with "Update State" button that appeared over sandbox mode. Removed: import, `statePanel` property, instantiation/mount/event-wiring in `onEnter()`, and `destroy()` call in `cleanup()`. Kept `SandboxStatePanel.ts` and `mockStates.ts` files intact (not deleted — just disconnected). Mock state creation still used for initial renderer setup.
+
+- **Backgammon sidebar consolidation:** Consolidated the game info panel in `BackgammonRenderer.ts` `updateSidebar()`. Merged two separate pip count rows ("Black pip count" / "White pip count") into a single compact row: `Pips  123 / 456` (black on left, red on right). Removed the "Dice" label row entirely — dice values are already rendered visually on the canvas via `redrawDice()`, so the sidebar text was redundant. Also removed the now-dead `getDiceLabel()` method. Net result: sidebar shrank from 5 stat rows to 3. Build/lint/tests all pass (785 tests).
+
+---
+
+## 2026-03-22: CPU Button UX Flakiness — Complete ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass (799 tests)
+
+Fixed flaky "Add CPU Player" button UX by implementing optimistic loading state pattern with double-click guard and pulse animation. Root cause: `renderPlayerList()` rebuilds entire DOM on each `GAME_PLAYERS` message, causing clicks to be lost during render cycles. Users saw no feedback and assumed the click didn't register.
+
+### Changes
+
+- **WaitingRoom.ts** — Added `cpuAddPending` flag (survives DOM rebuilds), `requestAddCpu()` with guard (room/gameId non-null + no pending request), immediate button disable + "⏳ Adding CPU…" text, clear on GAME_PLAYERS or LOBBY_ERROR, 5s timeout auto-reset
+- **SetupScreen.ts** — Identical pattern for consistency
+- **client/index.html** — Added `.waiting-room-add-cpu.pending` CSS with pulse animation (accent color tones)
+
+### Pattern Established
+
+Any future button sending a server message should follow this pattern:
+1. Guard flag set BEFORE send (survives DOM rebuilds)
+2. Button disabled + text updated immediately
+3. Clear on expected response or error
+4. Timeout fallback (5s)
+
+### Cross-Team Note
+
+**Gately:** Stale lobby cleanup fix was independent but complementary. Both agent work passed all tests and lint without regressions.
+
+**Team Directive:** dkirby-ms issued UX directive to audit & protect all 12+ unprotected server-bound actions. SetupScreen Start Game + LobbyScreen Join are priority areas for next iteration. Reference implementation: WaitingRoom.requestAddCpu() + SetupScreen.requestAddCpu().
+
+
+## 2026-03-22: Server-Bound Button Protection — P1 & P2 Complete ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass (803 tests)
+
+Applied the UX directive (visual feedback + double-click protection) to all P1 and P2 server-bound buttons, following the `requestAddCpu()` reference pattern.
+
+### Changes
+
+**P1 — LobbyScreen.ts (Join button):**
+- Added `joinPending`, `joinPendingGameId`, `joinTimeoutId` flags
+- `requestJoinGame(gameId)` — guard, set flag BEFORE send, re-render list with disabled "Joining…" button
+- All other join buttons disabled while one join is pending
+- Clear on GAME_JOINED, LOBBY_ERROR, or 5s timeout
+- `clearJoinPending()` method
+
+**P1 — SetupScreen.ts (Start Game button):**
+- Added `startPending`, `startTimeoutId` flags
+- `startGame()` now guards with `startPending`, disables + shows "Starting…"
+- Clear on GAME_STARTED, LOBBY_ERROR, or 5s timeout
+- `clearStartPending()` method
+
+**P2 — WaitingRoom.ts (Leave button):**
+- `hasExplicitlyLeft` now set BEFORE `room.send()` (was after)
+- Added `leavePending` flag — disables button + shows "Leaving…"
+- Guard prevents double-click
+
+**P2 — SetupScreen.ts (Leave/Back button):**
+- Same as WaitingRoom — `hasExplicitlyLeft` BEFORE send, `leavePending` guard + disabled state + "Leaving…" text
+
+**P2 — WaitingRoom.ts + SetupScreen.ts (Remove CPU button):**
+- Added `cpuRemovePending`, `cpuRemoveTimeoutId` flags to both
+- `requestRemoveCpu()` — guard, set flag BEFORE send, show "⏳" on button, disable
+- Clear on GAME_PLAYERS (when no CPU remains), LOBBY_ERROR, or 5s timeout
+- `clearCpuRemovePending()` method
+
+### Pattern
+
+All 5 items follow the established pattern:
+1. Guard flag set BEFORE `room.send()`
+2. Button disabled + text updated immediately
+3. Clear on expected server response or error
+4. 5s safety timeout fallback
+
+### Learnings
+
+- Leave buttons transition away immediately (hide + callback), so leavePending is mainly a double-click guard — the disabled state is only briefly visible.
+- Remove CPU uses the same GAME_PLAYERS confirmation signal as Add CPU, checking `!payload.players.some(p => p.isCPU)` to detect removal.
+- Join button in LobbyScreen lives inside `buildActiveGameCard()` which rebuilds on every `renderGameList()` call — the `joinPending` flag survives DOM rebuilds just like `cpuAddPending` does.
+
+## Session Update: 2026-03-22 — P1+P2 Button Feedback Guards (Ortho + Gately)
+
+**Summary:** Implemented UX feedback guards across DOM buttons and game renderers.
+
+**Ortho scope:** LobbyScreen (Join Game), SetupScreen (Start Game, Leave), WaitingRoom (Leave, Remove CPU).
+
+**Pattern Applied:**
+- Set `buttonPending` flag BEFORE `room.send()` or state mutation
+- Early-return if flag already set (prevents double-clicks)
+- Clear flag on state change confirmation or explicit handler completion
+- Visual feedback: `disabled = true` + text change (e.g., "Joining…")
+
+**Files Modified:**
+- `client/src/screens/LobbyScreen.ts`
+- `client/src/screens/SetupScreen.ts`
+- `client/src/screens/WaitingRoom.ts`
+
+**Outcome:** 803 tests passing. Build/lint clean. No regressions.
+
+**Cross-agent sync:** Gately implemented same pattern on canvas renderers (BackgammonRenderer, CheckersRenderer, DominosRenderer, RiskRenderer). Decision merged to `decisions.md`.

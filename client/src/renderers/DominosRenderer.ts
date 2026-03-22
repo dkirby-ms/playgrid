@@ -226,6 +226,7 @@ export class DominosRenderer implements GameRenderer {
   private height = DEFAULT_HEIGHT;
   private dragHelper: DragHelper | null = null;
   private dragTileId: number | null = null;
+  private actionPending = false;
 
   // Layout state (stored during redraw for ghost tile computation)
   private boardScale = 1;
@@ -323,6 +324,7 @@ export class DominosRenderer implements GameRenderer {
   }
 
   onStateChange(state: unknown): void {
+    this.actionPending = false;
     this.applyState(state);
     this.syncSelection();
 
@@ -576,6 +578,8 @@ export class DominosRenderer implements GameRenderer {
   }
 
   private sendPlay(tileId: number, end: "a" | "b" | "c" | "d"): void {
+    if (this.actionPending) return;
+    this.actionPending = true;
     this.selectedTileId = null;
     this.choosingEnd = false;
     this.validEnds = [];
@@ -584,6 +588,8 @@ export class DominosRenderer implements GameRenderer {
   }
 
   private sendAction(type: "draw" | "pass"): void {
+    if (this.actionPending) return;
+    this.actionPending = true;
     this.selectedTileId = null;
     this.choosingEnd = false;
     this.validEnds = [];
@@ -1566,8 +1572,8 @@ export class DominosRenderer implements GameRenderer {
     );
 
     // Controls panel
-    const canDraw = this.isLocalPlayersTurn() && this.boneyardCount > 0;
-    const canPass = this.isLocalPlayersTurn() && this.boneyardCount === 0;
+    const canDraw = this.isLocalPlayersTurn() && this.boneyardCount > 0 && !this.actionPending;
+    const canPass = this.isLocalPlayersTurn() && this.boneyardCount === 0 && !this.actionPending;
     this.sidebar.updatePanel(
       "controls",
       `<div class="sidebar-button-group">

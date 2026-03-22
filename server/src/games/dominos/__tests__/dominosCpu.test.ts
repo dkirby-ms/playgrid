@@ -435,4 +435,253 @@ describe("selectCpuAction — extended scenarios", () => {
       expect(validEnds).toContain(end);
     });
   });
+
+  // ── Multi-action turn flow ─────────────────────────────────────
+
+  describe("multi-action turn flow", () => {
+    it("draw → play: after drawing a matching tile, CPU plays it", () => {
+      // Initial state: CPU has no playable tiles, boneyard has tiles
+      const state = setup({
+        cpuHand: [tile(0, 1, 0)],
+        openEndA: 5,
+        openEndB: 6,
+        boneyardCount: 3,
+      });
+
+      // First call: no playable tile → draw
+      const firstAction = selectCpuAction(state);
+      expect(firstAction).not.toBeNull();
+      expect(firstAction!.actionType).toBe("draw");
+
+      // Simulate the draw: add a tile that matches end A, decrement boneyard
+      const drawnTile = tile(50, 5, 2);
+      setPlayerHand(state, CPU_ID, [tile(0, 1, 0), drawnTile]);
+      state.boneyardCount = 2;
+
+      // Second call: now has a playable tile → play
+      const secondAction = selectCpuAction(state);
+      expect(secondAction).not.toBeNull();
+      expect(secondAction!.actionType).toBe("play");
+      if (secondAction!.actionType === "play") {
+        expect(secondAction!.payload.tileId).toBe(50);
+      }
+    });
+
+    it("draw → draw: after drawing a non-matching tile with boneyard remaining", () => {
+      const state = setup({
+        cpuHand: [tile(0, 1, 0)],
+        openEndA: 5,
+        openEndB: 6,
+        boneyardCount: 5,
+      });
+
+      // First draw
+      const firstAction = selectCpuAction(state);
+      expect(firstAction!.actionType).toBe("draw");
+
+      // Simulate draw: tile still doesn't match, boneyard shrinks
+      setPlayerHand(state, CPU_ID, [tile(0, 1, 0), tile(50, 2, 0)]);
+      state.boneyardCount = 4;
+
+      // Second call: still no playable tile, boneyard not empty → draw again
+      const secondAction = selectCpuAction(state);
+      expect(secondAction!.actionType).toBe("draw");
+    });
+
+    it("draw → pass: after drawing a non-matching tile with boneyard now empty", () => {
+      const state = setup({
+        cpuHand: [tile(0, 1, 0)],
+        openEndA: 5,
+        openEndB: 6,
+        boneyardCount: 1,
+      });
+
+      // First call: draw (last boneyard tile)
+      const firstAction = selectCpuAction(state);
+      expect(firstAction!.actionType).toBe("draw");
+
+      // Simulate draw: non-matching tile, boneyard is now empty
+      setPlayerHand(state, CPU_ID, [tile(0, 1, 0), tile(50, 2, 0)]);
+      state.boneyardCount = 0;
+
+      // Second call: no playable tile, boneyard empty → pass
+      const secondAction = selectCpuAction(state);
+      expect(secondAction!.actionType).toBe("pass");
+    });
+
+    it("multiple draws then play: CPU draws several times before finding a match", () => {
+      const state = setup({
+        cpuHand: [tile(0, 1, 0)],
+        openEndA: 5,
+        openEndB: 6,
+        boneyardCount: 3,
+      });
+
+      // Round 1: draw
+      expect(selectCpuAction(state)!.actionType).toBe("draw");
+      setPlayerHand(state, CPU_ID, [tile(0, 1, 0), tile(50, 2, 0)]);
+      state.boneyardCount = 2;
+
+      // Round 2: draw again
+      expect(selectCpuAction(state)!.actionType).toBe("draw");
+      setPlayerHand(state, CPU_ID, [tile(0, 1, 0), tile(50, 2, 0), tile(51, 3, 0)]);
+      state.boneyardCount = 1;
+
+      // Round 3: draw again
+      expect(selectCpuAction(state)!.actionType).toBe("draw");
+      setPlayerHand(state, CPU_ID, [tile(0, 1, 0), tile(50, 2, 0), tile(51, 3, 0), tile(52, 6, 4)]);
+      state.boneyardCount = 0;
+
+      // Round 4: now tile [6-4] matches end B (6) → play
+      const finalAction = selectCpuAction(state);
+      expect(finalAction!.actionType).toBe("play");
+      if (finalAction!.actionType === "play") {
+        expect(finalAction!.payload.tileId).toBe(52);
+      }
+    });
+  });
+
+  // ── Tie-breaking determinism ───────────────────────────────────
+
+  describe("tie-breaking determinism", () => {
+    it("breaks ties by pip total: higher pip total wins", () => {
+      // Two non-double tiles matching end A with same flexibility
+      // [5-3] pip total 8 vs [4-3] pip total 7
+      const state = setup({
+        cpuHand: [tile(0, 4, 3), tile(1, 5, 3)],
+        openEndA: 3,
+        openEndB: 6,
+      });
+
+      const { tileId } = expectPlay(selectCpuAction(state));
+      expect(tileId).toBe(1); // [5-3] higher pip total
+    });
+
+    it("breaks ties by tile id when pip totals are equal", () => {
+      // Two tiles with identical pip totals matching the same end
+      // Both match end A (value 3), both have pip total 7
+      // [4-3] id=5 vs [4-3] id=10 → lower id wins
+      const state = setup({
+        cpuHand: [tile(10, 4, 3), tile(5, 4, 3)],
+        openEndA: 3,
+        openEndB: 6,
+      });
+
+      const { tileId } = expectPlay(selectCpuAction(state));
+      expect(tileId).toBe(5); // lower tile id
+    });
+
+    it("produces consistent results across repeated calls", () => {
+      const mkState = () => setup({
+        cpuHand: [tile(0, 3, 2), tile(1, 5, 3), tile(2, 4, 3)],
+        openEndA: 3,
+        openEndB: 6,
+      });
+
+      const results = Array.from({ length: 5 }, () => {
+        const action = selectCpuAction(mkState());
+        return action!.actionType === "play" ? action!.payload.tileId : -1;
+      });
+
+      // All calls should return the same tile
+      expect(new Set(results).size).toBe(1);
+    });
+  });
+
+  // ── Scoring heuristics ─────────────────────────────────────────
+
+  describe("scoring heuristics", () => {
+    it("double always beats a non-double even with fewer pips", () => {
+      // [2-2] (double, pip total 4) vs [6-3] (non-double, pip total 9)
+      // Double bonus (200) + 4*10 = 240 vs 9*10 = 90
+      const state = setup({
+        cpuHand: [tile(0, 6, 3), tile(1, 2, 2)],
+        openEndA: 3,
+        openEndB: 2,
+      });
+
+      const { tileId } = expectPlay(selectCpuAction(state));
+      expect(tileId).toBe(1); // double [2-2] wins despite lower pips
+    });
+
+    it("flexibility influences choice between otherwise equal tiles", () => {
+      // Both match end A (value 3). After playing:
+      // [3-4] opens end 4 — and we have [4-1] in hand (1 match)
+      // [3-2] opens end 2 — no other tiles match 2 (0 matches)
+      // [3-4] should win due to flexibility
+      const state = setup({
+        cpuHand: [tile(0, 3, 2), tile(1, 4, 3), tile(2, 4, 1)],
+        openEndA: 3,
+        openEndB: 6,
+      });
+
+      const { tileId } = expectPlay(selectCpuAction(state));
+      expect(tileId).toBe(1); // [4-3] — opening end 4 keeps [4-1] playable
+    });
+
+    it("double + flexibility beats high pips alone", () => {
+      // [3-3] (double, pip 6, flexibility: remaining tiles matching 3)
+      // [6-3] (non-double, pip 9, flexibility: remaining tiles matching 6)
+      // Both match end A (3). With [5-3] also in hand:
+      //   [3-3] → opens end 3, [5-3] matches (flex=1). Score: 200+60+50=310
+      //   [6-3] → opens end 6, [5-3] doesn't match 6 (flex=0). Score: 90+0=90
+      const state = setup({
+        cpuHand: [tile(0, 6, 3), tile(1, 3, 3), tile(2, 5, 3)],
+        openEndA: 3,
+        openEndB: 4,
+      });
+
+      const { tileId } = expectPlay(selectCpuAction(state));
+      expect(tileId).toBe(1); // double [3-3]
+    });
+  });
+
+  // ── First-play edge cases ──────────────────────────────────────
+
+  describe("first-play edge cases", () => {
+    it("plays on end 'a' when board is empty", () => {
+      const state = setup({
+        cpuHand: [tile(0, 3, 1)],
+        openEndA: -1,
+        openEndB: -1,
+      });
+
+      const { end } = expectPlay(selectCpuAction(state));
+      expect(end).toBe("a");
+    });
+
+    it("picks the highest double for the opening move", () => {
+      const state = setup({
+        cpuHand: [tile(0, 2, 2), tile(1, 5, 5), tile(2, 3, 1)],
+        openEndA: -1,
+        openEndB: -1,
+      });
+
+      const { tileId } = expectPlay(selectCpuAction(state));
+      expect(tileId).toBe(1); // [5-5] highest double
+    });
+
+    it("picks the highest-pip non-double when no doubles in hand for opening", () => {
+      const state = setup({
+        cpuHand: [tile(0, 3, 1), tile(1, 6, 5), tile(2, 4, 2)],
+        openEndA: -1,
+        openEndB: -1,
+      });
+
+      const { tileId } = expectPlay(selectCpuAction(state));
+      expect(tileId).toBe(1); // [6-5] highest pip total
+    });
+
+    it("single tile in hand on empty board → plays it", () => {
+      const state = setup({
+        cpuHand: [tile(0, 0, 0)],
+        openEndA: -1,
+        openEndB: -1,
+      });
+
+      const { tileId, end } = expectPlay(selectCpuAction(state));
+      expect(tileId).toBe(0);
+      expect(end).toBe("a");
+    });
+  });
 });

@@ -946,4 +946,65 @@ describeLobby("LobbyRoom pregame flow", () => {
       expect(guestSession?.currentGameId).toBeUndefined();
     });
   });
+
+  describe("stale game reference cleanup", () => {
+    it("auto-clears currentGameId when the referenced game no longer exists", async () => {
+      const gameId = await createGame(room, host);
+      const session = room.sessions.get(host.sessionId);
+      expect(session?.currentGameId).toBe(gameId);
+
+      // Simulate: game was removed but session still references it
+      room.games.delete(gameId);
+      room.waitingPlayers.delete(gameId);
+
+      host.send.mockClear();
+      await room.handleCreateGame(host, { name: "New Game" });
+
+      // Should succeed — stale reference auto-cleared
+      expect(findPayload(host, GAME_JOINED)).toBeDefined();
+      expect(session?.currentGameId).toBeDefined();
+      expect(session?.currentGameId).not.toBe(gameId);
+    });
+
+    it("auto-clears currentGameId when the referenced game is in progress", async () => {
+      const gameId = await createGame(room, host);
+      const game = getGame(room, gameId);
+      game.status = "in_progress";
+      game.roomId = "game-room-abc";
+
+      const session = room.sessions.get(host.sessionId);
+      expect(session?.currentGameId).toBe(gameId);
+
+      host.send.mockClear();
+      await room.handleCreateGame(host, { name: "New Game" });
+
+      // Should succeed — in-progress reference auto-cleared
+      expect(findPayload(host, GAME_JOINED)).toBeDefined();
+    });
+
+    it("auto-clears stale reference when joining a different game", async () => {
+      const staleGameId = await createGame(room, host);
+      room.games.delete(staleGameId);
+      room.waitingPlayers.delete(staleGameId);
+
+      const otherHost = createClient("other-host", "Other Host");
+      registerClient(room, otherHost, { userId: "other-host-user", displayName: "Other Host" });
+      const otherGameId = await createGame(room, otherHost, { name: "Other Game" });
+
+      host.send.mockClear();
+      await room.handleJoinGame(host, { gameId: otherGameId });
+
+      // Should succeed — stale reference auto-cleared
+      expect(findPayload(host, GAME_JOINED)).toBeDefined();
+      expect(room.sessions.get(host.sessionId)?.currentGameId).toBe(otherGameId);
+    });
+
+    it("still blocks creating a game while in a valid waiting game", async () => {
+      await createGame(room, host);
+
+      host.send.mockClear();
+      await room.handleCreateGame(host, { name: "Another Game" });
+      expectLobbyError(host, /leave your current game/i);
+    });
+  });
 });

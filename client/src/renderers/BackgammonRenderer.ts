@@ -410,6 +410,7 @@ export class BackgammonRenderer implements GameRenderer {
   private diceCenterX = 0;
   private isFlipped = false;
   private isRollingDice = false;
+  private movePending = false;
   private rollAnimationFrame = 0;
   private rollAnimationDuration = 20;
 
@@ -523,6 +524,7 @@ export class BackgammonRenderer implements GameRenderer {
   }
 
   onStateChange(state: unknown): void {
+    this.movePending = false;
     this.applyState(state);
     this.syncSelectionWithState();
     this.redrawBoard();
@@ -1180,11 +1182,13 @@ export class BackgammonRenderer implements GameRenderer {
   }
 
   private sendMove(target: BackgammonTarget): void {
+    if (this.movePending) return;
     const move = this.getPreferredMoveForTarget(target);
     if (!move) {
       return;
     }
 
+    this.movePending = true;
     this.room?.send("move", {
       from: move.from,
       to: move.to,
@@ -1786,9 +1790,7 @@ export class BackgammonRenderer implements GameRenderer {
       `<div class="sidebar-stat-list">
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Current turn</span><span class="sidebar-stat-value">${escapeHtml(this.getCurrentTurnLabel())}</span></div>
         ${getTurnClockMarkup(this.turnClockSeconds, this.showTurnClock)}
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Dice</span><span class="sidebar-stat-value">${escapeHtml(this.getDiceLabel())}</span></div>
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Black pip count</span><span class="sidebar-stat-value">${black}</span></div>
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">White pip count</span><span class="sidebar-stat-value">${red}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Pips</span><span class="sidebar-stat-value">⚫ ${black} · ⚪ ${red}</span></div>
       </div>${notes.join("")}`,
     );
 
@@ -1803,8 +1805,9 @@ export class BackgammonRenderer implements GameRenderer {
     this.sidebar.updatePanel("move-history", historyMarkup);
 
     const showPassButton = this.shouldShowPassButton();
+    const passButtonDisabled = this.movePending ? " disabled" : "";
     const passButtonMarkup = showPassButton
-      ? '<button type="button" class="sidebar-button" data-action="pass">Pass (No Valid Moves)</button>'
+      ? `<button type="button" class="sidebar-button" data-action="pass"${passButtonDisabled}>${this.movePending ? "Passing…" : "Pass (No Valid Moves)"}</button>`
       : '';
 
     this.sidebar.updatePanel(
@@ -1827,6 +1830,10 @@ export class BackgammonRenderer implements GameRenderer {
     const passButton = controlsPanel?.querySelector('[data-action="pass"]');
     if (passButton instanceof HTMLButtonElement) {
       passButton.onclick = () => {
+        if (this.movePending) return;
+        this.movePending = true;
+        passButton.disabled = true;
+        passButton.textContent = "Passing…";
         this.room?.send("pass");
       };
     }
@@ -1857,23 +1864,6 @@ export class BackgammonRenderer implements GameRenderer {
     }
 
     return "Player";
-  }
-
-  private getDiceLabel(): string {
-    if (this.isRollingDice) {
-      return "Rolling…";
-    }
-
-    const [die1, die2] = this.dice;
-    if (die1 <= 0 || die2 <= 0) {
-      return "Click dice to roll";
-    }
-
-    const values = [
-      this.usedDice[0] ? `${die1} used` : String(die1),
-      this.usedDice[1] ? `${die2} used` : String(die2),
-    ];
-    return values.join(" • ");
   }
 
   private getPipCounts(): { black: number; red: number } {

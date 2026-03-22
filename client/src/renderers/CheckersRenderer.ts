@@ -192,6 +192,7 @@ export class CheckersRenderer implements GameRenderer {
   private validTargetIndexes = new Set<number>();
   private moveHistory: string[] = [];
   private isFlipped = false;
+  private movePending = false;
   private dragHelper: DragHelper | null = null;
   private dragSourceIndex: number | null = null;
   private width = DEFAULT_WIDTH;
@@ -314,6 +315,7 @@ export class CheckersRenderer implements GameRenderer {
   }
 
   onStateChange(state: unknown): void {
+    this.movePending = false;
     this.applyState(state);
     this.syncSelectionWithState();
 
@@ -718,6 +720,8 @@ export class CheckersRenderer implements GameRenderer {
 
     // If a piece is selected and we click a valid target, execute the move
     if (this.selectedIndex !== null && this.validTargetIndexes.has(boardIndex)) {
+      if (this.movePending) return;
+      this.movePending = true;
       this.room?.send("move", { from: this.selectedIndex, to: boardIndex });
       this.clearSelection();
       return;
@@ -743,6 +747,8 @@ export class CheckersRenderer implements GameRenderer {
     }
 
     if (this.selectedIndex !== null && this.validTargetIndexes.has(boardIndex)) {
+      if (this.movePending) return;
+      this.movePending = true;
       const selectedIndex = this.selectedIndex;
       this.room?.send("move", { from: selectedIndex, to: boardIndex });
       this.clearSelection();
@@ -820,6 +826,8 @@ export class CheckersRenderer implements GameRenderer {
     if (displayIndex !== null) {
       const targetIndex = this.toBoardIndex(displayIndex);
       if (this.validTargetIndexes.has(targetIndex)) {
+        if (this.movePending) return false;
+        this.movePending = true;
         this.room?.send("move", { from: fromIndex, to: targetIndex });
         this.clearSelection();
         this.redrawBoard();
