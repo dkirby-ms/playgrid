@@ -2201,3 +2201,29 @@ Added double-click protection and pending-state guards to all four game renderer
 - **Checkers multi-capture:** `movePending` only guards the actual move send, not piece selection clicks. The server controls multi-capture chains via `mustCaptureFrom` — the flag clears on each state update, allowing the next capture in the chain.
 - **Risk has two button systems:** PixiJS canvas buttons (endPhaseButton, tradeCardsButton) and HTML sidebar buttons. Both need guarding. Sidebar buttons use `disabled` attribute + `updateSidebar()` re-render.
 - **BackgammonRenderer `isRollingDice` is the reference pattern:** Follows the same flag-before-send / clear-on-state-change approach. New `movePending` mirrors it.
+
+## Session Update: 2026-03-22 — P3 Game Renderer Action Guards (Gately + Ortho)
+
+**Summary:** Implemented double-click protection and action pending guards across all 4 game renderers.
+
+**Scope:** BackgammonRenderer, CheckersRenderer, DominosRenderer, RiskRenderer.
+
+**Pattern Applied (Renderer Action Pending):**
+- Single boolean flag (`actionPending` or `movePending`) per renderer
+- Set flag BEFORE `room.send()` call
+- Early-return in click/interaction handlers if flag is set (double-click protection)
+- Clear flag on `onStateChange()` — server state update is authoritative confirmation
+- Sidebar DOM buttons additionally set `disabled = true` and update text (e.g., "Moving…")
+- Never use timeouts — rely on Colyseus state update for reliable clearing
+
+**Files Modified:**
+- `client/src/renderers/BackgammonRenderer.ts`
+- `client/src/renderers/CheckersRenderer.ts`
+- `client/src/renderers/DominosRenderer.ts`
+- `client/src/renderers/RiskRenderer.ts`
+
+**Decision Recorded:** "Renderer Action Pending Pattern" merged to `decisions.md`. Establishes convention for future game renderer actions.
+
+**Outcome:** 803 tests passing. Build/lint clean. No regressions.
+
+**Cross-agent sync:** Ortho implemented same pattern on DOM buttons (LobbyScreen, SetupScreen, WaitingRoom). Ensures consistency across canvas and DOM layers.

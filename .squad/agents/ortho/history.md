@@ -752,3 +752,24 @@ All 5 items follow the established pattern:
 - Leave buttons transition away immediately (hide + callback), so leavePending is mainly a double-click guard — the disabled state is only briefly visible.
 - Remove CPU uses the same GAME_PLAYERS confirmation signal as Add CPU, checking `!payload.players.some(p => p.isCPU)` to detect removal.
 - Join button in LobbyScreen lives inside `buildActiveGameCard()` which rebuilds on every `renderGameList()` call — the `joinPending` flag survives DOM rebuilds just like `cpuAddPending` does.
+
+## Session Update: 2026-03-22 — P1+P2 Button Feedback Guards (Ortho + Gately)
+
+**Summary:** Implemented UX feedback guards across DOM buttons and game renderers.
+
+**Ortho scope:** LobbyScreen (Join Game), SetupScreen (Start Game, Leave), WaitingRoom (Leave, Remove CPU).
+
+**Pattern Applied:**
+- Set `buttonPending` flag BEFORE `room.send()` or state mutation
+- Early-return if flag already set (prevents double-clicks)
+- Clear flag on state change confirmation or explicit handler completion
+- Visual feedback: `disabled = true` + text change (e.g., "Joining…")
+
+**Files Modified:**
+- `client/src/screens/LobbyScreen.ts`
+- `client/src/screens/SetupScreen.ts`
+- `client/src/screens/WaitingRoom.ts`
+
+**Outcome:** 803 tests passing. Build/lint clean. No regressions.
+
+**Cross-agent sync:** Gately implemented same pattern on canvas renderers (BackgammonRenderer, CheckersRenderer, DominosRenderer, RiskRenderer). Decision merged to `decisions.md`.
