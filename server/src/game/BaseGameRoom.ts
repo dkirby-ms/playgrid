@@ -2,9 +2,9 @@ import type { Delayed } from "@colyseus/timer";
 import { Client, CloseCode, Room } from "colyseus";
 import {
   BaseGameState,
-  CPU_SESSION_ID_PREFIX,
   PlayerInfo,
   TIME_CONTROL_MS,
+  extractCpuNumber,
   isCpuSessionId,
   type ActionHandler,
   type BackgammonState,
@@ -595,7 +595,7 @@ export class BaseGameRoom extends Room {
         continue;
       }
 
-      const cpuNumber = this.extractCpuNumber(cpuId);
+      const cpuNumber = extractCpuNumber(cpuId);
       const playerIndex = this.getParticipatingPlayers().length;
       const player = new PlayerInfo();
       player.sessionId = cpuId;
@@ -625,12 +625,6 @@ export class BaseGameRoom extends Room {
         }
       }
     }
-  }
-
-  private extractCpuNumber(cpuSessionId: string): number {
-    const suffix = cpuSessionId.slice(CPU_SESSION_ID_PREFIX.length);
-    const num = Number.parseInt(suffix, 10);
-    return Number.isFinite(num) && num > 0 ? num : 1;
   }
 
   private ensureHeadToHeadParticipant(client: Client) {

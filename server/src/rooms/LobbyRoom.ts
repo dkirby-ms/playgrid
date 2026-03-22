@@ -18,6 +18,7 @@ import {
   REMOVE_CPU_PLAYER,
   SET_READY,
   START_GAME,
+  extractCpuNumber,
   isCpuSessionId,
   type AddCpuPlayerPayload,
   type CreateGamePayload,
@@ -814,7 +815,7 @@ export class LobbyRoom extends Room {
   }
 
   private createCpuPreGamePlayerInfo(cpuSessionId: string): PreGamePlayerInfo {
-    const cpuNumber = this.extractCpuNumber(cpuSessionId);
+    const cpuNumber = extractCpuNumber(cpuSessionId);
     return {
       userId: cpuSessionId,
       displayName: `${CPU_OPPONENT_DISPLAY_NAME} ${cpuNumber}`,
@@ -827,17 +828,11 @@ export class LobbyRoom extends Room {
     let maxNum = 0;
     for (const key of players.keys()) {
       if (isCpuSessionId(key)) {
-        const num = this.extractCpuNumber(key);
+        const num = extractCpuNumber(key);
         if (num > maxNum) maxNum = num;
       }
     }
     return `${CPU_SESSION_ID_PREFIX}${maxNum + 1}`;
-  }
-
-  private extractCpuNumber(cpuSessionId: string): number {
-    const suffix = cpuSessionId.slice(CPU_SESSION_ID_PREFIX.length);
-    const num = Number.parseInt(suffix, 10);
-    return Number.isFinite(num) && num > 0 ? num : 1;
   }
 
   private findLastCpuSessionId(players: Map<string, PreGamePlayerInfo>): string | undefined {

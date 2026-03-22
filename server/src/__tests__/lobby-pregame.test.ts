@@ -31,6 +31,11 @@ const { mockCreateRoom, mockGameRegistry, mockedCloseCode, sharedExports } = vi.
     AVAILABLE_GAME_TYPES: "available_game_types",
     CPU_SESSION_ID_PREFIX: "cpu-opponent-",
     isCpuSessionId: (id: string) => id.startsWith("cpu-opponent-"),
+    extractCpuNumber: (cpuSessionId: string) => {
+      const suffix = cpuSessionId.slice("cpu-opponent-".length);
+      const num = Number.parseInt(suffix, 10);
+      return Number.isFinite(num) && num > 0 ? num : 1;
+    },
     DEFAULT_MAP_SIZE: 128,
     LOBBY_DEFAULTS: {
       MIN_PLAYERS: 1,
@@ -1011,6 +1016,121 @@ describeLobby("LobbyRoom pregame flow", () => {
       host.send.mockClear();
       await room.handleCreateGame(host, { name: "Another Game" });
       expectLobbyError(host, /leave your current game/i);
+    });
+  });
+
+  describe("multi-CPU players", () => {
+    it("allows adding 2+ CPU players to a game", async () => {
+      mockGameRegistry.has.mockReturnValue(true);
+      mockGameRegistry.get.mockReturnValue(createPlugin(2, 4));
+
+      const gameId = await createGame(room, host, { gameType: "checkers", maxPlayers: 4 });
+
+      room.handleAddCpuPlayer(host, { gameId });
+      room.handleAddCpuPlayer(host, { gameId });
+
+      const players = getWaitingPlayers(room, gameId);
+      expect(players.has("cpu-opponent-1")).toBe(true);
+      expect(players.has("cpu-opponent-2")).toBe(true);
+      expect(players.get("cpu-opponent-1")).toMatchObject({
+        displayName: "CPU Opponent 1",
+        isReady: true,
+        isCPU: true,
+      });
+      expect(players.get("cpu-opponent-2")).toMatchObject({
+        displayName: "CPU Opponent 2",
+        isReady: true,
+        isCPU: true,
+      });
+      expect(getGame(room, gameId)?.playerCount).toBe(3);
+    });
+
+    it("removes a specific CPU player, not just the last one", async () => {
+      mockGameRegistry.has.mockReturnValue(true);
+      mockGameRegistry.get.mockReturnValue(createPlugin(2, 4));
+
+      const gameId = await createGame(room, host, { gameType: "checkers", maxPlayers: 4 });
+
+      room.handleAddCpuPlayer(host, { gameId });
+      room.handleAddCpuPlayer(host, { gameId });
+
+      const players = getWaitingPlayers(room, gameId);
+      expect(players.has("cpu-opponent-1")).toBe(true);
+      expect(players.has("cpu-opponent-2")).toBe(true);
+
+      room.handleRemoveCpuPlayer(host, { gameId, cpuSessionId: "cpu-opponent-1" });
+
+      expect(players.has("cpu-opponent-1")).toBe(false);
+      expect(players.has("cpu-opponent-2")).toBe(true);
+      expect(getGame(room, gameId)?.playerCount).toBe(2);
+      expect(getGame(room, gameId)?.cpuOpponent).toBe(true);
+    });
+
+    it("starts a game with a mix of CPUs and humans", async () => {
+      mockGameRegistry.has.mockReturnValue(true);
+      mockGameRegistry.get.mockReturnValue(createPlugin(2, 4));
+
+      const gameId = await createGame(room, host, { gameType: "checkers", maxPlayers: 4 });
+      await room.handleJoinGame(guest, { gameId });
+
+      room.handleAddCpuPlayer(host, { gameId });
+
+      const players = getWaitingPlayers(room, gameId);
+      expect(players.size).toBe(3);
+
+      room.handleSetReady(host, { ready: true });
+      room.handleSetReady(guest, { ready: true });
+
+      host.send.mockClear();
+      guest.send.mockClear();
+      await room.handleStartGame(host);
+
+      expect(mockCreateRoom).toHaveBeenCalledWith("game", expect.objectContaining({
+        gameId,
+        gameType: "checkers",
+        maxPlayers: 4,
+        expectedPlayers: 3,
+        cpuOpponent: true,
+        cpuSessionIds: ["cpu-opponent-1"],
+      }));
+      expect(getGame(room, gameId)?.status).toBe("in_progress");
+      expect(findPayload(host, GAME_STARTED)).toEqual(expect.objectContaining({ gameId }));
+      expect(findPayload(guest, GAME_STARTED)).toEqual(expect.objectContaining({ gameId }));
+    });
+
+    it("sets cpuOpponent to false when all CPUs are removed", async () => {
+      mockGameRegistry.has.mockReturnValue(true);
+      mockGameRegistry.get.mockReturnValue(createPlugin(2, 4));
+
+      const gameId = await createGame(room, host, { gameType: "checkers", maxPlayers: 4 });
+
+      room.handleAddCpuPlayer(host, { gameId });
+      expect(getGame(room, gameId)?.cpuOpponent).toBe(true);
+
+      room.handleRemoveCpuPlayer(host, { gameId, cpuSessionId: "cpu-opponent-1" });
+      expect(getGame(room, gameId)?.cpuOpponent).toBe(false);
+      expect(getGame(room, gameId)?.playerCount).toBe(1);
+    });
+
+    it("starts a game with multiple CPU session IDs passed to createRoom", async () => {
+      mockGameRegistry.has.mockReturnValue(true);
+      mockGameRegistry.get.mockReturnValue(createPlugin(2, 4));
+
+      const gameId = await createGame(room, host, { gameType: "checkers", maxPlayers: 4 });
+
+      room.handleAddCpuPlayer(host, { gameId });
+      room.handleAddCpuPlayer(host, { gameId });
+      room.handleAddCpuPlayer(host, { gameId });
+
+      room.handleSetReady(host, { ready: true });
+
+      host.send.mockClear();
+      await room.handleStartGame(host);
+
+      expect(mockCreateRoom).toHaveBeenCalledWith("game", expect.objectContaining({
+        cpuOpponent: true,
+        cpuSessionIds: ["cpu-opponent-1", "cpu-opponent-2", "cpu-opponent-3"],
+      }));
     });
   });
 });
