@@ -488,7 +488,6 @@ function injectStyles(): void {
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: var(--space-md);
       border-radius: var(--radius-xl);
       border: 2px dashed rgba(255, 255, 255, 0.2);
       cursor: pointer;
@@ -504,7 +503,8 @@ function injectStyles(): void {
       color: var(--text-muted);
       font-size: var(--font-sm);
       cursor: pointer;
-      padding: 0;
+      padding: var(--space-md);
+      width: 100%;
       font-family: inherit;
       transition: color 0.15s;
     }
