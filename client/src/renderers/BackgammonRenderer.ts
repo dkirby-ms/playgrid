@@ -1191,12 +1191,17 @@ export class BackgammonRenderer implements GameRenderer {
         ? this.playY + discRadius + edgePadding
         : this.playY + this.playHeight - discRadius - edgePadding;
 
-      if (diff > 0 && movedColor === null) {
-        // Gained positive pieces → BLACK moved here
-        movedColor = BLACK;
-      } else if (diff < 0 && movedColor === null) {
-        // Gained negative pieces → RED moved here (or BLACK left)
-        movedColor = RED;
+      // Determine color from point value signs, not diff direction
+      if (movedColor === null) {
+        if (oldPoints[i] > 0 && diff < 0) {
+          movedColor = BLACK;
+        } else if (oldPoints[i] < 0 && diff > 0) {
+          movedColor = RED;
+        } else if (this.points[i] > 0 && diff > 0) {
+          movedColor = BLACK;
+        } else if (this.points[i] < 0 && diff < 0) {
+          movedColor = RED;
+        }
       }
 
       // Source: point lost a piece of the moving color

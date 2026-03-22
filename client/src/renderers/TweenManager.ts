@@ -86,8 +86,11 @@ export class TweenManager {
     }
   }
 
-  /** Cancel all active tweens. */
+  /** Cancel all active tweens, firing onComplete so animated objects are cleaned up. */
   cancelAll(): void {
+    for (const tw of this.tweens) {
+      tw.onComplete?.();
+    }
     this.tweens.length = 0;
   }
 
@@ -104,7 +107,7 @@ export class TweenManager {
     for (let i = this.tweens.length - 1; i >= 0; i -= 1) {
       const tw = this.tweens[i];
       tw.elapsed += deltaMs;
-      const progress = Math.min(tw.elapsed / tw.duration, 1);
+      const progress = tw.duration <= 0 ? 1 : Math.min(tw.elapsed / tw.duration, 1);
       const eased = easeOutCubic(progress);
 
       tw.target.position.set(

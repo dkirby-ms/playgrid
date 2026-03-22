@@ -723,37 +723,37 @@ export class CheckersRenderer implements GameRenderer {
    * then animate a temporary piece from the source to the destination.
    */
   private animatePieceMovement(oldBoard: number[]): void {
-    // Find source (had a piece, now empty) and destination (was empty, now has a piece)
+    // Find destination: was empty, now has a piece
     let fromIndex = -1;
     let toIndex = -1;
     let movedPiece = EMPTY;
 
     for (let i = 0; i < BOARD_CELL_COUNT; i += 1) {
-      const prev = oldBoard[i];
-      const curr = this.board[i];
-      if (prev !== EMPTY && curr === EMPTY && fromIndex === -1) {
-        fromIndex = i;
-      }
-      if (prev === EMPTY && curr !== EMPTY && toIndex === -1) {
+      if (oldBoard[i] === EMPTY && this.board[i] !== EMPTY) {
         toIndex = i;
-        movedPiece = curr;
+        movedPiece = this.board[i];
+        break;
       }
     }
 
-    // Also handle promotion: piece type changed but same color
-    if (toIndex === -1) {
-      for (let i = 0; i < BOARD_CELL_COUNT; i += 1) {
-        const prev = oldBoard[i];
-        const curr = this.board[i];
-        if (prev === EMPTY && curr !== EMPTY) {
-          toIndex = i;
-          movedPiece = curr;
+    if (toIndex < 0 || movedPiece === EMPTY) return;
+
+    // Determine the color of the moved piece
+    const movedIsBlack = movedPiece === BLACK || movedPiece === BLACK_KING;
+
+    // Find source: square where a piece of the SAME color left (now empty).
+    // Ignore captured opponent squares which also become empty.
+    for (let i = 0; i < BOARD_CELL_COUNT; i += 1) {
+      if (this.board[i] === EMPTY && oldBoard[i] !== EMPTY) {
+        const prevIsBlack = oldBoard[i] === BLACK || oldBoard[i] === BLACK_KING;
+        if (movedIsBlack === prevIsBlack) {
+          fromIndex = i;
           break;
         }
       }
     }
 
-    if (fromIndex < 0 || toIndex < 0 || movedPiece === EMPTY) return;
+    if (fromIndex < 0) return;
 
     const from = this.getSquareCenter(fromIndex);
     const to = this.getSquareCenter(toIndex);

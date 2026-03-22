@@ -863,11 +863,9 @@ export class DominosRenderer implements GameRenderer {
    * temporary clone in the animation layer that tweens into place.
    */
   private animateTilePlacement(tile: BoardTileSnapshot): void {
-    // Determine the board position of the new tile
-    const tileIndex = this.boardTiles.indexOf(tile);
-    if (tileIndex < 0) return;
-
-    const boardChild = this.boardLayer.children[tileIndex];
+    const boardChild = this.boardLayer.children.find(
+      (c) => c.label === `board-tile-${tile.id}`,
+    );
     if (!boardChild) return;
 
     const toX = boardChild.position.x;
@@ -993,6 +991,7 @@ export class DominosRenderer implements GameRenderer {
       const w = BOARD_TILE_W * scale;
       const h = BOARD_TILE_H * scale;
       this.drawBoardTile(g, bt, x, y, w, h, "horizontal", scale);
+      g.label = `board-tile-${bt.id}`;
       g.eventMode = "none";
       this.boardLayer.addChild(g);
     }
@@ -1060,6 +1059,7 @@ export class DominosRenderer implements GameRenderer {
     const sY = spinnerCY - (spinnerH * scale) / 2;
     const spinnerG = new Graphics();
     this.drawBoardTile(spinnerG, spinner, sX, sY, spinnerW * scale, spinnerH * scale, "vertical", scale);
+    spinnerG.label = `board-tile-${spinner.id}`;
     spinnerG.eventMode = "none";
     this.boardLayer.addChild(spinnerG);
 
@@ -1073,6 +1073,7 @@ export class DominosRenderer implements GameRenderer {
       const tY = spinnerCY - th / 2;
       const g = new Graphics();
       this.drawBoardTile(g, bt, cursorX, tY, tw, th, bt.isDouble ? "vertical" : "horizontal", scale);
+      g.label = `board-tile-${bt.id}`;
       g.eventMode = "none";
       this.boardLayer.addChild(g);
       cursorX -= BOARD_TILE_GAP * scale;
@@ -1088,6 +1089,7 @@ export class DominosRenderer implements GameRenderer {
       const tY = spinnerCY - th / 2;
       const g = new Graphics();
       this.drawBoardTile(g, bt, cursorX, tY, tw, th, bt.isDouble ? "vertical" : "horizontal", scale);
+      g.label = `board-tile-${bt.id}`;
       g.eventMode = "none";
       this.boardLayer.addChild(g);
       cursorX += tw + BOARD_TILE_GAP * scale;
@@ -1104,6 +1106,7 @@ export class DominosRenderer implements GameRenderer {
       const tX = spinnerCX - tw / 2;
       const g = new Graphics();
       this.drawBoardTile(g, bt, tX, cursorY, tw, th, bt.isDouble ? "horizontal" : "vertical", scale);
+      g.label = `board-tile-${bt.id}`;
       g.eventMode = "none";
       this.boardLayer.addChild(g);
       cursorY -= BOARD_TILE_GAP * scale;
@@ -1119,6 +1122,7 @@ export class DominosRenderer implements GameRenderer {
       const tX = spinnerCX - tw / 2;
       const g = new Graphics();
       this.drawBoardTile(g, bt, tX, cursorY, tw, th, bt.isDouble ? "horizontal" : "vertical", scale);
+      g.label = `board-tile-${bt.id}`;
       g.eventMode = "none";
       this.boardLayer.addChild(g);
       cursorY += th + BOARD_TILE_GAP * scale;
