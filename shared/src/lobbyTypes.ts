@@ -83,6 +83,13 @@ export interface AddCpuPlayerPayload {
 
 export interface RemoveCpuPlayerPayload {
   gameId: string;
+  cpuSessionId?: string;
+}
+
+export const CPU_SESSION_ID_PREFIX = "cpu-opponent-";
+
+export function isCpuSessionId(sessionId: string): boolean {
+  return sessionId.startsWith(CPU_SESSION_ID_PREFIX);
 }
 
 export interface PreGamePlayerInfo {

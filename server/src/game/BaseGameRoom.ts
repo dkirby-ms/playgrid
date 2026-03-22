@@ -2,8 +2,10 @@ import type { Delayed } from "@colyseus/timer";
 import { Client, CloseCode, Room } from "colyseus";
 import {
   BaseGameState,
+  CPU_SESSION_ID_PREFIX,
   PlayerInfo,
   TIME_CONTROL_MS,
+  isCpuSessionId,
   type ActionHandler,
   type BackgammonState,
   type CheckersState,
@@ -26,6 +28,7 @@ import { TurnManager } from "./TurnManager.js";
 
 interface BaseGameRoomOptions extends GameOptions {
   cpuOpponent?: boolean;
+  cpuSessionIds?: string[];
   gameId?: string;
   gameType?: string;
   headToHeadMode?: boolean;
@@ -36,7 +39,6 @@ interface BaseGameRoomOptions extends GameOptions {
 }
 
 const CPU_OPPONENT_DISPLAY_NAME = "CPU Opponent";
-const CPU_OPPONENT_SESSION_ID = "cpu-opponent";
 const CPU_TURN_DELAY_MS = 200;
 const DEFAULT_ACTION_ERROR = "Action failed.";
 const DEFAULT_RECONNECTION_TIMEOUT = 30;
@@ -57,6 +59,7 @@ export class BaseGameRoom extends Room {
   private lobbyGameId?: string;
   private gameStartTime?: number;
   private cpuOpponentEnabled = false;
+  private cpuSessionIds: string[] = [];
   private pendingCpuTurn?: Delayed;
   private headToHeadMode = false;
   private moveHistory: MoveEntry[] = [];
@@ -71,6 +74,9 @@ export class BaseGameRoom extends Room {
     this.plugin = gameRegistry.get(gameType) as unknown as GamePlugin<BaseGameState>;
     this.cpuOpponentEnabled = options.cpuOpponent === true
       && (gameType === "checkers" || gameType === "backgammon" || gameType === "dominos");
+    this.cpuSessionIds = Array.isArray(options.cpuSessionIds)
+      ? options.cpuSessionIds.filter(isCpuSessionId)
+      : [];
     this.headToHeadMode = options.headToHeadMode === true && gameType === "checkers";
 
     const [minPlayers, maxPlayers] = this.plugin.metadata.playerCount;
@@ -196,7 +202,7 @@ export class BaseGameRoom extends Room {
     }
 
     if (!isSpectator) {
-      this.ensureCpuParticipant(client.sessionId);
+      this.ensureCpuParticipants(client.sessionId);
       this.ensureHeadToHeadParticipant(client);
       if (this.shouldStartGame()) {
         this.startGame();
@@ -579,39 +585,52 @@ export class BaseGameRoom extends Room {
     }
   }
 
-  private ensureCpuParticipant(controllerSessionId: string) {
-    if (!this.cpuOpponentEnabled || this.state.players.has(CPU_OPPONENT_SESSION_ID)) {
+  private ensureCpuParticipants(controllerSessionId: string) {
+    if (!this.cpuOpponentEnabled || this.cpuSessionIds.length === 0) {
       return;
     }
 
-    const playerIndex = this.getParticipatingPlayers().length;
-    const player = new PlayerInfo();
-    player.sessionId = CPU_OPPONENT_SESSION_ID;
-    player.displayName = CPU_OPPONENT_DISPLAY_NAME;
-    player.playerIndex = playerIndex;
-    player.isSpectator = false;
-    player.isConnected = true;
-    player.controllerSessionId = controllerSessionId;
+    for (const cpuId of this.cpuSessionIds) {
+      if (this.state.players.has(cpuId)) {
+        continue;
+      }
 
-    this.state.players.set(CPU_OPPONENT_SESSION_ID, player);
-    this.plugin.lifecycle.onPlayerJoin?.(
-      this.state,
-      this.createSyntheticClient(CPU_OPPONENT_SESSION_ID),
-      playerIndex,
-    );
+      const cpuNumber = this.extractCpuNumber(cpuId);
+      const playerIndex = this.getParticipatingPlayers().length;
+      const player = new PlayerInfo();
+      player.sessionId = cpuId;
+      player.displayName = `${CPU_OPPONENT_DISPLAY_NAME} ${cpuNumber}`;
+      player.playerIndex = playerIndex;
+      player.isSpectator = false;
+      player.isConnected = true;
+      player.controllerSessionId = controllerSessionId;
 
-    if (this.gameId) {
-      try {
-        const pool = getPool();
-        void gameRepository.addParticipant(pool, {
-          gameId: this.gameId,
-          userId: CPU_OPPONENT_SESSION_ID,
-          role: "player",
-        });
-      } catch (error) {
-        console.error("[BaseGameRoom] Failed to add CPU participant to DB:", error);
+      this.state.players.set(cpuId, player);
+      this.plugin.lifecycle.onPlayerJoin?.(
+        this.state,
+        this.createSyntheticClient(cpuId),
+        playerIndex,
+      );
+
+      if (this.gameId) {
+        try {
+          const pool = getPool();
+          void gameRepository.addParticipant(pool, {
+            gameId: this.gameId,
+            userId: cpuId,
+            role: "player",
+          });
+        } catch (error) {
+          console.error("[BaseGameRoom] Failed to add CPU participant to DB:", error);
+        }
       }
     }
+  }
+
+  private extractCpuNumber(cpuSessionId: string): number {
+    const suffix = cpuSessionId.slice(CPU_SESSION_ID_PREFIX.length);
+    const num = Number.parseInt(suffix, 10);
+    return Number.isFinite(num) && num > 0 ? num : 1;
   }
 
   private ensureHeadToHeadParticipant(client: Client) {
@@ -674,7 +693,7 @@ export class BaseGameRoom extends Room {
 
   private isCpuTurn(sessionId: string) {
     return this.cpuOpponentEnabled
-      && sessionId === CPU_OPPONENT_SESSION_ID;
+      && isCpuSessionId(sessionId);
   }
 
   private async executeCpuTurn() {
@@ -696,9 +715,10 @@ export class BaseGameRoom extends Room {
   }
 
   private async executeCheckersCpuTurn() {
+    const cpuSessionId = this.state.currentTurn;
     const move = selectCpuMove(this.state as CheckersState);
     if (!move) {
-      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      await this.handleTurnTimeout(cpuSessionId);
       return;
     }
 
@@ -708,7 +728,7 @@ export class BaseGameRoom extends Room {
     }
 
     const didProcessAction = await this.processAction(
-      this.createSyntheticClient(CPU_OPPONENT_SESSION_ID),
+      this.createSyntheticClient(cpuSessionId),
       "move",
       move,
       moveHandler as ActionHandler<BaseGameState>,
@@ -716,7 +736,7 @@ export class BaseGameRoom extends Room {
     );
 
     if (!didProcessAction) {
-      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      await this.handleTurnTimeout(cpuSessionId);
       return;
     }
 
@@ -724,9 +744,10 @@ export class BaseGameRoom extends Room {
   }
 
   private async executeBackgammonCpuTurn() {
+    const cpuSessionId = this.state.currentTurn;
     const action = selectCpuAction(this.state as BackgammonState);
     if (!action) {
-      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      await this.handleTurnTimeout(cpuSessionId);
       return;
     }
 
@@ -737,7 +758,7 @@ export class BaseGameRoom extends Room {
 
     const payload = action.actionType === "move" ? action.payload : undefined;
     const didProcessAction = await this.processAction(
-      this.createSyntheticClient(CPU_OPPONENT_SESSION_ID),
+      this.createSyntheticClient(cpuSessionId),
       action.actionType,
       payload,
       handler as ActionHandler<BaseGameState>,
@@ -745,7 +766,7 @@ export class BaseGameRoom extends Room {
     );
 
     if (!didProcessAction) {
-      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      await this.handleTurnTimeout(cpuSessionId);
       return;
     }
 
@@ -753,9 +774,10 @@ export class BaseGameRoom extends Room {
   }
 
   private async executeDominosCpuTurn() {
+    const cpuSessionId = this.state.currentTurn;
     const action = selectDominosCpuAction(this.state as DominosState);
     if (!action) {
-      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      await this.handleTurnTimeout(cpuSessionId);
       return;
     }
 
@@ -766,7 +788,7 @@ export class BaseGameRoom extends Room {
 
     const payload = action.actionType === "play" ? action.payload : undefined;
     const didProcessAction = await this.processAction(
-      this.createSyntheticClient(CPU_OPPONENT_SESSION_ID),
+      this.createSyntheticClient(cpuSessionId),
       action.actionType,
       payload,
       handler as ActionHandler<BaseGameState>,
@@ -774,7 +796,7 @@ export class BaseGameRoom extends Room {
     );
 
     if (!didProcessAction) {
-      await this.handleTurnTimeout(CPU_OPPONENT_SESSION_ID);
+      await this.handleTurnTimeout(cpuSessionId);
       return;
     }
 

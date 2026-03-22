@@ -2,6 +2,7 @@ import { Client, CloseCode, Room, matchMaker } from "colyseus";
 import {
   ADD_CPU_PLAYER,
   AVAILABLE_GAME_TYPES,
+  CPU_SESSION_ID_PREFIX,
   CREATE_GAME,
   GAME_JOINED,
   GAME_LIST,
@@ -17,6 +18,7 @@ import {
   REMOVE_CPU_PLAYER,
   SET_READY,
   START_GAME,
+  isCpuSessionId,
   type AddCpuPlayerPayload,
   type CreateGamePayload,
   type GameJoinedPayload,
@@ -42,7 +44,6 @@ const LOBBY_RECONNECTION_TIMEOUT_SECONDS = 30;
 const MAX_GAME_NAME_LENGTH = 32;
 const MAX_DISPLAY_NAME_LENGTH = 24;
 const MAX_PLAYER_ID_LENGTH = 64;
-const CPU_OPPONENT_SESSION_ID = "cpu-opponent";
 const CPU_OPPONENT_DISPLAY_NAME = "CPU Opponent";
 
 interface LobbySession {
@@ -275,7 +276,8 @@ export class LobbyRoom extends Room {
     ]);
 
     if (cpuOpponent) {
-      waitingPlayers.set(CPU_OPPONENT_SESSION_ID, this.createCpuPreGamePlayerInfo());
+      const cpuId = this.nextCpuSessionId(waitingPlayers);
+      waitingPlayers.set(cpuId, this.createCpuPreGamePlayerInfo(cpuId));
     }
 
     this.games.set(gameId, game);
@@ -476,6 +478,7 @@ export class LobbyRoom extends Room {
     }
 
     try {
+      const cpuSessionIds = [...players.keys()].filter(isCpuSessionId);
       const room = await matchMaker.createRoom("game", {
         gameId: game.id,
         gameType: game.gameType,
@@ -485,6 +488,7 @@ export class LobbyRoom extends Room {
         maxPlayers: game.maxPlayers,
         expectedPlayers: players.size,
         cpuOpponent: game.cpuOpponent === true,
+        cpuSessionIds,
       });
 
       game.status = "in_progress";
@@ -578,17 +582,13 @@ export class LobbyRoom extends Room {
       return;
     }
 
-    if (players.has(CPU_OPPONENT_SESSION_ID)) {
-      this.sendError(client, "A CPU player is already in this game.");
-      return;
-    }
-
     if (players.size >= game.maxPlayers) {
       this.sendError(client, "Game is full.");
       return;
     }
 
-    players.set(CPU_OPPONENT_SESSION_ID, this.createCpuPreGamePlayerInfo());
+    const cpuId = this.nextCpuSessionId(players);
+    players.set(cpuId, this.createCpuPreGamePlayerInfo(cpuId));
     game.cpuOpponent = true;
     game.playerCount = players.size;
 
@@ -627,13 +627,17 @@ export class LobbyRoom extends Room {
       return;
     }
 
-    if (!players.has(CPU_OPPONENT_SESSION_ID)) {
+    const cpuIdToRemove = payload.cpuSessionId
+      ? (isCpuSessionId(payload.cpuSessionId) ? payload.cpuSessionId : undefined)
+      : this.findLastCpuSessionId(players);
+
+    if (!cpuIdToRemove || !players.has(cpuIdToRemove)) {
       this.sendError(client, "No CPU player in this game.");
       return;
     }
 
-    players.delete(CPU_OPPONENT_SESSION_ID);
-    game.cpuOpponent = false;
+    players.delete(cpuIdToRemove);
+    game.cpuOpponent = [...players.values()].some((p) => p.isCPU === true);
     game.playerCount = players.size;
 
     this.broadcast(GAME_UPDATED, { game: this.toGameSessionInfo(game) });
@@ -809,13 +813,39 @@ export class LobbyRoom extends Room {
     };
   }
 
-  private createCpuPreGamePlayerInfo(): PreGamePlayerInfo {
+  private createCpuPreGamePlayerInfo(cpuSessionId: string): PreGamePlayerInfo {
+    const cpuNumber = this.extractCpuNumber(cpuSessionId);
     return {
-      userId: CPU_OPPONENT_SESSION_ID,
-      displayName: CPU_OPPONENT_DISPLAY_NAME,
+      userId: cpuSessionId,
+      displayName: `${CPU_OPPONENT_DISPLAY_NAME} ${cpuNumber}`,
       isReady: true,
       isCPU: true,
     };
+  }
+
+  private nextCpuSessionId(players: Map<string, PreGamePlayerInfo>): string {
+    let maxNum = 0;
+    for (const key of players.keys()) {
+      if (isCpuSessionId(key)) {
+        const num = this.extractCpuNumber(key);
+        if (num > maxNum) maxNum = num;
+      }
+    }
+    return `${CPU_SESSION_ID_PREFIX}${maxNum + 1}`;
+  }
+
+  private extractCpuNumber(cpuSessionId: string): number {
+    const suffix = cpuSessionId.slice(CPU_SESSION_ID_PREFIX.length);
+    const num = Number.parseInt(suffix, 10);
+    return Number.isFinite(num) && num > 0 ? num : 1;
+  }
+
+  private findLastCpuSessionId(players: Map<string, PreGamePlayerInfo>): string | undefined {
+    let lastCpu: string | undefined;
+    for (const key of players.keys()) {
+      if (isCpuSessionId(key)) lastCpu = key;
+    }
+    return lastCpu;
   }
 
   private sendAvailableGameTypes(client: Client) {

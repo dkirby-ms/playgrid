@@ -29,6 +29,8 @@ const { mockCreateRoom, mockGameRegistry, mockedCloseCode, sharedExports } = vi.
     ONLINE_PLAYERS: "online_players",
     LOBBY_LOG_EVENT: "lobby_log_event",
     AVAILABLE_GAME_TYPES: "available_game_types",
+    CPU_SESSION_ID_PREFIX: "cpu-opponent-",
+    isCpuSessionId: (id: string) => id.startsWith("cpu-opponent-"),
     DEFAULT_MAP_SIZE: 128,
     LOBBY_DEFAULTS: {
       MIN_PLAYERS: 1,
@@ -281,9 +283,9 @@ describeLobby("LobbyRoom pregame flow", () => {
       playerCount: 2,
       cpuOpponent: true,
     });
-    expect(getWaitingPlayers(room, gameId).get("cpu-opponent")).toMatchObject({
-      userId: "cpu-opponent",
-      displayName: "CPU Opponent",
+    expect(getWaitingPlayers(room, gameId).get("cpu-opponent-1")).toMatchObject({
+      userId: "cpu-opponent-1",
+      displayName: "CPU Opponent 1",
       isReady: true,
       isCPU: true,
     });
@@ -366,6 +368,7 @@ describeLobby("LobbyRoom pregame flow", () => {
       maxPlayers: 4,
       expectedPlayers: 2,
       cpuOpponent: false,
+      cpuSessionIds: [],
     });
     expect(getGame(room, gameId)?.status).toBe("in_progress");
     expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
@@ -384,6 +387,7 @@ describeLobby("LobbyRoom pregame flow", () => {
       maxPlayers: 2,
       expectedPlayers: 2,
       cpuOpponent: true,
+      cpuSessionIds: ["cpu-opponent-1"],
     });
     expect(getGame(room, gameId)?.status).toBe("in_progress");
     expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
@@ -402,6 +406,7 @@ describeLobby("LobbyRoom pregame flow", () => {
       maxPlayers: 4,
       expectedPlayers: 1,
       cpuOpponent: false,
+      cpuSessionIds: [],
     });
     expect(getGame(room, gameId)).toMatchObject({ headToHeadMode: true, status: "in_progress", playerCount: 1 });
     expect(findPayload(host, GAME_STARTED)).toEqual({
@@ -792,6 +797,7 @@ describeLobby("LobbyRoom pregame flow", () => {
       maxPlayers: 4,
       expectedPlayers: 1,
       cpuOpponent: false,
+      cpuSessionIds: [],
     });
     expect(findPayload(host, GAME_STARTED)).toEqual({ gameId, roomId: "game-room-123", gameType: "checkers" });
   });
