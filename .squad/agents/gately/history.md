@@ -2151,3 +2151,53 @@ All scene classes managing lobby waiting state must implement `cleanup()` and ca
 
 **Coordination:** Both fixes address systemic patterns—Ortho fixed DOM rebuild click loss, this fix addressed incomplete state cleanup on exit. Together, they improve game lifecycle robustness.
 
+
+## 2026-03-22: Action Pending Guards — All Game Renderers ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass (803 tests)
+
+Added double-click protection and pending-state guards to all four game renderers per UX directive. Pattern: boolean flag set BEFORE `room.send()`, early-return in handlers while flag is true, cleared on `onStateChange()` (server confirmation).
+
+### Changes by Renderer
+
+**DominosRenderer.ts:**
+- Added `actionPending` flag
+- Guarded `sendPlay()` and `sendAction()` — early-return if pending
+- Disabled draw/pass sidebar buttons while pending
+- Cleared in `onStateChange()`
+
+**CheckersRenderer.ts:**
+- Added `movePending` flag
+- Guarded all three `room.send("move")` calls (piece click, square click, drag-drop)
+- Only guards the final move send, not intermediate selection clicks (preserves multi-capture flow)
+- Cleared in `onStateChange()`
+
+**RiskRenderer.ts:**
+- Added `actionPending` flag
+- Guarded territory actions: pickTerritory, placeArmy, attack, fortify (early-return at top of handler)
+- Guarded capture-move confirm button: disables button + shows "Moving…" text
+- Guarded sidebar buttons (End Phase, Fortify, Trade Cards): disabled attribute + flag check in onclick
+- Sidebar re-renders after button action to show disabled state immediately
+- Cleared in `onStateChange()`
+
+**BackgammonRenderer.ts:**
+- Added `movePending` flag (follows `isRollingDice` pattern)
+- Guarded `sendMove()` — early-return if pending
+- Guarded pass button: disables + shows "Passing…" text
+- Did NOT touch `isRollingDice` (already correct)
+- Cleared in `onStateChange()`
+
+### Files Modified
+- `client/src/renderers/DominosRenderer.ts`
+- `client/src/renderers/CheckersRenderer.ts`
+- `client/src/renderers/RiskRenderer.ts`
+- `client/src/renderers/BackgammonRenderer.ts`
+
+## Learnings
+
+- **Pending flag pattern for canvas renderers:** Use a single boolean per renderer (e.g., `actionPending`). Set before `room.send()`, clear in `onStateChange()`. Never use timeouts — server state updates are authoritative.
+- **Don't guard drag start, only drag completion:** DragHelper has its own state management. Only the final `room.send()` in the drop handler needs the pending guard.
+- **Checkers multi-capture:** `movePending` only guards the actual move send, not piece selection clicks. The server controls multi-capture chains via `mustCaptureFrom` — the flag clears on each state update, allowing the next capture in the chain.
+- **Risk has two button systems:** PixiJS canvas buttons (endPhaseButton, tradeCardsButton) and HTML sidebar buttons. Both need guarding. Sidebar buttons use `disabled` attribute + `updateSidebar()` re-render.
+- **BackgammonRenderer `isRollingDice` is the reference pattern:** Follows the same flag-before-send / clear-on-state-change approach. New `movePending` mirrors it.

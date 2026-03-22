@@ -91,6 +91,9 @@ export class WaitingRoom {
   private hasExplicitlyLeft = false;
   private cpuAddPending = false;
   private cpuAddTimeoutId: number | null = null;
+  private cpuRemovePending = false;
+  private cpuRemoveTimeoutId: number | null = null;
+  private leavePending = false;
 
   constructor() {
     const overlay = document.getElementById("waiting-room-overlay");
@@ -196,6 +199,9 @@ export class WaitingRoom {
         if (this.cpuAddPending && payload.players.some((p) => p.isCPU)) {
           this.clearCpuAddPending();
         }
+        if (this.cpuRemovePending && !payload.players.some((p) => p.isCPU)) {
+          this.clearCpuRemovePending();
+        }
 
         this.players = payload.players;
         const localPlayer = this.players.find((player) => player.userId === room.sessionId);
@@ -230,6 +236,10 @@ export class WaitingRoom {
         if (this.cpuAddPending) {
           this.clearCpuAddPending();
         }
+        if (this.cpuRemovePending) {
+          this.clearCpuRemovePending();
+        }
+        this.renderPlayerList();
         this.consoleLog?.error(payload.message);
       });
     }
@@ -242,7 +252,9 @@ export class WaitingRoom {
     this.players = [];
     this.hasGameStarted = false;
     this.hasExplicitlyLeft = false;
+    this.leavePending = false;
     this.clearCpuAddPending();
+    this.clearCpuRemovePending();
 
     this.titleEl.textContent = gameInfo?.name || "Waiting Room";
     this.subtitleEl.textContent = isHost
@@ -269,7 +281,9 @@ export class WaitingRoom {
     this.players = [];
     this.hasGameStarted = false;
     this.hasExplicitlyLeft = false;
+    this.leavePending = false;
     this.clearCpuAddPending();
+    this.clearCpuRemovePending();
     this.clearError();
     this.clearCopyFeedback();
     this.updateJoinLink();
@@ -308,12 +322,14 @@ export class WaitingRoom {
       if (player.isCPU) {
         meta.append(createChip("CPU"));
         if (this.isHost) {
-          const removeBtn = createElement("button", "waiting-room-remove-cpu", "✕");
+          const removeBtn = createElement("button", "waiting-room-remove-cpu", this.cpuRemovePending ? "⏳" : "✕");
           removeBtn.type = "button";
           removeBtn.title = "Remove CPU player";
-          removeBtn.addEventListener("click", () => {
-            this.room?.send(REMOVE_CPU_PLAYER, { gameId: this.gameId });
-          });
+          if (this.cpuRemovePending) {
+            (removeBtn as HTMLButtonElement).disabled = true;
+          } else {
+            removeBtn.addEventListener("click", () => this.requestRemoveCpu());
+          }
           meta.append(removeBtn);
         }
       }
@@ -412,6 +428,32 @@ export class WaitingRoom {
     }
   }
 
+  private requestRemoveCpu(): void {
+    if (!this.room || !this.gameId || this.cpuRemovePending) {
+      return;
+    }
+
+    this.cpuRemovePending = true;
+    this.room.send(REMOVE_CPU_PLAYER, { gameId: this.gameId });
+    this.renderPlayerList();
+
+    this.cpuRemoveTimeoutId = window.setTimeout(() => {
+      this.cpuRemoveTimeoutId = null;
+      if (this.cpuRemovePending) {
+        this.cpuRemovePending = false;
+        this.renderPlayerList();
+      }
+    }, 5000);
+  }
+
+  private clearCpuRemovePending(): void {
+    this.cpuRemovePending = false;
+    if (this.cpuRemoveTimeoutId !== null) {
+      window.clearTimeout(this.cpuRemoveTimeoutId);
+      this.cpuRemoveTimeoutId = null;
+    }
+  }
+
   private startGame(): void {
     if (!this.room || !this.gameId) {
       return;
@@ -423,11 +465,14 @@ export class WaitingRoom {
   }
 
   private leave(): void {
+    if (this.leavePending) return;
+    this.hasExplicitlyLeft = true;
+    this.leavePending = true;
+    this.leaveButton.disabled = true;
+    this.leaveButton.textContent = "Leaving…";
     if (this.room && this.gameId) {
       this.room.send(LEAVE_GAME, { gameId: this.gameId });
     }
-
-    this.hasExplicitlyLeft = true;
     this.hide();
     this.eventCallback?.({ type: "leave" });
   }

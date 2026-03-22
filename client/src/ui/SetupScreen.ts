@@ -743,6 +743,11 @@ export class SetupScreen {
   private createTimeoutId: number | null = null;
   private cpuAddPending = false;
   private cpuAddTimeoutId: number | null = null;
+  private cpuRemovePending = false;
+  private cpuRemoveTimeoutId: number | null = null;
+  private startPending = false;
+  private startTimeoutId: number | null = null;
+  private leavePending = false;
   private hasExplicitlyLeft = false;
 
   constructor() {
@@ -856,8 +861,12 @@ export class SetupScreen {
     this.isReady = false;
     this.isCreatePending = false;
     this.hasExplicitlyLeft = false;
+    this.leavePending = false;
+    this.startPending = false;
     this.players = [];
     this.clearCpuAddPending();
+    this.clearCpuRemovePending();
+    this.clearStartPending();
 
     this.bindRoom(room);
     this.buildConfigPanel(gameType);
@@ -885,8 +894,12 @@ export class SetupScreen {
     this.isReady = false;
     this.isCreatePending = false;
     this.hasExplicitlyLeft = false;
+    this.leavePending = false;
+    this.startPending = false;
     this.players = [];
     this.clearCpuAddPending();
+    this.clearCpuRemovePending();
+    this.clearStartPending();
 
     this.bindRoom(room);
     this.buildConfigPanel(this.gameType);
@@ -910,8 +923,11 @@ export class SetupScreen {
     this.isHost = false;
     this.isReady = false;
     this.isCreatePending = false;
+    this.leavePending = false;
     this.players = [];
     this.clearCpuAddPending();
+    this.clearCpuRemovePending();
+    this.clearStartPending();
     this.clearCreateTimeout();
     this.clearError();
   }
@@ -988,6 +1004,9 @@ export class SetupScreen {
       if (this.cpuAddPending && payload.players.some((p) => p.isCPU)) {
         this.clearCpuAddPending();
       }
+      if (this.cpuRemovePending && !payload.players.some((p) => p.isCPU)) {
+        this.clearCpuRemovePending();
+      }
 
       this.players = payload.players;
       const localPlayer = this.players.find((p) => p.userId === room.sessionId);
@@ -1002,6 +1021,7 @@ export class SetupScreen {
     room.onMessage(GAME_STARTED, (payload: GameStartedPayload) => {
       if (payload.gameId !== this.gameId) return;
 
+      this.clearStartPending();
       this.hasExplicitlyLeft = true;
       this.hide();
       this.eventCallback?.({
@@ -1021,6 +1041,14 @@ export class SetupScreen {
       if (this.cpuAddPending) {
         this.clearCpuAddPending();
         this.renderPlayerList();
+      }
+      if (this.cpuRemovePending) {
+        this.clearCpuRemovePending();
+        this.renderPlayerList();
+      }
+      if (this.startPending) {
+        this.clearStartPending();
+        this.renderActions();
       }
       this.consoleLog?.error(payload.message);
     });
@@ -1170,12 +1198,16 @@ export class SetupScreen {
     if (player.isCPU) {
       nameRow.append(el("span", "setup-player-chip", "CPU"));
       if (this.isHost) {
-        const removeBtn = el("button", "setup-remove-cpu-btn", "✕") as HTMLButtonElement;
+        const removeBtn = el("button", "setup-remove-cpu-btn") as HTMLButtonElement;
         removeBtn.type = "button";
         removeBtn.title = "Remove CPU player";
-        removeBtn.addEventListener("click", () => {
-          this.room?.send(REMOVE_CPU_PLAYER, { gameId: this.gameId });
-        });
+        if (this.cpuRemovePending) {
+          removeBtn.textContent = "⏳";
+          removeBtn.disabled = true;
+        } else {
+          removeBtn.textContent = "✕";
+          removeBtn.addEventListener("click", () => this.requestRemoveCpu());
+        }
         nameRow.append(removeBtn);
       }
     }
@@ -1207,9 +1239,14 @@ export class SetupScreen {
     } else if (this.isHost) {
       const startBtn = el("button", "setup-action-btn start") as HTMLButtonElement;
       startBtn.type = "button";
-      const canStart = this.canStartGame();
-      startBtn.textContent = canStart ? "▶ Start Game" : "Waiting for players…";
-      startBtn.disabled = !canStart;
+      if (this.startPending) {
+        startBtn.textContent = "Starting…";
+        startBtn.disabled = true;
+      } else {
+        const canStart = this.canStartGame();
+        startBtn.textContent = canStart ? "▶ Start Game" : "Waiting for players…";
+        startBtn.disabled = !canStart;
+      }
       startBtn.addEventListener("click", () => this.startGame());
       this.actionsEl.append(startBtn);
     } else {
@@ -1222,7 +1259,12 @@ export class SetupScreen {
 
     const leaveBtn = el("button", "setup-action-btn ghost") as HTMLButtonElement;
     leaveBtn.type = "button";
-    leaveBtn.textContent = "← Back to Lobby";
+    if (this.leavePending) {
+      leaveBtn.textContent = "Leaving…";
+      leaveBtn.disabled = true;
+    } else {
+      leaveBtn.textContent = "← Back to Lobby";
+    }
     leaveBtn.addEventListener("click", () => this.leave());
     this.actionsEl.append(leaveBtn);
   }
@@ -1262,15 +1304,30 @@ export class SetupScreen {
   }
 
   private startGame(): void {
-    if (!this.room || !this.gameId) return;
+    if (!this.room || !this.gameId || this.startPending) return;
+
+    this.startPending = true;
     this.room.send(START_GAME, { gameId: this.gameId });
+    this.renderActions();
+
+    this.startTimeoutId = window.setTimeout(() => {
+      this.startTimeoutId = null;
+      if (this.startPending) {
+        this.startPending = false;
+        this.consoleLog?.error("Start timed out. Try again.");
+        this.renderActions();
+      }
+    }, 5000);
   }
 
   private leave(): void {
+    if (this.leavePending) return;
+    this.hasExplicitlyLeft = true;
+    this.leavePending = true;
     if (this.room && this.gameId && this.mode === "waiting") {
       this.room.send(LEAVE_GAME, { gameId: this.gameId });
     }
-    this.hasExplicitlyLeft = true;
+    this.renderActions();
     this.hide();
     this.eventCallback?.({ type: "leave" });
   }
@@ -1310,6 +1367,40 @@ export class SetupScreen {
     if (this.cpuAddTimeoutId !== null) {
       window.clearTimeout(this.cpuAddTimeoutId);
       this.cpuAddTimeoutId = null;
+    }
+  }
+
+  private requestRemoveCpu(): void {
+    if (!this.room || !this.gameId || this.cpuRemovePending) {
+      return;
+    }
+
+    this.cpuRemovePending = true;
+    this.room.send(REMOVE_CPU_PLAYER, { gameId: this.gameId });
+    this.renderPlayerList();
+
+    this.cpuRemoveTimeoutId = window.setTimeout(() => {
+      this.cpuRemoveTimeoutId = null;
+      if (this.cpuRemovePending) {
+        this.cpuRemovePending = false;
+        this.renderPlayerList();
+      }
+    }, 5000);
+  }
+
+  private clearCpuRemovePending(): void {
+    this.cpuRemovePending = false;
+    if (this.cpuRemoveTimeoutId !== null) {
+      window.clearTimeout(this.cpuRemoveTimeoutId);
+      this.cpuRemoveTimeoutId = null;
+    }
+  }
+
+  private clearStartPending(): void {
+    this.startPending = false;
+    if (this.startTimeoutId !== null) {
+      window.clearTimeout(this.startTimeoutId);
+      this.startTimeoutId = null;
     }
   }
 

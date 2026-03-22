@@ -702,3 +702,53 @@ Any future button sending a server message should follow this pattern:
 
 **Team Directive:** dkirby-ms issued UX directive to audit & protect all 12+ unprotected server-bound actions. SetupScreen Start Game + LobbyScreen Join are priority areas for next iteration. Reference implementation: WaitingRoom.requestAddCpu() + SetupScreen.requestAddCpu().
 
+
+## 2026-03-22: Server-Bound Button Protection — P1 & P2 Complete ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass (803 tests)
+
+Applied the UX directive (visual feedback + double-click protection) to all P1 and P2 server-bound buttons, following the `requestAddCpu()` reference pattern.
+
+### Changes
+
+**P1 — LobbyScreen.ts (Join button):**
+- Added `joinPending`, `joinPendingGameId`, `joinTimeoutId` flags
+- `requestJoinGame(gameId)` — guard, set flag BEFORE send, re-render list with disabled "Joining…" button
+- All other join buttons disabled while one join is pending
+- Clear on GAME_JOINED, LOBBY_ERROR, or 5s timeout
+- `clearJoinPending()` method
+
+**P1 — SetupScreen.ts (Start Game button):**
+- Added `startPending`, `startTimeoutId` flags
+- `startGame()` now guards with `startPending`, disables + shows "Starting…"
+- Clear on GAME_STARTED, LOBBY_ERROR, or 5s timeout
+- `clearStartPending()` method
+
+**P2 — WaitingRoom.ts (Leave button):**
+- `hasExplicitlyLeft` now set BEFORE `room.send()` (was after)
+- Added `leavePending` flag — disables button + shows "Leaving…"
+- Guard prevents double-click
+
+**P2 — SetupScreen.ts (Leave/Back button):**
+- Same as WaitingRoom — `hasExplicitlyLeft` BEFORE send, `leavePending` guard + disabled state + "Leaving…" text
+
+**P2 — WaitingRoom.ts + SetupScreen.ts (Remove CPU button):**
+- Added `cpuRemovePending`, `cpuRemoveTimeoutId` flags to both
+- `requestRemoveCpu()` — guard, set flag BEFORE send, show "⏳" on button, disable
+- Clear on GAME_PLAYERS (when no CPU remains), LOBBY_ERROR, or 5s timeout
+- `clearCpuRemovePending()` method
+
+### Pattern
+
+All 5 items follow the established pattern:
+1. Guard flag set BEFORE `room.send()`
+2. Button disabled + text updated immediately
+3. Clear on expected server response or error
+4. 5s safety timeout fallback
+
+### Learnings
+
+- Leave buttons transition away immediately (hide + callback), so leavePending is mainly a double-click guard — the disabled state is only briefly visible.
+- Remove CPU uses the same GAME_PLAYERS confirmation signal as Add CPU, checking `!payload.players.some(p => p.isCPU)` to detect removal.
+- Join button in LobbyScreen lives inside `buildActiveGameCard()` which rebuilds on every `renderGameList()` call — the `joinPending` flag survives DOM rebuilds just like `cpuAddPending` does.
