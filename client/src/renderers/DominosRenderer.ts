@@ -210,6 +210,7 @@ export class DominosRenderer implements GameRenderer {
   private showTurnClock = false;
   private unsubscribeGameEnded: (() => void) | null = null;
   private unsubscribePlayerData: (() => void) | null = null;
+  private unsubscribeError: (() => void) | null = null;
 
   private phase = "waiting";
   private currentTurn = "";
@@ -487,6 +488,11 @@ export class DominosRenderer implements GameRenderer {
     // may not be registered yet at that point. Re-request it now that the
     // listener is in place so the hand is never silently lost.
     this.room.send("request-player-data");
+
+    // Reset actionPending when the server rejects an action (no state change fires)
+    this.unsubscribeError = this.room.onMessage("error", () => {
+      this.actionPending = false;
+    });
   }
 
   private unsubscribeFromRoomEvents(): void {
@@ -494,6 +500,8 @@ export class DominosRenderer implements GameRenderer {
     this.unsubscribeGameEnded = null;
     this.unsubscribePlayerData?.();
     this.unsubscribePlayerData = null;
+    this.unsubscribeError?.();
+    this.unsubscribeError = null;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

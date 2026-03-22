@@ -184,6 +184,7 @@ export class CheckersRenderer implements GameRenderer {
   private player1TimeRemainingMs = 600000;
   private player2TimeRemainingMs = 600000;
   private unsubscribeGameEnded: (() => void) | null = null;
+  private unsubscribeError: (() => void) | null = null;
   private board: number[] = Array.from({ length: BOARD_CELL_COUNT }, () => EMPTY);
   private phase = "waiting";
   private currentTurn = "";
@@ -984,11 +985,18 @@ export class CheckersRenderer implements GameRenderer {
       this.updateGameOverOverlay();
       this.updateSidebar();
     });
+
+    // Reset movePending when the server rejects an action (no state change fires)
+    this.unsubscribeError = this.room.onMessage("error", () => {
+      this.movePending = false;
+    });
   }
 
   private unsubscribeFromRoomEvents(): void {
     this.unsubscribeGameEnded?.();
     this.unsubscribeGameEnded = null;
+    this.unsubscribeError?.();
+    this.unsubscribeError = null;
   }
 
   private applyState(state: unknown): void {

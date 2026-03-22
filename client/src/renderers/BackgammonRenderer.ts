@@ -373,6 +373,7 @@ export class BackgammonRenderer implements GameRenderer {
   private turnClockSeconds: number | null = null;
   private showTurnClock = false;
   private unsubscribeGameEnded: (() => void) | null = null;
+  private unsubscribeError: (() => void) | null = null;
   private points: number[] = Array.from({ length: BOARD_POINT_COUNT }, () => EMPTY_POINT);
   private blackBar = 0;
   private redBar = 0;
@@ -1381,11 +1382,18 @@ export class BackgammonRenderer implements GameRenderer {
       this.updateGameOverOverlay();
       this.updateSidebar();
     });
+
+    // Reset movePending when the server rejects an action (no state change fires)
+    this.unsubscribeError = this.room.onMessage("error", () => {
+      this.movePending = false;
+    });
   }
 
   private unsubscribeFromRoomEvents(): void {
     this.unsubscribeGameEnded?.();
     this.unsubscribeGameEnded = null;
+    this.unsubscribeError?.();
+    this.unsubscribeError = null;
   }
 
   private applyState(state: unknown): void {
