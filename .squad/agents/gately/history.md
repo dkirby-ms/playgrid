@@ -2095,3 +2095,20 @@ The dice now visually indicate whose turn it is by appearing on their side of th
 - **Dynamic UI positioning based on game state:** Dice position can be driven by `currentTurn` → `playerIndex` → `playerColor` → board geometry. This pattern makes turn state visible without needing explicit HUD elements.
 - **Backgammon home board locations:** Black's home is points 0-5 (bottom-right in standard orientation), Red's home is points 18-23 (top-right). Dice should appear near these zones to indicate whose turn it is.
 
+
+## Learnings — Stale Lobby State Fix (2026-03-20)
+
+**Root Cause:** When a player left an in-progress game room, the LobbyRoom's `session.currentGameId` was never cleared. The client only sent `LEAVE_GAME` for waiting-room exits (SetupScreen/WaitingRoom), not for in-progress game exits. The `GAME_ROOM_DISPOSED_TOPIC` only fires when the room fully disposes, creating a race condition.
+
+**Key File Paths:**
+- `server/src/rooms/LobbyRoom.ts` — `handleCreateGame()`, `handleJoinGame()`, `clearStaleGameAssignment()`
+- `client/src/Application.ts` — `leaveGame()`, `handleGameRoomLeave()`, `notifyLobbyGameLeft()`
+- `client/src/ui/SetupScreen.ts` — `cleanup()` method added (mirrors WaitingRoom pattern)
+- `client/src/scenes/SetupScene.ts` — `onExit()` now calls `cleanup()`
+- `server/src/__tests__/lobby-pregame.test.ts` — 4 regression tests for stale-state
+
+**Architecture Pattern: Two-pronged cleanup for Colyseus room lifecycle**
+1. Client-side notification: Always send `LEAVE_GAME` to lobby when exiting any game room
+2. Server-side defensive validation: Auto-clear `currentGameId` if it references a non-existent or in-progress game
+
+**Convention:** All scene classes that manage lobby waiting state must implement `cleanup()` and call it from `onExit()` — see WaitingRoom and SetupScreen as reference implementations.

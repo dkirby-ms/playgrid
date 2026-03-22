@@ -89,6 +89,8 @@ export class WaitingRoom {
   private copyFeedbackTimeoutId: number | null = null;
   private hasGameStarted = false;
   private hasExplicitlyLeft = false;
+  private cpuAddPending = false;
+  private cpuAddTimeoutId: number | null = null;
 
   constructor() {
     const overlay = document.getElementById("waiting-room-overlay");
@@ -191,6 +193,10 @@ export class WaitingRoom {
           return;
         }
 
+        if (this.cpuAddPending && payload.players.some((p) => p.isCPU)) {
+          this.clearCpuAddPending();
+        }
+
         this.players = payload.players;
         const localPlayer = this.players.find((player) => player.userId === room.sessionId);
         this.isReady = localPlayer?.isReady ?? this.isReady;
@@ -221,6 +227,9 @@ export class WaitingRoom {
           return;
         }
 
+        if (this.cpuAddPending) {
+          this.clearCpuAddPending();
+        }
         this.consoleLog?.error(payload.message);
       });
     }
@@ -233,6 +242,7 @@ export class WaitingRoom {
     this.players = [];
     this.hasGameStarted = false;
     this.hasExplicitlyLeft = false;
+    this.clearCpuAddPending();
 
     this.titleEl.textContent = gameInfo?.name || "Waiting Room";
     this.subtitleEl.textContent = isHost
@@ -259,6 +269,7 @@ export class WaitingRoom {
     this.players = [];
     this.hasGameStarted = false;
     this.hasExplicitlyLeft = false;
+    this.clearCpuAddPending();
     this.clearError();
     this.clearCopyFeedback();
     this.updateJoinLink();
@@ -327,11 +338,20 @@ export class WaitingRoom {
       !hasCpu
     ) {
       const slot = createElement("li", "waiting-room-add-cpu");
-      const addBtn = createElement("button", "waiting-room-add-cpu-btn", "🤖 Add CPU Player");
+      const addBtn = createElement("button", "waiting-room-add-cpu-btn") as HTMLButtonElement;
       addBtn.type = "button";
-      addBtn.addEventListener("click", () => {
-        this.room?.send(ADD_CPU_PLAYER, { gameId: this.gameId });
-      });
+
+      if (this.cpuAddPending) {
+        addBtn.textContent = "⏳ Adding CPU…";
+        addBtn.disabled = true;
+        slot.classList.add("pending");
+      } else {
+        addBtn.textContent = "🤖 Add CPU Player";
+        addBtn.addEventListener("click", () => {
+          this.requestAddCpu();
+        });
+      }
+
       slot.append(addBtn);
       this.playerListEl.append(slot);
     }
@@ -364,6 +384,32 @@ export class WaitingRoom {
     const payload: SetReadyPayload = { ready: this.isReady };
     this.room.send(SET_READY, payload);
     this.updateControls();
+  }
+
+  private requestAddCpu(): void {
+    if (!this.room || !this.gameId || this.cpuAddPending) {
+      return;
+    }
+
+    this.cpuAddPending = true;
+    this.room.send(ADD_CPU_PLAYER, { gameId: this.gameId });
+    this.renderPlayerList();
+
+    this.cpuAddTimeoutId = window.setTimeout(() => {
+      this.cpuAddTimeoutId = null;
+      if (this.cpuAddPending) {
+        this.cpuAddPending = false;
+        this.renderPlayerList();
+      }
+    }, 5000);
+  }
+
+  private clearCpuAddPending(): void {
+    this.cpuAddPending = false;
+    if (this.cpuAddTimeoutId !== null) {
+      window.clearTimeout(this.cpuAddTimeoutId);
+      this.cpuAddTimeoutId = null;
+    }
   }
 
   private startGame(): void {

@@ -1173,6 +1173,20 @@
       .waiting-room-add-cpu:hover .waiting-room-add-cpu-btn {
         color: rgba(255, 255, 255, 0.85);
       }
+      .waiting-room-add-cpu.pending {
+        border-color: rgba(126, 207, 255, 0.3);
+        background: rgba(126, 207, 255, 0.05);
+        cursor: default;
+        animation: cpu-pending-pulse 1.5s ease-in-out infinite;
+      }
+      .waiting-room-add-cpu.pending .waiting-room-add-cpu-btn {
+        color: rgba(126, 207, 255, 0.7);
+        cursor: default;
+      }
+      @keyframes cpu-pending-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+      }
 
       .waiting-room-remove-cpu {
         background: none;
