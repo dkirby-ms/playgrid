@@ -2,6 +2,7 @@ import type { Room } from "@colyseus/sdk";
 import {
   BLACK,
   BLACK_KING,
+  CPU_SESSION_ID_PREFIX,
   EMPTY,
   RED,
   RED_KING,
@@ -1144,7 +1145,7 @@ export class CheckersRenderer implements GameRenderer {
     return Array.from(this.players.entries()).some(([sessionId, player]) => (
       !player.isSpectator
       && sessionId !== localSessionId
-      && sessionId !== "cpu-opponent"
+      && !sessionId.startsWith(CPU_SESSION_ID_PREFIX)
       && player.controllerSessionId === localSessionId
     ));
   }

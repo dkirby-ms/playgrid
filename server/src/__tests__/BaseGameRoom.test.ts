@@ -220,7 +220,7 @@ describeRoom("BaseGameRoom", () => {
     });
 
     mockGameRegistry.get.mockReturnValue(plugin);
-    room.onCreate({ gameType: "checkers", expectedPlayers: 2, cpuOpponent: true });
+    room.onCreate({ gameType: "checkers", expectedPlayers: 2, cpuOpponent: true, cpuSessionIds: ["cpu-opponent-1"] });
 
     const humanPlayer = createClient("player-1");
     room.clients.push(humanPlayer);
@@ -230,11 +230,11 @@ describeRoom("BaseGameRoom", () => {
     expect(plugin.lifecycle.onPlayerJoin).toHaveBeenNthCalledWith(
       2,
       room.state,
-      expect.objectContaining({ sessionId: "cpu-opponent" }),
+      expect.objectContaining({ sessionId: "cpu-opponent-1" }),
       1,
     );
-    expect(room.state.players.get("cpu-opponent")).toMatchObject({
-      displayName: "CPU Opponent",
+    expect(room.state.players.get("cpu-opponent-1")).toMatchObject({
+      displayName: "CPU Opponent 1",
       playerIndex: 1,
       isConnected: true,
     });

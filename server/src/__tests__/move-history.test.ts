@@ -506,17 +506,17 @@ describeRoom("Move History — P6.1 Core Infrastructure", () => {
       room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
 
       const humanPlayer = createClient("player-1");
-      const cpuClient = createClient("cpu-opponent");
+      const cpuClient = createClient("cpu-opponent-1");
       room.clients.push(humanPlayer, cpuClient);
       room.onJoin(humanPlayer, { displayName: "Alice" });
-      room.onJoin(cpuClient, { displayName: "CPU Opponent" });
+      room.onJoin(cpuClient, { displayName: "CPU Opponent 1" });
 
       await room.messageHandlers.get("move")?.(humanPlayer, { from: 17, to: 24 });
       await room.messageHandlers.get("move")?.(cpuClient, { from: 40, to: 33 });
 
       expect(room.moveHistory).toHaveLength(2);
-      expect(room.moveHistory[1].playerId).toBe("cpu-opponent");
-      expect(room.moveHistory[1].playerName).toBe("CPU Opponent");
+      expect(room.moveHistory[1].playerId).toBe("cpu-opponent-1");
+      expect(room.moveHistory[1].playerName).toBe("CPU Opponent 1");
     });
 
     it("distinguishes CPU moves from human player moves", async () => {
@@ -526,10 +526,10 @@ describeRoom("Move History — P6.1 Core Infrastructure", () => {
       room.onCreate({ gameType: "checkers", expectedPlayers: 2 });
 
       const humanPlayer = createClient("player-1");
-      const cpuClient = createClient("cpu-opponent");
+      const cpuClient = createClient("cpu-opponent-1");
       room.clients.push(humanPlayer, cpuClient);
       room.onJoin(humanPlayer, { displayName: "Alice" });
-      room.onJoin(cpuClient, { displayName: "CPU Opponent" });
+      room.onJoin(cpuClient, { displayName: "CPU Opponent 1" });
 
       await room.messageHandlers.get("move")?.(humanPlayer, { from: 17, to: 24 });
       await room.messageHandlers.get("move")?.(cpuClient, { from: 40, to: 33 });
@@ -538,7 +538,7 @@ describeRoom("Move History — P6.1 Core Infrastructure", () => {
       const cpuMove = room.moveHistory[1] as MoveEntry;
 
       expect(humanMove.playerId).not.toBe(cpuMove.playerId);
-      expect(cpuMove.playerId).toBe("cpu-opponent");
+      expect(cpuMove.playerId).toBe("cpu-opponent-1");
     });
   });
 

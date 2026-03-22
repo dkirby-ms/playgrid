@@ -322,13 +322,14 @@ export class WaitingRoom {
       if (player.isCPU) {
         meta.append(createChip("CPU"));
         if (this.isHost) {
+          const cpuUserId = player.userId;
           const removeBtn = createElement("button", "waiting-room-remove-cpu", this.cpuRemovePending ? "⏳" : "✕");
           removeBtn.type = "button";
           removeBtn.title = "Remove CPU player";
           if (this.cpuRemovePending) {
             (removeBtn as HTMLButtonElement).disabled = true;
           } else {
-            removeBtn.addEventListener("click", () => this.requestRemoveCpu());
+            removeBtn.addEventListener("click", () => this.requestRemoveCpu(cpuUserId));
           }
           meta.append(removeBtn);
         }
@@ -344,14 +345,12 @@ export class WaitingRoom {
       this.playerListEl.append(item);
     }
 
-    // Add CPU Player slot (host only, CPU-supporting games, room not full, no CPU yet)
-    const hasCpu = this.players.some((p) => p.isCPU);
+    // Add CPU Player slot (host only, CPU-supporting games, room not full)
     const maxPlayers = this.gameInfo?.maxPlayers ?? 0;
     if (
       this.isHost &&
       this.supportsCpuOpponent() &&
-      this.players.length < maxPlayers &&
-      !hasCpu
+      this.players.length < maxPlayers
     ) {
       const slot = createElement("li", "waiting-room-add-cpu");
       const addBtn = createElement("button", "waiting-room-add-cpu-btn") as HTMLButtonElement;
@@ -428,13 +427,13 @@ export class WaitingRoom {
     }
   }
 
-  private requestRemoveCpu(): void {
+  private requestRemoveCpu(cpuSessionId: string): void {
     if (!this.room || !this.gameId || this.cpuRemovePending) {
       return;
     }
 
     this.cpuRemovePending = true;
-    this.room.send(REMOVE_CPU_PLAYER, { gameId: this.gameId });
+    this.room.send(REMOVE_CPU_PLAYER, { gameId: this.gameId, cpuSessionId });
     this.renderPlayerList();
 
     this.cpuRemoveTimeoutId = window.setTimeout(() => {
@@ -509,10 +508,9 @@ export class WaitingRoom {
   }
 
   private updateInviteSectionVisibility(): void {
-    const hasCpu = this.players.some((p) => p.isCPU);
     const isFull =
       this.gameInfo != null && this.players.length >= this.gameInfo.maxPlayers;
-    this.inviteSection.style.display = hasCpu || isFull ? "none" : "";
+    this.inviteSection.style.display = isFull ? "none" : "";
   }
 
   private updatePlayerCount(): void {
