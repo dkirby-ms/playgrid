@@ -1,7 +1,6 @@
 import { Container } from "pixi.js";
 import { RendererRegistry, type GameRenderer } from "../renderers";
 import type { Scene } from "./Scene";
-import { SandboxStatePanel } from "../sandbox/SandboxStatePanel";
 import {
   createMockCheckersState,
   createMockBackgammonState,
@@ -17,7 +16,6 @@ export class SandboxScene implements Scene {
   readonly container = new Container();
 
   private renderer: GameRenderer | null = null;
-  private statePanel: SandboxStatePanel | null = null;
   private width = 0;
   private height = 0;
   private currentState: unknown = null;
@@ -50,13 +48,6 @@ export class SandboxScene implements Scene {
     });
     this.container.addChild(this.renderer.container);
 
-    this.statePanel = new SandboxStatePanel(gameType, this.currentState);
-    this.statePanel.onStateChange((newState) => {
-      this.currentState = newState;
-      this.renderer?.onStateChange(newState);
-    });
-    this.statePanel.mount(document.body);
-
     if (this.width > 0 && this.height > 0) {
       this.renderer.resize(this.width, this.height);
     }
@@ -77,9 +68,6 @@ export class SandboxScene implements Scene {
   }
 
   private cleanup(): void {
-    this.statePanel?.destroy();
-    this.statePanel = null;
-
     if (!this.renderer) {
       return;
     }

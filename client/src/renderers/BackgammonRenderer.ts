@@ -1786,9 +1786,7 @@ export class BackgammonRenderer implements GameRenderer {
       `<div class="sidebar-stat-list">
         <div class="sidebar-stat-row"><span class="sidebar-stat-label">Current turn</span><span class="sidebar-stat-value">${escapeHtml(this.getCurrentTurnLabel())}</span></div>
         ${getTurnClockMarkup(this.turnClockSeconds, this.showTurnClock)}
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Dice</span><span class="sidebar-stat-value">${escapeHtml(this.getDiceLabel())}</span></div>
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Black pip count</span><span class="sidebar-stat-value">${black}</span></div>
-        <div class="sidebar-stat-row"><span class="sidebar-stat-label">White pip count</span><span class="sidebar-stat-value">${red}</span></div>
+        <div class="sidebar-stat-row"><span class="sidebar-stat-label">Pips</span><span class="sidebar-stat-value">${black} / ${red}</span></div>
       </div>${notes.join("")}`,
     );
 
@@ -1857,23 +1855,6 @@ export class BackgammonRenderer implements GameRenderer {
     }
 
     return "Player";
-  }
-
-  private getDiceLabel(): string {
-    if (this.isRollingDice) {
-      return "Rolling…";
-    }
-
-    const [die1, die2] = this.dice;
-    if (die1 <= 0 || die2 <= 0) {
-      return "Click dice to roll";
-    }
-
-    const values = [
-      this.usedDice[0] ? `${die1} used` : String(die1),
-      this.usedDice[1] ? `${die2} used` : String(die2),
-    ];
-    return values.join(" • ");
   }
 
   private getPipCounts(): { black: number; red: number } {
