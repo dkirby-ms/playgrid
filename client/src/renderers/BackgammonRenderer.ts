@@ -7,6 +7,7 @@ import {
 } from "@eschaton/shared";
 import { Container, Graphics, Text } from "pixi.js";
 import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
+import { TweenManager } from "./TweenManager";
 import {
   ACCENT_BLUE,
   BACKGAMMON_OVERLAY_ALPHA,
@@ -59,6 +60,7 @@ const GAME_ENDED_MESSAGE = "game-end";
 const MAX_VISIBLE_STACK = 5;
 const MAX_SIDEBAR_HISTORY_ITEMS = 8;
 const EMPTY_POINT = 0;
+const PIECE_ANIM_DURATION_MS = 250;
 
 type BackgammonColor = typeof BLACK | typeof RED;
 type BackgammonSource = number | "bar";
@@ -414,6 +416,13 @@ export class BackgammonRenderer implements GameRenderer {
   private rollAnimationFrame = 0;
   private rollAnimationDuration = 40;
 
+  // Piece movement animation
+  private readonly animLayer = new Container();
+  private readonly tweens = new TweenManager();
+  private prevPoints: number[] = Array.from({ length: BOARD_POINT_COUNT }, () => EMPTY_POINT);
+  private prevBlackBar = 0;
+  private prevRedBar = 0;
+
   constructor() {
     this.piecesLayer.eventMode = "none";
     this.diceLayer.eventMode = "static";
@@ -489,6 +498,7 @@ export class BackgammonRenderer implements GameRenderer {
       this.playerColorText,
       this.boardLayer,
       this.piecesLayer,
+      this.animLayer,
       this.diceLayer,
       this.blackOffText,
       this.redOffText,
@@ -507,6 +517,7 @@ export class BackgammonRenderer implements GameRenderer {
     this.moveHistory = [];
     this.turnClockSeconds = null;
     this.showTurnClock = false;
+    this.tweens.cancelAll();
     this.sidebar?.destroy();
     this.sidebar = new GameSidebar();
     this.sidebar.addPanel("game-info", "Game Info");
@@ -515,6 +526,7 @@ export class BackgammonRenderer implements GameRenderer {
     this.sidebar.show();
     this.subscribeToRoomEvents();
     this.applyState(state);
+    this.snapshotBoardState();
     this.layout();
     this.redrawBoard();
     this.redrawPieces();
@@ -525,16 +537,27 @@ export class BackgammonRenderer implements GameRenderer {
 
   onStateChange(state: unknown): void {
     this.movePending = false;
+
+    // Snapshot previous state for animation detection
+    const oldPoints = this.prevPoints;
+    const oldBlackBar = this.prevBlackBar;
+    const oldRedBar = this.prevRedBar;
+
     this.applyState(state);
+    this.snapshotBoardState();
     this.syncSelectionWithState();
     this.redrawBoard();
     this.redrawPieces();
     this.updateHud();
     this.updateGameOverOverlay();
     this.updateSidebar();
+
+    this.animatePieceMovement(oldPoints, oldBlackBar, oldRedBar);
   }
 
   update(_deltaTime: number): void {
+    this.tweens.tick(_deltaTime);
+
     if (this.isRollingDice) {
       this.rollAnimationFrame += 1;
       if (this.rollAnimationFrame >= this.rollAnimationDuration) {
@@ -565,6 +588,7 @@ export class BackgammonRenderer implements GameRenderer {
 
   destroy(): void {
     this.unsubscribeFromRoomEvents();
+    this.tweens.cancelAll();
     this.room = null;
     this.requestLeave = null;
     this.players.clear();
@@ -576,6 +600,7 @@ export class BackgammonRenderer implements GameRenderer {
     this.sidebar?.destroy();
     this.sidebar = null;
     this.clearPieces();
+    this.animLayer.removeChildren();
     this.pointGraphics.length = 0;
     this.container.destroy({ children: true });
   }
@@ -1106,6 +1131,126 @@ export class BackgammonRenderer implements GameRenderer {
     for (const child of this.piecesLayer.removeChildren()) {
       child.destroy();
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Piece movement animation
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  private snapshotBoardState(): void {
+    this.prevPoints = [...this.points];
+    this.prevBlackBar = this.blackBar;
+    this.prevRedBar = this.redBar;
+  }
+
+  /**
+   * Detect which point lost a piece and which gained one, then animate
+   * a temporary disc from the source to the destination.
+   */
+  private animatePieceMovement(
+    oldPoints: number[],
+    oldBlackBar: number,
+    oldRedBar: number,
+  ): void {
+    const discRadius = Math.max(10, this.pointWidth * 0.38);
+    const outlineWidth = Math.max(1, this.pointWidth * 0.05);
+    const edgePadding = Math.max(8, this.pointWidth * 0.14);
+
+    // Determine which color moved: compare bar and point changes
+    let movedColor: BackgammonColor | null = null;
+    let fromPos: { x: number; y: number } | null = null;
+    let toPos: { x: number; y: number } | null = null;
+
+    // Check for bar entry (piece leaving bar)
+    const barCenterX = this.playX + (POINTS_PER_QUADRANT * this.pointWidth) + (this.barWidth / 2);
+    const blackBarHalfHeight = (this.playHeight - this.centerGap) / 2;
+
+    if (this.blackBar < oldBlackBar) {
+      movedColor = BLACK;
+      const barY = this.isFlipped
+        ? this.playY + this.playHeight - this.centerGap / 2 - blackBarHalfHeight / 2
+        : this.playY + this.centerGap / 2 + blackBarHalfHeight / 2;
+      fromPos = { x: barCenterX, y: barY };
+    } else if (this.redBar < oldRedBar) {
+      movedColor = RED;
+      const barY = this.isFlipped
+        ? this.playY + this.centerGap / 2 + blackBarHalfHeight / 2
+        : this.playY + this.playHeight - this.centerGap / 2 - blackBarHalfHeight / 2;
+      fromPos = { x: barCenterX, y: barY };
+    }
+
+    // Find source and destination points from board diffs
+    for (let i = 0; i < BOARD_POINT_COUNT; i += 1) {
+      const diff = this.points[i] - oldPoints[i];
+      if (diff === 0) continue;
+
+      const geometry = this.getPointGeometry(i);
+      const centerX = geometry.x + (geometry.width / 2);
+      const isTopRow = geometry.isTopRow;
+      const originY = isTopRow
+        ? this.playY + discRadius + edgePadding
+        : this.playY + this.playHeight - discRadius - edgePadding;
+
+      // Determine color from point value signs, not diff direction
+      if (movedColor === null) {
+        if (oldPoints[i] > 0 && diff < 0) {
+          movedColor = BLACK;
+        } else if (oldPoints[i] < 0 && diff > 0) {
+          movedColor = RED;
+        } else if (this.points[i] > 0 && diff > 0) {
+          movedColor = BLACK;
+        } else if (this.points[i] < 0 && diff < 0) {
+          movedColor = RED;
+        }
+      }
+
+      // Source: point lost a piece of the moving color
+      if (fromPos === null) {
+        if ((movedColor === BLACK && diff < 0) || (movedColor === RED && diff > 0)) {
+          const stackCount = Math.abs(oldPoints[i]);
+          const stackSpacing = discRadius * 0.56;
+          const direction = isTopRow ? 1 : -1;
+          const topPieceIndex = Math.min(stackCount, MAX_VISIBLE_STACK) - 1;
+          fromPos = { x: centerX, y: originY + stackSpacing * topPieceIndex * direction };
+        }
+      }
+
+      // Destination: point gained a piece of the moving color
+      if ((movedColor === BLACK && diff > 0) || (movedColor === RED && diff < 0)) {
+        const stackCount = Math.abs(this.points[i]);
+        const stackSpacing = discRadius * 0.56;
+        const direction = isTopRow ? 1 : -1;
+        const topPieceIndex = Math.min(stackCount, MAX_VISIBLE_STACK) - 1;
+        toPos = { x: centerX, y: originY + stackSpacing * topPieceIndex * direction };
+      }
+    }
+
+    if (!fromPos || !toPos || !movedColor) return;
+
+    // Create a temporary disc for the animation
+    const animPiece = new Graphics();
+    animPiece.eventMode = "none";
+
+    const bodyGradient = createPieceBodyGradient(this.getPieceVariant(movedColor));
+    const highlightGradient = createPieceHighlightGradient();
+    animPiece.circle(0, 0, discRadius)
+      .fill(bodyGradient)
+      .stroke({ color: this.getPieceBorderColor(movedColor), width: outlineWidth, alpha: 0.95 });
+    animPiece.circle(0, 0, discRadius * 0.92)
+      .fill(highlightGradient);
+
+    this.animLayer.addChild(animPiece);
+
+    this.tweens.animate(animPiece, {
+      fromX: fromPos.x,
+      fromY: fromPos.y,
+      toX: toPos.x,
+      toY: toPos.y,
+      duration: PIECE_ANIM_DURATION_MS,
+      onComplete: () => {
+        animPiece.destroy();
+      },
+    });
   }
 
   private handlePointClick(index: number): void {

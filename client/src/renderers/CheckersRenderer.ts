@@ -18,6 +18,7 @@ import {
 } from "../games/checkers/checkersClientLogic";
 import { GameSidebar, escapeHtml, getTurnClockMarkup, getChessClockMarkup } from "../ui/GameSidebar";
 import { DragHelper } from "./DragHelper";
+import { TweenManager } from "./TweenManager";
 import {
   ACCENT_BLUE,
   AMBER_500,
@@ -92,6 +93,7 @@ const MAX_SIDEBAR_HISTORY_ITEMS = 8;
 const COORD_LABEL_COLOR = 0xa8a29e;
 const COLUMN_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const ROW_NUMBERS = ["8", "7", "6", "5", "4", "3", "2", "1"];
+const PIECE_ANIM_DURATION_MS = 250;
 
 function toCssHexColor(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
@@ -205,6 +207,11 @@ export class CheckersRenderer implements GameRenderer {
   private boardOffsetY = TOP_HUD_SPACE
     + ((DEFAULT_HEIGHT - TOP_HUD_SPACE - BOTTOM_HUD_SPACE - this.boardSize) / 2);
 
+  // Piece movement animation
+  private readonly animLayer = new Container();
+  private readonly tweens = new TweenManager();
+  private prevBoard: number[] = Array.from({ length: BOARD_CELL_COUNT }, () => EMPTY);
+
   constructor() {
     this.container.eventMode = "static";
     this.piecesLayer.eventMode = "none";
@@ -271,6 +278,7 @@ export class CheckersRenderer implements GameRenderer {
       this.coordLabelsContainer,
       this.boardLayer,
       this.piecesLayer,
+      this.animLayer,
       this.dragLayer,
       this.capturedPiecesGraphics,
       this.blackCountText,
@@ -298,6 +306,7 @@ export class CheckersRenderer implements GameRenderer {
     this.moveHistory = [];
     this.turnClockSeconds = null;
     this.showTurnClock = false;
+    this.tweens.cancelAll();
     this.sidebar?.destroy();
     this.sidebar = new GameSidebar();
     this.sidebar.addPanel("game-info", "Game Info");
@@ -307,6 +316,7 @@ export class CheckersRenderer implements GameRenderer {
     this.sidebar.show();
     this.subscribeToRoomEvents();
     this.applyState(state);
+    this.prevBoard = [...this.board];
     this.layout();
     this.redrawBoard();
     this.redrawPieces();
@@ -317,7 +327,12 @@ export class CheckersRenderer implements GameRenderer {
 
   onStateChange(state: unknown): void {
     this.movePending = false;
+
+    // Snapshot previous board for animation detection
+    const oldBoard = this.prevBoard;
+
     this.applyState(state);
+    this.prevBoard = [...this.board];
     this.syncSelectionWithState();
 
     // Only cancel a drag if the source piece is no longer valid (e.g. turn changed,
@@ -334,9 +349,13 @@ export class CheckersRenderer implements GameRenderer {
     this.updateHud();
     this.updateGameOverOverlay();
     this.updateSidebar();
+
+    this.animatePieceMovement(oldBoard);
   }
 
-  update(_deltaTime: number): void {}
+  update(deltaTime: number): void {
+    this.tweens.tick(deltaTime);
+  }
 
   resize(width: number, height: number): void {
     this.width = width;
@@ -370,6 +389,7 @@ export class CheckersRenderer implements GameRenderer {
 
   destroy(): void {
     this.unsubscribeFromRoomEvents();
+    this.tweens.cancelAll();
     this.dragHelper?.destroy();
     this.dragHelper = null;
     this.dragSourceIndex = null;
@@ -384,6 +404,7 @@ export class CheckersRenderer implements GameRenderer {
     this.sidebar?.destroy();
     this.sidebar = null;
     this.clearPieces();
+    this.animLayer.removeChildren();
     this.capturedPiecesGraphics.clear();
     this.squareGraphics.length = 0;
     this.container.destroy({ children: true });
@@ -680,6 +701,99 @@ export class CheckersRenderer implements GameRenderer {
     for (const child of this.piecesLayer.removeChildren()) {
       child.destroy();
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Piece movement animation
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Convert a board index to pixel center coordinates for animation. */
+  private getSquareCenter(boardIndex: number): { x: number; y: number } {
+    const displayIndex = this.toDisplayIndex(boardIndex);
+    const row = Math.floor(displayIndex / BOARD_DIMENSION);
+    const column = displayIndex % BOARD_DIMENSION;
+    return {
+      x: this.boardOffsetX + (column * this.squareSize) + (this.squareSize / 2),
+      y: this.boardOffsetY + (row * this.squareSize) + (this.squareSize / 2),
+    };
+  }
+
+  /**
+   * Detect which piece moved by comparing the previous board to the current one,
+   * then animate a temporary piece from the source to the destination.
+   */
+  private animatePieceMovement(oldBoard: number[]): void {
+    // Find destination: was empty, now has a piece
+    let fromIndex = -1;
+    let toIndex = -1;
+    let movedPiece = EMPTY;
+
+    for (let i = 0; i < BOARD_CELL_COUNT; i += 1) {
+      if (oldBoard[i] === EMPTY && this.board[i] !== EMPTY) {
+        toIndex = i;
+        movedPiece = this.board[i];
+        break;
+      }
+    }
+
+    if (toIndex < 0 || movedPiece === EMPTY) return;
+
+    // Determine the color of the moved piece
+    const movedIsBlack = movedPiece === BLACK || movedPiece === BLACK_KING;
+
+    // Find source: square where a piece of the SAME color left (now empty).
+    // Ignore captured opponent squares which also become empty.
+    for (let i = 0; i < BOARD_CELL_COUNT; i += 1) {
+      if (this.board[i] === EMPTY && oldBoard[i] !== EMPTY) {
+        const prevIsBlack = oldBoard[i] === BLACK || oldBoard[i] === BLACK_KING;
+        if (movedIsBlack === prevIsBlack) {
+          fromIndex = i;
+          break;
+        }
+      }
+    }
+
+    if (fromIndex < 0) return;
+
+    const from = this.getSquareCenter(fromIndex);
+    const to = this.getSquareCenter(toIndex);
+
+    const pieceRadius = this.squareSize * 0.32;
+    const outlineWidth = Math.max(1, this.squareSize * 0.04);
+    const isBlackPiece = movedPiece === BLACK || movedPiece === BLACK_KING;
+    const pieceGradient = isBlackPiece ? createPieceBodyGradient("black") : createPieceBodyGradient("red");
+    const pieceBorder = isBlackPiece ? PIECE_BLACK_BORDER : PIECE_RED_BORDER;
+    const highlightGradient = createPieceHighlightGradient();
+
+    const animPiece = new Graphics();
+    animPiece.eventMode = "none";
+
+    animPiece.circle(0, 0, pieceRadius)
+      .fill(pieceGradient)
+      .stroke({ color: pieceBorder, width: outlineWidth });
+    animPiece.circle(-pieceRadius * 0.15, -pieceRadius * 0.2, pieceRadius * 0.38)
+      .fill(highlightGradient);
+
+    if (movedPiece === BLACK_KING || movedPiece === RED_KING) {
+      animPiece.circle(0, 0, pieceRadius * 0.58).stroke({
+        color: KING_MARKER_COLOR,
+        alpha: KING_CROWN_RING_ALPHA,
+        width: Math.max(3, this.squareSize * 0.05),
+      });
+    }
+
+    this.animLayer.addChild(animPiece);
+
+    this.tweens.animate(animPiece, {
+      fromX: from.x,
+      fromY: from.y,
+      toX: to.x,
+      toY: to.y,
+      duration: PIECE_ANIM_DURATION_MS,
+      onComplete: () => {
+        animPiece.destroy();
+      },
+    });
   }
 
   private handleSquareHover(displayIndex: number | null): void {
