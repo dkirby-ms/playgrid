@@ -412,7 +412,7 @@ export class BackgammonRenderer implements GameRenderer {
   private isRollingDice = false;
   private movePending = false;
   private rollAnimationFrame = 0;
-  private rollAnimationDuration = 20;
+  private rollAnimationDuration = 40;
 
   constructor() {
     this.piecesLayer.eventMode = "none";
@@ -482,7 +482,6 @@ export class BackgammonRenderer implements GameRenderer {
       this.barBottomArea,
       this.offTopArea,
       this.offBottomArea,
-      this.diceLayer,
     );
 
     this.container.addChild(
@@ -490,6 +489,7 @@ export class BackgammonRenderer implements GameRenderer {
       this.playerColorText,
       this.boardLayer,
       this.piecesLayer,
+      this.diceLayer,
       this.blackOffText,
       this.redOffText,
       this.overlayLayer,
