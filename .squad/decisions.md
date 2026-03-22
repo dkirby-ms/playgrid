@@ -6683,3 +6683,73 @@ It's acceptable for the move history list to display a scrollbar when needed. Do
 
 **Rationale:** User preference captured for team memory. Aligns with natural scrolling UX patterns.
 
+
+---
+
+# Decision: Optimistic Loading State for Server-Bound Buttons
+
+**Author:** Ortho  
+**Date:** 2026-03-20  
+**Status:** Implemented
+
+## Context
+
+The "Add CPU Player" button in both WaitingRoom and SetupScreen felt flaky — first clicks appeared to do nothing, and subsequent clicks were unreliable. The root cause: `renderPlayerList()` rebuilds the entire DOM on every `GAME_PLAYERS` message. A click during a render cycle can be lost (DOM element destroyed between mousedown and mouseup). Combined with zero visual feedback during the server round-trip, users assumed the click didn't register.
+
+## Decision
+
+Any button that sends a message to the server and waits for a response should implement an **optimistic loading state**:
+
+1. **Guard** — check room/gameId are non-null and no pending request exists before sending
+2. **Immediate feedback** — disable button, change text to loading indicator (e.g., "⏳ Adding CPU…")
+3. **Pending flag** — a boolean flag that survives DOM rebuilds (since `renderPlayerList()` recreates elements)
+4. **Confirmation clear** — clear pending state when the expected server response arrives
+5. **Error clear** — clear pending state on LOBBY_ERROR so the button becomes clickable again
+6. **Timeout fallback** — auto-reset after 5 seconds if neither confirmation nor error arrives
+
+## Impact
+
+- Pattern applies to any future "click → server → response" UI element
+- Already applied to: Add CPU button (WaitingRoom + SetupScreen)
+- The Start Game button already followed this pattern (disables + shows "Starting…")
+
+## Files Modified
+
+- `client/src/ui/WaitingRoom.ts` — `requestAddCpu()`, `clearCpuAddPending()`, pending-aware rendering
+- `client/src/ui/SetupScreen.ts` — same pattern
+- `client/index.html` — CSS for `.waiting-room-add-cpu.pending` with pulse animation
+# Decision: Two-Pronged Stale Lobby Cleanup
+
+**Author:** Gately (Game Dev)
+**Date:** 2026-03-20
+**Status:** Implemented
+
+## Context
+
+Players were seeing "Leave your current game before creating another" when they had already left a game room. The LobbyRoom's `session.currentGameId` was not being cleared when players left in-progress games because `LEAVE_GAME` was only sent from waiting-room UI, not from game-room exit paths.
+
+## Decision
+
+Use a two-pronged cleanup approach:
+
+1. **Client-side:** `Application.notifyLobbyGameLeft()` sends `LEAVE_GAME` to the lobby room whenever the player exits a game room (consented leave, disconnect, or reconnect failure).
+2. **Server-side:** `LobbyRoom.clearStaleGameAssignment()` auto-clears `currentGameId` when it references a game that no longer exists or is already in progress. Called at the top of `handleCreateGame()` and `handleJoinGame()`.
+
+## Rationale
+
+- Client notification handles the common case (player-initiated leave)
+- Server validation is a safety net for edge cases (crash, network drop, race conditions)
+- Both layers are idempotent — double-clearing is harmless
+
+## Convention
+
+All scene classes managing lobby waiting state must implement `cleanup()` and call it from `onExit()`.
+### 2026-03-22T14:06Z: UX directive — visual feedback on all server-bound actions
+**By:** dkirby-ms (via Copilot)
+**What:** All buttons and interactive actions that send messages to the server must provide immediate visual feedback (loading/pending state, disabled button, text change) and double-click protection. No fire-and-forget clicks.
+**Why:** User request — the "Add CPU Player" flakiness exposed a systemic pattern. Audit found 12 unprotected actions across LobbyScreen (Join), SetupScreen (Start Game, Leave), WaitingRoom (Leave, Remove CPU), and all game renderers (Dominos draw/pass/play, Checkers move, Risk territory/sidebar, Backgammon move/pass). Pattern to follow: guard flag set BEFORE send, button disabled + text updated immediately, cleared on server response or timeout.
+**Priority areas:**
+1. SetupScreen Start Game + LobbyScreen Join (most visible, no protection)
+2. All leave/back buttons (guard flag before send, not after)
+3. Game board clicks and sidebar buttons (debounce/guard)
+**Reference implementation:** WaitingRoom.requestAddCpu() and SetupScreen.requestAddCpu() (Ortho's fix from 2026-03-22)

@@ -672,3 +672,33 @@ Benefits: All players see same config before game starts, no surprises, consiste
 - **Sandbox state panel removal:** Removed `SandboxStatePanel` overlay from `SandboxScene.ts`. The panel was a fixed-position (top-right, z-index 1000) JSON editor with "Update State" button that appeared over sandbox mode. Removed: import, `statePanel` property, instantiation/mount/event-wiring in `onEnter()`, and `destroy()` call in `cleanup()`. Kept `SandboxStatePanel.ts` and `mockStates.ts` files intact (not deleted — just disconnected). Mock state creation still used for initial renderer setup.
 
 - **Backgammon sidebar consolidation:** Consolidated the game info panel in `BackgammonRenderer.ts` `updateSidebar()`. Merged two separate pip count rows ("Black pip count" / "White pip count") into a single compact row: `Pips  123 / 456` (black on left, red on right). Removed the "Dice" label row entirely — dice values are already rendered visually on the canvas via `redrawDice()`, so the sidebar text was redundant. Also removed the now-dead `getDiceLabel()` method. Net result: sidebar shrank from 5 stat rows to 3. Build/lint/tests all pass (785 tests).
+
+---
+
+## 2026-03-22: CPU Button UX Flakiness — Complete ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass (799 tests)
+
+Fixed flaky "Add CPU Player" button UX by implementing optimistic loading state pattern with double-click guard and pulse animation. Root cause: `renderPlayerList()` rebuilds entire DOM on each `GAME_PLAYERS` message, causing clicks to be lost during render cycles. Users saw no feedback and assumed the click didn't register.
+
+### Changes
+
+- **WaitingRoom.ts** — Added `cpuAddPending` flag (survives DOM rebuilds), `requestAddCpu()` with guard (room/gameId non-null + no pending request), immediate button disable + "⏳ Adding CPU…" text, clear on GAME_PLAYERS or LOBBY_ERROR, 5s timeout auto-reset
+- **SetupScreen.ts** — Identical pattern for consistency
+- **client/index.html** — Added `.waiting-room-add-cpu.pending` CSS with pulse animation (accent color tones)
+
+### Pattern Established
+
+Any future button sending a server message should follow this pattern:
+1. Guard flag set BEFORE send (survives DOM rebuilds)
+2. Button disabled + text updated immediately
+3. Clear on expected response or error
+4. Timeout fallback (5s)
+
+### Cross-Team Note
+
+**Gately:** Stale lobby cleanup fix was independent but complementary. Both agent work passed all tests and lint without regressions.
+
+**Team Directive:** dkirby-ms issued UX directive to audit & protect all 12+ unprotected server-bound actions. SetupScreen Start Game + LobbyScreen Join are priority areas for next iteration. Reference implementation: WaitingRoom.requestAddCpu() + SetupScreen.requestAddCpu().
+

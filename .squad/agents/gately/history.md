@@ -2112,3 +2112,42 @@ The dice now visually indicate whose turn it is by appearing on their side of th
 2. Server-side defensive validation: Auto-clear `currentGameId` if it references a non-existent or in-progress game
 
 **Convention:** All scene classes that manage lobby waiting state must implement `cleanup()` and call it from `onExit()` — see WaitingRoom and SetupScreen as reference implementations.
+
+---
+
+## 2026-03-22: Stale Lobby Room State Cleanup — Complete ✅
+
+**Status:** Complete  
+**Build:** ✅ Pass | **Lint:** ✅ Pass | **Test:** ✅ Pass (803 tests, +4 regression tests)
+
+Fixed players seeing "Leave your current game before creating another" after already leaving a game room. Root cause: LobbyRoom's `session.currentGameId` was not being cleared because `LEAVE_GAME` messages were only sent from waiting-room UI, not from game-room exit paths.
+
+### Solution: Two-Pronged Cleanup
+
+1. **Client-side:** Added `Application.notifyLobbyGameLeft()` called whenever player exits a game room (consented leave, disconnect, or reconnect failure). Sends `LEAVE_GAME` to lobby room.
+2. **Server-side:** Added `LobbyRoom.clearStaleGameAssignment()` validation called at top of `handleCreateGame()` and `handleJoinGame()`. Auto-clears `currentGameId` if it references a game that no longer exists or is already in progress. Acts as safety net for edge cases (crashes, network drops, race conditions).
+
+### Changes
+
+- **Application.ts** — Added `notifyLobbyGameLeft()` method; called from all game-room exit paths
+- **SetupScreen.ts** — Calls `notifyLobbyGameLeft()` on leave
+- **SetupScene.ts** — Calls `notifyLobbyGameLeft()` from cleanup
+- **LobbyRoom.ts** — Added `clearStaleGameAssignment()` validation
+
+### Regression Tests Added (4)
+
+- Player leave triggers lobby notification
+- Stale game reference cleared on create attempt
+- Stale game reference cleared on join attempt
+- Double-clear is idempotent
+
+### Convention Established
+
+All scene classes managing lobby waiting state must implement `cleanup()` and call it from `onExit()`. Ensures proper state propagation to lobby on player exit.
+
+### Cross-Team Note
+
+**Ortho:** CPU Button UX fix was independent but complementary. Both agents' work passed all tests and lint without regressions.
+
+**Coordination:** Both fixes address systemic patterns—Ortho fixed DOM rebuild click loss, this fix addressed incomplete state cleanup on exit. Together, they improve game lifecycle robustness.
+
