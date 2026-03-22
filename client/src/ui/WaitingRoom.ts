@@ -87,6 +87,8 @@ export class WaitingRoom {
   private consoleLog: ConsoleLog | null = null;
   private eventCallback: WaitingRoomEventCallback | null = null;
   private copyFeedbackTimeoutId: number | null = null;
+  private hasGameStarted = false;
+  private hasExplicitlyLeft = false;
 
   constructor() {
     const overlay = document.getElementById("waiting-room-overlay");
@@ -204,6 +206,7 @@ export class WaitingRoom {
           return;
         }
 
+        this.hasGameStarted = true;
         this.hide();
         this.eventCallback?.({
           type: "game_started",
@@ -228,6 +231,8 @@ export class WaitingRoom {
     this.isHost = isHost;
     this.isReady = false;
     this.players = [];
+    this.hasGameStarted = false;
+    this.hasExplicitlyLeft = false;
 
     this.titleEl.textContent = gameInfo?.name || "Waiting Room";
     this.subtitleEl.textContent = isHost
@@ -252,6 +257,8 @@ export class WaitingRoom {
     this.isHost = false;
     this.isReady = false;
     this.players = [];
+    this.hasGameStarted = false;
+    this.hasExplicitlyLeft = false;
     this.clearError();
     this.clearCopyFeedback();
     this.updateJoinLink();
@@ -374,8 +381,19 @@ export class WaitingRoom {
       this.room.send(LEAVE_GAME, { gameId: this.gameId });
     }
 
+    this.hasExplicitlyLeft = true;
     this.hide();
     this.eventCallback?.({ type: "leave" });
+  }
+
+  cleanup(): void {
+    if (this.hasGameStarted || this.hasExplicitlyLeft) {
+      return;
+    }
+
+    if (this.room && this.gameId) {
+      this.room.send(LEAVE_GAME, { gameId: this.gameId });
+    }
   }
 
   private async copyJoinLink(): Promise<void> {
