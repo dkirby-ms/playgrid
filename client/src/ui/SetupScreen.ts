@@ -1127,13 +1127,11 @@ export class SetupScreen {
     // Always show empty slots so the host can add CPU players
     const maxPlayers = this.gameInfo?.maxPlayers ?? 0;
     const emptySlots = Math.max(0, maxPlayers - this.players.length);
-    const hasCpu = this.players.some((p) => p.isCPU);
 
     if (
       emptySlots > 0 &&
       this.isHost &&
-      this.supportsCpuOpponent() &&
-      !hasCpu
+      this.supportsCpuOpponent()
     ) {
       // First empty slot becomes an "Add CPU" button
       const cpuSlot = el("div", "setup-add-cpu-slot");
@@ -1198,6 +1196,7 @@ export class SetupScreen {
     if (player.isCPU) {
       nameRow.append(el("span", "setup-player-chip", "CPU"));
       if (this.isHost) {
+        const cpuUserId = player.userId;
         const removeBtn = el("button", "setup-remove-cpu-btn") as HTMLButtonElement;
         removeBtn.type = "button";
         removeBtn.title = "Remove CPU player";
@@ -1206,7 +1205,7 @@ export class SetupScreen {
           removeBtn.disabled = true;
         } else {
           removeBtn.textContent = "✕";
-          removeBtn.addEventListener("click", () => this.requestRemoveCpu());
+          removeBtn.addEventListener("click", () => this.requestRemoveCpu(cpuUserId));
         }
         nameRow.append(removeBtn);
       }
@@ -1370,13 +1369,13 @@ export class SetupScreen {
     }
   }
 
-  private requestRemoveCpu(): void {
+  private requestRemoveCpu(cpuSessionId: string): void {
     if (!this.room || !this.gameId || this.cpuRemovePending) {
       return;
     }
 
     this.cpuRemovePending = true;
-    this.room.send(REMOVE_CPU_PLAYER, { gameId: this.gameId });
+    this.room.send(REMOVE_CPU_PLAYER, { gameId: this.gameId, cpuSessionId });
     this.renderPlayerList();
 
     this.cpuRemoveTimeoutId = window.setTimeout(() => {
@@ -1415,9 +1414,8 @@ export class SetupScreen {
   }
 
   private updateInviteVisibility(): void {
-    const hasCpu = this.players.some((p) => p.isCPU);
     const isFull = this.gameInfo != null && this.players.length >= this.gameInfo.maxPlayers;
-    this.inviteSection.style.display = this.mode === "waiting" && !hasCpu && !isFull ? "" : "none";
+    this.inviteSection.style.display = this.mode === "waiting" && !isFull ? "" : "none";
   }
 
   private async copyJoinLink(): Promise<void> {

@@ -7,6 +7,7 @@ import type {
 import { Container, Graphics, Text } from "pixi.js";
 import { GameSidebar, escapeHtml, getTurnClockMarkup } from "../ui/GameSidebar";
 import { DragHelper } from "./DragHelper";
+import { TweenManager } from "./TweenManager";
 import {
   ACCENT_BLUE,
   AMBER_500,
@@ -91,6 +92,8 @@ const OVERLAY_BACKDROP_COLOR = BG_PRIMARY;
 const OVERLAY_BACKDROP_ALPHA = 0.66;
 
 const GAME_ENDED_MESSAGE = "game-end";
+
+const TILE_ANIM_DURATION_MS = 250;
 
 // ── Pip layout positions (normalised to 0..1 inside a half-tile) ────────────
 // Standard domino pip patterns for 0-6
@@ -207,6 +210,7 @@ export class DominosRenderer implements GameRenderer {
   private showTurnClock = false;
   private unsubscribeGameEnded: (() => void) | null = null;
   private unsubscribePlayerData: (() => void) | null = null;
+  private unsubscribeError: (() => void) | null = null;
 
   private phase = "waiting";
   private currentTurn = "";
@@ -259,6 +263,11 @@ export class DominosRenderer implements GameRenderer {
   private prevArmsCDLocked = true;
   private spinnerUnlockFlashTimer = 0;
 
+  // Tile placement animation
+  private readonly animLayer = new Container();
+  private readonly tweens = new TweenManager();
+  private prevBoardTileIds = new Set<number>();
+
   constructor() {
     this.container.eventMode = "static";
     this.overlayLayer.eventMode = "none";
@@ -291,6 +300,7 @@ export class DominosRenderer implements GameRenderer {
     this.container.addChild(
       this.boardBackground,
       this.boardLayer,
+      this.animLayer,
       this.spinnerIndicatorLayer,
       this.ghostLayer,
       this.endMarkerA,
@@ -327,6 +337,7 @@ export class DominosRenderer implements GameRenderer {
     this.dragTileId = null;
     this.turnClockSeconds = null;
     this.showTurnClock = false;
+    this.tweens.cancelAll();
 
     this.sidebar?.destroy();
     this.sidebar = new GameSidebar();
@@ -338,6 +349,7 @@ export class DominosRenderer implements GameRenderer {
 
     this.subscribeToRoomEvents();
     this.applyState(state);
+    this.prevBoardTileIds = new Set(this.boardTiles.map((t) => t.id));
     this.layout();
     this.redrawAll();
   }
@@ -348,7 +360,14 @@ export class DominosRenderer implements GameRenderer {
     // Detect C/D arm unlock transition (locked → active)
     const wasCDLocked = this.openEndC < 0 && this.openEndD < 0;
 
+    // Snapshot board tile IDs before state update for animation detection
+    const prevIds = this.prevBoardTileIds;
+
     this.applyState(state);
+
+    // Update prev-board snapshot for next state change
+    const currentIds = new Set(this.boardTiles.map((t) => t.id));
+    this.prevBoardTileIds = currentIds;
 
     const isCDActive = this.openEndC >= 0 || this.openEndD >= 0;
     if (wasCDLocked && isCDActive && this.spinnerTileId !== -1) {
@@ -368,9 +387,21 @@ export class DominosRenderer implements GameRenderer {
     }
 
     this.redrawAll();
+
+    // Animate newly placed tile only for opponent moves.
+    // After applyState, isLocalPlayersTurn() means it's now OUR turn —
+    // i.e. the opponent just played.
+    if (prevIds.size > 0 && this.isLocalPlayersTurn()) {
+      const newTile = this.boardTiles.find((t) => !prevIds.has(t.id));
+      if (newTile) {
+        this.animateTilePlacement(newTile);
+      }
+    }
   }
 
   update(deltaTime: number): void {
+    this.tweens.tick(deltaTime);
+
     if (this.spinnerUnlockFlashTimer > 0) {
       this.spinnerUnlockFlashTimer -= deltaTime;
       if (this.spinnerUnlockFlashTimer <= 0) {
@@ -408,6 +439,7 @@ export class DominosRenderer implements GameRenderer {
 
   destroy(): void {
     this.unsubscribeFromRoomEvents();
+    this.tweens.cancelAll();
     this.dragHelper?.destroy();
     this.dragHelper = null;
     this.dragTileId = null;
@@ -424,6 +456,7 @@ export class DominosRenderer implements GameRenderer {
     this.sidebar?.destroy();
     this.sidebar = null;
     this.boardLayer.removeChildren();
+    this.animLayer.removeChildren();
     this.spinnerIndicatorLayer.removeChildren();
     this.ghostLayer.removeChildren();
     this.handLayer.removeChildren();
@@ -455,6 +488,11 @@ export class DominosRenderer implements GameRenderer {
     // may not be registered yet at that point. Re-request it now that the
     // listener is in place so the hand is never silently lost.
     this.room.send("request-player-data");
+
+    // Reset actionPending when the server rejects an action (no state change fires)
+    this.unsubscribeError = this.room.onMessage("error", () => {
+      this.actionPending = false;
+    });
   }
 
   private unsubscribeFromRoomEvents(): void {
@@ -462,6 +500,8 @@ export class DominosRenderer implements GameRenderer {
     this.unsubscribeGameEnded = null;
     this.unsubscribePlayerData?.();
     this.unsubscribePlayerData = null;
+    this.unsubscribeError?.();
+    this.unsubscribeError = null;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -824,6 +864,73 @@ export class DominosRenderer implements GameRenderer {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // Tile placement animation
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Animate a newly placed tile dropping into its board position.
+   * Hides the real tile during the tween to prevent visual doubling.
+   */
+  private animateTilePlacement(tile: BoardTileSnapshot): void {
+    const boardChild = this.boardLayer.children.find(
+      (c) => c.label === `board-tile-${tile.id}`,
+    );
+    if (!boardChild) return;
+
+    const toX = boardChild.position.x;
+    const toY = boardChild.position.y;
+
+    // Animate from slightly above — a short "drop-in" effect
+    const dropOffset = 50;
+    const fromX = toX;
+    const fromY = toY - dropOffset;
+
+    // Hide the real tile so we don't see a doubled image
+    boardChild.visible = false;
+
+    // Create a temporary Graphics clone for the animation
+    const animTile = new Graphics();
+    animTile.eventMode = "none";
+
+    const scale = this.boardScale;
+    if (this.layoutMode === "linear") {
+      const w = BOARD_TILE_W * scale;
+      const h = BOARD_TILE_H * scale;
+      this.drawBoardTile(animTile, tile, 0, 0, w, h, "horizontal", scale);
+    } else {
+      const isSpinner = tile.arm === "spinner";
+      const isVerticalArm = tile.arm === "c" || tile.arm === "d";
+      if (isSpinner) {
+        const w = BOARD_TILE_H * scale;
+        const h = BOARD_TILE_W * scale;
+        this.drawBoardTile(animTile, tile, 0, 0, w, h, "vertical", scale);
+      } else if (isVerticalArm) {
+        const w = (tile.isDouble ? BOARD_TILE_W : BOARD_TILE_H) * scale;
+        const h = (tile.isDouble ? BOARD_TILE_H : BOARD_TILE_W) * scale;
+        this.drawBoardTile(animTile, tile, 0, 0, w, h, tile.isDouble ? "horizontal" : "vertical", scale);
+      } else {
+        const w = (tile.isDouble ? BOARD_TILE_H : BOARD_TILE_W) * scale;
+        const h = (tile.isDouble ? BOARD_TILE_W : BOARD_TILE_H) * scale;
+        this.drawBoardTile(animTile, tile, 0, 0, w, h, tile.isDouble ? "vertical" : "horizontal", scale);
+      }
+    }
+
+    this.animLayer.addChild(animTile);
+
+    this.tweens.animate(animTile, {
+      fromX,
+      fromY,
+      toX,
+      toY,
+      duration: TILE_ANIM_DURATION_MS,
+      onComplete: () => {
+        animTile.destroy();
+        boardChild.visible = true;
+      },
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // Board background (emerald green playing surface)
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -898,6 +1005,7 @@ export class DominosRenderer implements GameRenderer {
       const w = BOARD_TILE_W * scale;
       const h = BOARD_TILE_H * scale;
       this.drawBoardTile(g, bt, x, y, w, h, "horizontal", scale);
+      g.label = `board-tile-${bt.id}`;
       g.eventMode = "none";
       this.boardLayer.addChild(g);
     }
@@ -965,6 +1073,7 @@ export class DominosRenderer implements GameRenderer {
     const sY = spinnerCY - (spinnerH * scale) / 2;
     const spinnerG = new Graphics();
     this.drawBoardTile(spinnerG, spinner, sX, sY, spinnerW * scale, spinnerH * scale, "vertical", scale);
+    spinnerG.label = `board-tile-${spinner.id}`;
     spinnerG.eventMode = "none";
     this.boardLayer.addChild(spinnerG);
 
@@ -978,6 +1087,7 @@ export class DominosRenderer implements GameRenderer {
       const tY = spinnerCY - th / 2;
       const g = new Graphics();
       this.drawBoardTile(g, bt, cursorX, tY, tw, th, bt.isDouble ? "vertical" : "horizontal", scale);
+      g.label = `board-tile-${bt.id}`;
       g.eventMode = "none";
       this.boardLayer.addChild(g);
       cursorX -= BOARD_TILE_GAP * scale;
@@ -993,6 +1103,7 @@ export class DominosRenderer implements GameRenderer {
       const tY = spinnerCY - th / 2;
       const g = new Graphics();
       this.drawBoardTile(g, bt, cursorX, tY, tw, th, bt.isDouble ? "vertical" : "horizontal", scale);
+      g.label = `board-tile-${bt.id}`;
       g.eventMode = "none";
       this.boardLayer.addChild(g);
       cursorX += tw + BOARD_TILE_GAP * scale;
@@ -1009,6 +1120,7 @@ export class DominosRenderer implements GameRenderer {
       const tX = spinnerCX - tw / 2;
       const g = new Graphics();
       this.drawBoardTile(g, bt, tX, cursorY, tw, th, bt.isDouble ? "horizontal" : "vertical", scale);
+      g.label = `board-tile-${bt.id}`;
       g.eventMode = "none";
       this.boardLayer.addChild(g);
       cursorY -= BOARD_TILE_GAP * scale;
@@ -1024,6 +1136,7 @@ export class DominosRenderer implements GameRenderer {
       const tX = spinnerCX - tw / 2;
       const g = new Graphics();
       this.drawBoardTile(g, bt, tX, cursorY, tw, th, bt.isDouble ? "horizontal" : "vertical", scale);
+      g.label = `board-tile-${bt.id}`;
       g.eventMode = "none";
       this.boardLayer.addChild(g);
       cursorY += th + BOARD_TILE_GAP * scale;

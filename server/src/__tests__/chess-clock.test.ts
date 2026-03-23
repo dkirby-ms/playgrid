@@ -553,7 +553,7 @@ describe("Chess Clock Feature", () => {
       });
 
       mockGameRegistry.get.mockReturnValue(plugin);
-      room.onCreate({ gameType: "checkers", expectedPlayers: 2, cpuOpponent: true });
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2, cpuOpponent: true, cpuSessionIds: ["cpu-opponent-1"] });
 
       const human = createClient("player-1");
       room.clients.push(human);
@@ -574,7 +574,7 @@ describe("Chess Clock Feature", () => {
       });
 
       mockGameRegistry.get.mockReturnValue(plugin);
-      room.onCreate({ gameType: "checkers", expectedPlayers: 2, cpuOpponent: true });
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2, cpuOpponent: true, cpuSessionIds: ["cpu-opponent-1"] });
 
       // setSimulationInterval should NOT have been called for chess clocks.
       // It may still be called for onTick, so check that no chess-clock interval was registered.
@@ -724,7 +724,7 @@ describe("Chess Clock Feature", () => {
       });
 
       mockGameRegistry.get.mockReturnValue(plugin);
-      room.onCreate({ gameType: "checkers", expectedPlayers: 2, cpuOpponent: true, timeControl: "blitz" });
+      room.onCreate({ gameType: "checkers", expectedPlayers: 2, cpuOpponent: true, cpuSessionIds: ["cpu-opponent-1"], timeControl: "blitz" });
 
       const human = createClient("player-1");
       room.clients.push(human);
