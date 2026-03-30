@@ -2252,3 +2252,16 @@ Added double-click protection and pending-state guards to all four game renderer
 - `room.leave()` (Colyseus SDK) defaults to `consented=true`, sending a CONSENTED close frame. Usable in `pagehide`/`beforeunload` as a best-effort synchronous close.
 - Game room reconnection is stored in `sessionStorage` via `persistActiveSession()` and restored by `tryRestoreActiveSession()` — this is separate from lobby reconnection.
 - Lobby connections are always fresh on page load (no lobby reconnection persistence) — so leaving the lobby on page unload is always safe.
+
+## Learnings — Backgammon Board Orientation Fix
+
+- **Board row mapping:** `getPointGeometry()` maps point indices to screen positions. `isTopRow = visualIndex >= POINTS_PER_ROW` places indices 12-23 on top and 0-11 on bottom. Combined with `isFlipped = (localColor === RED)`, each player sees their home board on the far (top) side.
+- **Server index convention:** Black moves 0→23 (home: 18-23), Red moves 23→0 (home: 0-5). Positive point values = Black pieces, negative = Red.
+- **Bar/Off zone formulas:** Bar zone `isTop = (zoneColor === BLACK) === isFlipped` — places bar pieces near the side they re-enter from. Off area `isTop = (zoneColor === BLACK) !== isFlipped` — places borne-off pieces near the home board.
+- **Cascading visual fixes:** When swapping row assignment, ALL dependent positioning must swap: bar piece Y coords, off-area text labels, animation origins, bar zone rects, off zone rects. Missing any of these creates visual inconsistency.
+- **Key file:** `client/src/renderers/BackgammonRenderer.ts` — 2176 lines, owns all backgammon rendering.
+
+### 2026-03-30: Backgammon board orientation fix
+- Flipped isTopRow in getPointGeometry() so indices 0-11 render on top row and 12-23 on bottom
+- This puts each player's home board on the far side of the screen
+- Bar zones, off areas, and animation origins did NOT need changes — they use isFlipped/color logic independently

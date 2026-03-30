@@ -637,11 +637,11 @@ export class BackgammonRenderer implements GameRenderer {
     const bottomOffTextY = this.bottomTipY + (((this.playY + this.playHeight) - this.bottomTipY) / 2);
     this.blackOffText.position.set(
       offTextX,
-      this.isFlipped ? topOffTextY : bottomOffTextY,
+      this.isFlipped ? bottomOffTextY : topOffTextY,
     );
     this.redOffText.position.set(
       offTextX,
-      this.isFlipped ? bottomOffTextY : topOffTextY,
+      this.isFlipped ? topOffTextY : bottomOffTextY,
     );
     this.overlayTitleText.style.wordWrapWidth = this.boardWidth * 0.75;
     this.overlaySubtitleText.style.wordWrapWidth = this.boardWidth * 0.75;
@@ -833,12 +833,12 @@ export class BackgammonRenderer implements GameRenderer {
     
     let y: number;
     if (isBlackTurn) {
-      // Black's home is bottom (points 0-5), place dice in bottom quarter
+      // Black's pieces start at bottom, place dice in bottom quarter
       y = this.isFlipped
         ? this.playY + (this.playHeight * 0.25) - (dieSize / 2)
         : this.playY + (this.playHeight * 0.75) - (dieSize / 2);
     } else if (isRedTurn) {
-      // Red's home is top (points 18-23), place dice in top quarter
+      // Red's pieces start at top, place dice in top quarter
       y = this.isFlipped
         ? this.playY + (this.playHeight * 0.75) - (dieSize / 2)
         : this.playY + (this.playHeight * 0.25) - (dieSize / 2);
@@ -953,8 +953,8 @@ export class BackgammonRenderer implements GameRenderer {
     const blackStackHeight = visibleBlackCount > 0 ? (visibleBlackCount - 1) * stackSpacing + discRadius * 2 : 0;
     const blackBarHalfHeight = (this.playHeight - this.centerGap) / 2;
     const blackBarCenterY = this.isFlipped
-      ? this.playY + this.playHeight - this.centerGap / 2 - blackBarHalfHeight / 2
-      : this.playY + this.centerGap / 2 + blackBarHalfHeight / 2;
+      ? this.playY + this.centerGap / 2 + blackBarHalfHeight / 2
+      : this.playY + this.playHeight - this.centerGap / 2 - blackBarHalfHeight / 2;
     const blackBarStartY = blackBarCenterY - (blackStackHeight / 2) + discRadius;
     const blackBarDirection = 1;
     
@@ -975,8 +975,8 @@ export class BackgammonRenderer implements GameRenderer {
     const redStackHeight = visibleRedCount > 0 ? (visibleRedCount - 1) * stackSpacing + discRadius * 2 : 0;
     const redBarHalfHeight = (this.playHeight - this.centerGap) / 2;
     const redBarCenterY = this.isFlipped
-      ? this.playY + this.centerGap / 2 + redBarHalfHeight / 2
-      : this.playY + this.playHeight - this.centerGap / 2 - redBarHalfHeight / 2;
+      ? this.playY + this.playHeight - this.centerGap / 2 - redBarHalfHeight / 2
+      : this.playY + this.centerGap / 2 + redBarHalfHeight / 2;
     const redBarStartY = redBarCenterY - (redStackHeight / 2) + discRadius;
     const redBarDirection = 1;
     
@@ -1089,8 +1089,8 @@ export class BackgammonRenderer implements GameRenderer {
     const offTextX = this.offAreaX + (this.offAreaWidth / 2);
     const topOffTextY = this.playY + ((this.topTipY - this.playY) / 2);
     const bottomOffTextY = this.bottomTipY + (((this.playY + this.playHeight) - this.bottomTipY) / 2);
-    this.blackOffText.position.set(offTextX, this.isFlipped ? topOffTextY : bottomOffTextY);
-    this.redOffText.position.set(offTextX, this.isFlipped ? bottomOffTextY : topOffTextY);
+    this.blackOffText.position.set(offTextX, this.isFlipped ? bottomOffTextY : topOffTextY);
+    this.redOffText.position.set(offTextX, this.isFlipped ? topOffTextY : bottomOffTextY);
   }
 
   private updateGameOverOverlay(): void {
@@ -1169,14 +1169,14 @@ export class BackgammonRenderer implements GameRenderer {
     if (this.blackBar < oldBlackBar) {
       movedColor = BLACK;
       const barY = this.isFlipped
-        ? this.playY + this.playHeight - this.centerGap / 2 - blackBarHalfHeight / 2
-        : this.playY + this.centerGap / 2 + blackBarHalfHeight / 2;
+        ? this.playY + this.centerGap / 2 + blackBarHalfHeight / 2
+        : this.playY + this.playHeight - this.centerGap / 2 - blackBarHalfHeight / 2;
       fromPos = { x: barCenterX, y: barY };
     } else if (this.redBar < oldRedBar) {
       movedColor = RED;
       const barY = this.isFlipped
-        ? this.playY + this.centerGap / 2 + blackBarHalfHeight / 2
-        : this.playY + this.playHeight - this.centerGap / 2 - blackBarHalfHeight / 2;
+        ? this.playY + this.playHeight - this.centerGap / 2 - blackBarHalfHeight / 2
+        : this.playY + this.centerGap / 2 + blackBarHalfHeight / 2;
       fromPos = { x: barCenterX, y: barY };
     }
 
@@ -1784,9 +1784,9 @@ export class BackgammonRenderer implements GameRenderer {
 
   private isDarkPoint(index: number): boolean {
     const visualIndex = this.isFlipped ? (BOARD_POINT_COUNT - 1) - index : index;
-    const column = visualIndex < POINTS_PER_ROW
-      ? (POINTS_PER_ROW - 1) - visualIndex
-      : visualIndex - POINTS_PER_ROW;
+    const column = visualIndex >= POINTS_PER_ROW
+      ? visualIndex - POINTS_PER_ROW
+      : (POINTS_PER_ROW - 1) - visualIndex;
     return column % 2 === 0;
   }
 
@@ -1844,7 +1844,7 @@ export class BackgammonRenderer implements GameRenderer {
 
   private getBarZoneRect(zoneColor: BackgammonColor): Rect {
     const x = this.playX + (POINTS_PER_QUADRANT * this.pointWidth);
-    const isTop = (zoneColor === BLACK) !== this.isFlipped;
+    const isTop = (zoneColor === BLACK) === this.isFlipped;
     const y = isTop ? this.playY : this.playY + (this.playHeight / 2);
     return {
       x,
@@ -1855,7 +1855,7 @@ export class BackgammonRenderer implements GameRenderer {
   }
 
   private getOffAreaRect(zoneColor: BackgammonColor): Rect {
-    const isTop = (zoneColor === BLACK) === this.isFlipped;
+    const isTop = (zoneColor === BLACK) !== this.isFlipped;
 
     if (isTop) {
       return {
