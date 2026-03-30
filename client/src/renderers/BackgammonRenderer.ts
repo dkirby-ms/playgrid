@@ -1764,10 +1764,10 @@ export class BackgammonRenderer implements GameRenderer {
 
   private getPointGeometry(index: number): PointGeometry {
     const visualIndex = this.isFlipped ? (BOARD_POINT_COUNT - 1) - index : index;
-    const isTopRow = visualIndex >= POINTS_PER_ROW;
+    const isTopRow = visualIndex < POINTS_PER_ROW;
     const column = isTopRow
-      ? visualIndex - POINTS_PER_ROW
-      : (POINTS_PER_ROW - 1) - visualIndex;
+      ? (POINTS_PER_ROW - 1) - visualIndex
+      : visualIndex - POINTS_PER_ROW;
     const x = this.playX + (column * this.pointWidth) + (column >= POINTS_PER_QUADRANT ? this.barWidth : 0);
     const baseY = isTopRow ? this.playY : this.playY + this.playHeight;
     const tipY = isTopRow ? this.topTipY : this.bottomTipY;
