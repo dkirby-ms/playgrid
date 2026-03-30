@@ -6792,3 +6792,41 @@ When adding new game actions to any renderer, always guard `room.send()` calls w
 - `client/src/renderers/CheckersRenderer.ts`
 - `client/src/renderers/DominosRenderer.ts`
 - `client/src/renderers/RiskRenderer.ts`
+
+---
+
+## Decision: Backgammon Board Orientation — Home Board on Far Side
+
+**Author:** Gately  
+**Date:** 2026-03-30  
+**Status:** Implemented
+
+### Context
+
+The backgammon board was rendering with each player's home board on their own side (near them). Players expect their home board to be on the far (opposite) side — pieces move *toward* the far end of the board, which is the standard backgammon convention.
+
+### Decision
+
+Flipped the `isTopRow` condition in `getPointGeometry()` from `visualIndex >= POINTS_PER_ROW` to `visualIndex < POINTS_PER_ROW`, and swapped the column calculation branches accordingly. This maps indices 0-11 to the top row and 12-23 to the bottom row, placing each player's home board on the far side of the screen.
+
+### Key Formula Change
+
+```typescript
+// Before (broken — home board on near side)
+const isTopRow = visualIndex >= POINTS_PER_ROW;
+const column = isTopRow ? visualIndex - POINTS_PER_ROW : (POINTS_PER_ROW - 1) - visualIndex;
+
+// After (correct — home board on far side)
+const isTopRow = visualIndex < POINTS_PER_ROW;
+const column = isTopRow ? (POINTS_PER_ROW - 1) - visualIndex : visualIndex - POINTS_PER_ROW;
+```
+
+### Why Only One Method Changed
+
+Bar zones (`getBarZoneRect`), off areas (`getOffAreaRect`), bar pieces, off text, and animation origins all use `isFlipped` and color-based logic — NOT the point index row assignment. They were already correct relative to the player's color perspective.
+
+### Impact
+
+- Single method change in `client/src/renderers/BackgammonRenderer.ts`
+- No server or shared changes needed
+- Build, lint, and all tests pass
