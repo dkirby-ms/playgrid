@@ -24,7 +24,6 @@ var containerAppEnvId = containerAppEnv.id
 var containerAppName = 'playgrid-${environmentName}'
 var logAnalyticsName = '${resourcePrefix}-logs'
 var postgresServerName = '${resourcePrefix}-pg'
-var keyVaultName = replace('${resourcePrefix}-kv', '-', '') // shorten for 24 char limit
 var customDomains = empty(customDomain)
   ? []
   : [
@@ -126,33 +125,11 @@ resource postgresFirewallAzure 'Microsoft.DBforPostgreSQL/flexibleServers/firewa
   }
 }
 
-// Key Vault
-resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
-  name: keyVaultName
-  location: location
-  tags: tags
-  properties: {
-    sku: {
-      family: 'A'
-      name: 'standard'
-    }
-    tenantId: subscription().tenantId
-    enableRbacAuthorization: true
-    enabledForDeployment: false
-    enabledForDiskEncryption: false
-    enabledForTemplateDeployment: true
-    publicNetworkAccess: 'Enabled'
-  }
-}
-
-// Container App with managed identity
+// Container App
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: containerAppName
   location: location
   tags: tags
-  identity: {
-    type: 'SystemAssigned'
-  }
   properties: {
     managedEnvironmentId: containerAppEnv.id
     configuration: {
@@ -169,9 +146,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           }
         ]
       }
-      // Registry credentials and secrets are configured by the CD workflow after RBAC propagation.
-      // Adding Key Vault secret refs here causes a bootstrap failure: the system-assigned identity
-      // needs the Key Vault Secrets User role, which depends on the container app's principalId.
+      // The DATABASE_URL secret and GHCR pull credentials are configured by the CD workflow.
     }
     template: {
       containers: [
@@ -237,36 +212,13 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// RBAC: Container App managed identity -> Key Vault Secrets User
-resource keyVaultSecretsUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, containerApp.id, 'KeyVaultSecretsUser')
-  scope: keyVault
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
-    principalId: containerApp.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// Store PostgreSQL connection string in Key Vault
-resource postgresConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  name: 'postgres-connection-string'
-  parent: keyVault
-  properties: {
-    value: 'postgresql://${postgresAdminUsername}:${postgresAdminPassword}@${postgresServer.properties.fullyQualifiedDomainName}:5432/${postgresDatabaseName}?sslmode=require'
-  }
-}
-
 // Outputs for GitHub Actions variables
 output resourceGroupName string = resourceGroup().name
 output containerAppName string = containerApp.name
 output containerAppEnvironmentName string = last(split(containerAppEnvId, '/'))
 output containerAppEnvironmentId string = containerAppEnvId
 output containerAppFqdn string = containerApp.properties.configuration.ingress.fqdn
-output containerAppIdentityPrincipalId string = containerApp.identity.principalId
 output postgresServerFqdn string = postgresServer.properties.fullyQualifiedDomainName
 output postgresDatabaseName string = postgresDatabaseName
-output keyVaultName string = keyVault.name
-output keyVaultUri string = keyVault.properties.vaultUri
 output logAnalyticsWorkspaceId string = logAnalytics.id
 output logAnalyticsCustomerId string = logAnalytics.properties.customerId
