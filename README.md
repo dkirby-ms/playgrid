@@ -102,7 +102,6 @@ playgrid/
 │       └── utils/       # Shared utility functions
 ├── e2e/                 # Playwright end-to-end tests
 ├── docs/                # Architecture and design guides
-├── .squad/              # Team docs and decisions
 └── package.json         # Monorepo workspace configuration
 ```
 
@@ -163,24 +162,3 @@ We welcome contributions! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for g
 - How to submit issues and pull requests
 
 For a deep dive into the architecture, see [`docs/architecture.md`](./docs/architecture.md).
-
-## The Squad
-
-This project is developed by a team of specialists working together:
-
-| Name | Role | Status |
-|------|------|--------|
-| Hal | Lead | ✅ Active |
-| Gately | Game Dev (Rendering) | ✅ Active |
-| Pemulis | Systems Dev (Backend) | ✅ Active |
-| Steeply | Tester | ✅ Active |
-| Marathe | DevOps / CI-CD | ✅ Active |
-| Joelle | Community / DevRel | ✅ Active |
-| Mario | UX Consultant | ✅ Active |
-| Scribe | Session Logger | 📋 Silent |
-| Ralph | Work Monitor | 🔄 Monitor |
-| Copilot | Coding Agent | 🤖 Autonomous |
-
-Plus: **GitHub Copilot** helping us code faster and smarter.
-
-For detailed team info, see [`.squad/team.md`](./.squad/team.md).

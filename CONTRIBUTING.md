@@ -23,23 +23,21 @@ The dev server runs on `http://localhost:5173`.
 
 ### Branch Strategy
 
-We use a simple flow: **dev → uat → prod**
+We use trunk-based development on **`main`**:
 
-1. **Feature/fix branches** branch off from `dev`
-2. **Code review** happens in pull requests
-3. **Merge to `dev`** once approved
-4. **Promote to `uat`** for testing
-5. **Promote to `prod`** for release
-
-If you're working on a new feature:
+1. **Feature/fix branches** branch off from `main`
+2. **Open a PR** against `main`; CI (audit, lint, test, build) must pass
+3. **Merge to `main`** once approved
+4. **Release** runs automatically after CI: semantic-release reads
+   [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, ...),
+   tags the version, and updates `CHANGELOG.md`
+5. **CD** then builds the image, pushes it to GHCR, and deploys to Azure Container Apps
 
 ```bash
-git checkout dev
-git pull origin dev
+git checkout main
+git pull origin main
 git checkout -b feature/my-feature
 ```
-
-When ready, open a PR against `dev`.
 
 ## Issues and Pull Requests
 
@@ -126,8 +124,7 @@ playgrid/
 ├── client/          # Web UI (PixiJS, Vite)
 ├── server/          # Game server (Colyseus)
 ├── shared/          # Shared types and utils
-├── docs/            # Architecture and guides
-└── .squad/          # Team docs and decisions
+└── docs/            # Architecture and guides
 ```
 
 For more details, see the [README](./README.md).
@@ -136,6 +133,5 @@ For more details, see the [README](./README.md).
 
 - Check [docs/](./docs) for architecture and design decisions
 - Open a [discussion](https://github.com/dkirby-ms/playgrid/discussions) if you have questions
-- Reach out to the team in the project Discord
 
 Happy coding! 🎮
