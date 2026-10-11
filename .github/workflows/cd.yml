@@ -104,13 +104,17 @@ jobs:
             --password "${GHCR_PASSWORD}"
 
       - name: Configure Container App Secrets
+        env:
+          SERVER_DATABASE_URL: ${{ secrets.SERVER_DATABASE_URL }}
         run: |
-          KEY_VAULT_URI="${{ vars.KEY_VAULT_URI }}"
-          KEY_VAULT_URI="${KEY_VAULT_URI%/}"
+          if [[ ! "${SERVER_DATABASE_URL}" =~ ^postgres(ql)?:// ]]; then
+            echo "SERVER_DATABASE_URL must be a full Postgres connection string." >&2
+            exit 1
+          fi
           az containerapp secret set \
             --name "${{ vars.CONTAINER_APP_NAME }}" \
             --resource-group "${{ vars.RESOURCE_GROUP }}" \
-            --secrets "postgres-connection-string=keyvaultref:${KEY_VAULT_URI}/secrets/postgres-connection-string,identityref:system"
+            --secrets "database-url=${SERVER_DATABASE_URL}"
 
       - name: Deploy Container App
         run: |
@@ -119,7 +123,7 @@ jobs:
             --resource-group "${{ vars.RESOURCE_GROUP }}" \
             --image "${IMAGE}" \
             --command "node" --args "server/dist/src/index.js" \
-            --set-env-vars "NODE_ENV=production" "PORT=2567" "DATABASE_URL=secretref:postgres-connection-string" "DISABLED_GAMES=${{ vars.DISABLED_GAMES }}"
+            --set-env-vars "NODE_ENV=production" "PORT=2567" "DATABASE_URL=secretref:database-url" "DISABLED_GAMES=${{ vars.DISABLED_GAMES }}"
 
       - name: Health Check
         run: |
