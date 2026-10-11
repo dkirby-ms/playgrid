@@ -1,10 +1,7 @@
 using './main.bicep'
 
-param environmentName = 'prod'
-
 param location = 'centralus'
 
-param containerAppEnvResourceId = ''
 
 param postgresAdminUsername = 'pgadmin'
 
@@ -13,10 +10,9 @@ param postgresAdminPassword = readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD')
 
 param postgresDatabaseName = 'playgrid'
 
-// Custom domains require DNS TXT records before deploy.
-// 1. Deploy with these empty to create the Container App Environment.
-// 2. Get the verification ID: az containerapp env show -n playgrid-shared-cae -g playgrid-rg --query "customDomainConfiguration.customDomainVerificationId" -o tsv
+// Custom domain requires a DNS TXT record before deploy.
+// 1. Deploy with this empty to create the Container App Environment.
+// 2. Get the verification ID: az containerapp env show -n playgrid-prod-cae -g playgrid-rg --query "customDomainConfiguration.customDomainVerificationId" -o tsv
 // 3. Create TXT record: asuid.playgrid -> {verification ID} on kirbytoso.xyz
 // 4. Uncomment and re-deploy.
-param customDomainUat = '' // 'playgrid-test.kirbytoso.xyz'
-param customDomainProd = '' // 'playgrid.kirbytoso.xyz'
+param customDomain = '' // 'playgrid.kirbytoso.xyz'

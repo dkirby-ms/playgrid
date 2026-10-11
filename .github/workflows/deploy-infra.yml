@@ -2,15 +2,6 @@ name: Deploy Infrastructure
 
 on:
   workflow_dispatch:
-    inputs:
-      postgres_admin_password:
-        description: 'PostgreSQL admin password (leave empty to use existing)'
-        required: false
-        type: string
-      container_app_env_resource_id:
-        description: 'Existing Container Apps Environment resource ID to reuse (optional; lets prod target the shared UAT/prod CAE across resource groups)'
-        required: false
-        type: string
 
 permissions:
   id-token: write
@@ -31,9 +22,9 @@ jobs:
       - name: Azure login via OIDC
         uses: azure/login@6c251865b4e6290e7b78be643ea2d005bc51f69a # v2.1.1
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Validate Bicep template
         run: |
@@ -41,24 +32,30 @@ jobs:
           echo "✓ Bicep syntax valid"
 
       - name: Run what-if deployment
+        env:
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         run: |
-          POSTGRES_PASSWORD="${{ inputs.postgres_admin_password }}"
-          CONTAINER_APP_ENV_RESOURCE_ID="${{ inputs.container_app_env_resource_id }}"
-          if [ -z "$POSTGRES_PASSWORD" ]; then
+          if [ -z "$POSTGRES_ADMIN_PASSWORD" ]; then
             echo "No password provided, skipping what-if (requires password parameter)"
             exit 0
           fi
 
+          umask 077
+          PARAMETERS_FILE="$(mktemp)"
+          trap 'rm -f "$PARAMETERS_FILE"' EXIT
+          jq -n --arg password "$POSTGRES_ADMIN_PASSWORD" '{
+            "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+              "postgresAdminPassword": { "value": $password }
+            }
+          }' > "$PARAMETERS_FILE"
+
           DEPLOYMENT_ARGS=(
             --resource-group "${{ vars.RESOURCE_GROUP }}"
             --template-file infra/main.bicep
-            --parameters environmentName=prod
-            --parameters postgresAdminPassword="$POSTGRES_PASSWORD"
+            --parameters "@$PARAMETERS_FILE" "environmentName=prod"
           )
-
-          if [ -n "$CONTAINER_APP_ENV_RESOURCE_ID" ]; then
-            DEPLOYMENT_ARGS+=(--parameters containerAppEnvResourceId="$CONTAINER_APP_ENV_RESOURCE_ID")
-          fi
 
           az deployment group what-if "${DEPLOYMENT_ARGS[@]}"
 
@@ -73,34 +70,41 @@ jobs:
       - name: Azure login via OIDC
         uses: azure/login@6c251865b4e6290e7b78be643ea2d005bc51f69a # v2.1.1
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Validate password input
+        env:
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         run: |
-          POSTGRES_PASSWORD="${{ inputs.postgres_admin_password }}"
-          if [ -z "$POSTGRES_PASSWORD" ]; then
+          if [ -z "$POSTGRES_ADMIN_PASSWORD" ]; then
             echo "❌ PostgreSQL password is required for infrastructure deployment"
-            echo "Please provide postgres_admin_password input when triggering workflow"
+            echo "Configure POSTGRES_ADMIN_PASSWORD as a secret for the 'prod' GitHub Actions environment"
             exit 1
           fi
 
       - name: Deploy infrastructure
+        env:
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         run: |
-          CONTAINER_APP_ENV_RESOURCE_ID="${{ inputs.container_app_env_resource_id }}"
+          umask 077
+          PARAMETERS_FILE="$(mktemp)"
+          trap 'rm -f "$PARAMETERS_FILE"' EXIT
+          jq -n --arg password "$POSTGRES_ADMIN_PASSWORD" '{
+            "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+              "postgresAdminPassword": { "value": $password }
+            }
+          }' > "$PARAMETERS_FILE"
 
           DEPLOYMENT_ARGS=(
             --resource-group "${{ vars.RESOURCE_GROUP }}"
             --template-file infra/main.bicep
-            --parameters environmentName=prod
-            --parameters postgresAdminPassword="${{ inputs.postgres_admin_password }}"
+            --parameters "@$PARAMETERS_FILE" "environmentName=prod"
             --output json
           )
-
-          if [ -n "$CONTAINER_APP_ENV_RESOURCE_ID" ]; then
-            DEPLOYMENT_ARGS+=(--parameters containerAppEnvResourceId="$CONTAINER_APP_ENV_RESOURCE_ID")
-          fi
 
           az deployment group create "${DEPLOYMENT_ARGS[@]}" > deployment-output.json
           
@@ -116,78 +120,41 @@ jobs:
         run: |
           echo "🔑 Configure these as GitHub Actions variables for the 'prod' environment:"
           echo ""
-          echo "ACR_NAME=$(cat deployment-output.json | jq -r '.properties.outputs.acrName.value')"
           echo "CONTAINER_APP_NAME=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppName.value')"
           echo "CONTAINER_APP_ENVIRONMENT_NAME=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppEnvironmentName.value')"
           echo "CONTAINER_APP_ENVIRONMENT_ID=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppEnvironmentId.value')"
           echo "CONTAINER_APP_FQDN=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppFqdn.value')"
-          echo "KEY_VAULT_URI=$(cat deployment-output.json | jq -r '.properties.outputs.keyVaultUri.value')"
+          echo "POSTGRES_SERVER_FQDN=$(cat deployment-output.json | jq -r '.properties.outputs.postgresServerFqdn.value')"
           echo "RESOURCE_GROUP=${{ vars.RESOURCE_GROUP }}"
           echo ""
           echo "💡 To set these variables, go to:"
           echo "   Settings → Environments → prod → Environment variables"
           echo ""
-          echo "💡 To reuse a Container Apps Environment in another resource group, provide this ID as container_app_env_resource_id:"
-          echo "   $(cat deployment-output.json | jq -r '.properties.outputs.containerAppEnvironmentId.value')"
+          echo "🔐 Also set the SERVER_DATABASE_URL environment secret:"
+          echo "   postgresql://<admin user>:<password>@<POSTGRES_SERVER_FQDN>:5432/<database>?sslmode=require"
 
       - name: Notify Discord on success
         if: success()
-        run: |
-          curl -X POST "${{ secrets.DISCORD_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "embeds": [{
-                "title": "✅ Infrastructure Deploy Success",
-                "description": "PlayGrid '\''prod'\'' infrastructure deployed successfully",
-                "color": 3066993,
-                "fields": [
-                  {
-                    "name": "Environment",
-                    "value": "prod",
-                    "inline": true
-                  },
-                  {
-                    "name": "Resource Group",
-                    "value": "${{ vars.RESOURCE_GROUP }}",
-                    "inline": true
-                  },
-                  {
-                    "name": "Triggered By",
-                    "value": "${{ github.actor }}",
-                    "inline": true
-                  }
-                ],
-                "timestamp": "'\''$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'\''"
-              }]
-            }'
+        uses: ./.github/actions/discord-notify
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          status: ${{ job.status }}
+          environment: prod
+          deployment-url: ${{ vars.CONTAINER_APP_FQDN }}
+          commit-sha: ${{ github.sha }}
+          author: ${{ github.actor }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       - name: Notify Discord on failure
         if: failure()
-        run: |
-          curl -X POST "${{ secrets.DISCORD_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "embeds": [{
-                "title": "❌ Infrastructure Deploy Failed",
-                "description": "PlayGrid '\''prod'\'' infrastructure deployment failed",
-                "color": 15158332,
-                "fields": [
-                  {
-                    "name": "Environment",
-                    "value": "prod",
-                    "inline": true
-                  },
-                  {
-                    "name": "Triggered By",
-                    "value": "${{ github.actor }}",
-                    "inline": true
-                  },
-                  {
-                    "name": "Workflow Run",
-                    "value": "[View logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})",
-                    "inline": true
-                  }
-                ],
-                "timestamp": "'\''$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'\''"
-              }]
-            }'
+        uses: ./.github/actions/discord-notify
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          status: ${{ job.status }}
+          environment: prod
+          deployment-url: ${{ vars.CONTAINER_APP_FQDN }}
+          commit-sha: ${{ github.sha }}
+          author: ${{ github.actor }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}

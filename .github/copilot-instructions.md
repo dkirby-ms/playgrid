@@ -67,4 +67,3 @@ When reviewing PRs, check for:
 
 - Don't import server code from client or vice versa — use `shared/` for common types
 - Don't use `setTimeout`/`setInterval` for game timers — use Colyseus `clock`
-- Don't modify `.squad/` files — those are managed by the squad coordinator
