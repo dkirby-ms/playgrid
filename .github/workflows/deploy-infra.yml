@@ -3,14 +3,6 @@ name: Deploy Infrastructure
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: 'Target environment'
-        required: true
-        type: choice
-        options:
-          - dev
-          - uat
-          - prod
       postgres_admin_password:
         description: 'PostgreSQL admin password (leave empty to use existing)'
         required: false
@@ -25,13 +17,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-infra-${{ inputs.environment }}
+  group: deploy-infra-prod
   cancel-in-progress: false
 
 jobs:
   validate:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: prod
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -60,7 +52,7 @@ jobs:
           DEPLOYMENT_ARGS=(
             --resource-group "${{ vars.RESOURCE_GROUP }}"
             --template-file infra/main.bicep
-            --parameters environmentName=${{ inputs.environment }}
+            --parameters environmentName=prod
             --parameters postgresAdminPassword="$POSTGRES_PASSWORD"
           )
 
@@ -73,7 +65,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: validate
-    environment: ${{ inputs.environment }}
+    environment: prod
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -101,7 +93,7 @@ jobs:
           DEPLOYMENT_ARGS=(
             --resource-group "${{ vars.RESOURCE_GROUP }}"
             --template-file infra/main.bicep
-            --parameters environmentName=${{ inputs.environment }}
+            --parameters environmentName=prod
             --parameters postgresAdminPassword="${{ inputs.postgres_admin_password }}"
             --output json
           )
@@ -122,7 +114,7 @@ jobs:
 
       - name: Save outputs for GitHub Actions
         run: |
-          echo "🔑 Configure these as GitHub Actions variables for the '${{ inputs.environment }}' environment:"
+          echo "🔑 Configure these as GitHub Actions variables for the 'prod' environment:"
           echo ""
           echo "ACR_NAME=$(cat deployment-output.json | jq -r '.properties.outputs.acrName.value')"
           echo "CONTAINER_APP_NAME=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppName.value')"
@@ -133,10 +125,10 @@ jobs:
           echo "RESOURCE_GROUP=${{ vars.RESOURCE_GROUP }}"
           echo ""
           echo "💡 To set these variables, go to:"
-          echo "   Settings → Environments → ${{ inputs.environment }} → Environment variables"
+          echo "   Settings → Environments → prod → Environment variables"
           echo ""
-          echo "💡 If the other environment lives in a different resource group, rerun this workflow there with:"
-          echo "   container_app_env_resource_id=$(cat deployment-output.json | jq -r '.properties.outputs.containerAppEnvironmentId.value')"
+          echo "💡 To reuse a Container Apps Environment in another resource group, provide this ID as container_app_env_resource_id:"
+          echo "   $(cat deployment-output.json | jq -r '.properties.outputs.containerAppEnvironmentId.value')"
 
       - name: Notify Discord on success
         if: success()
@@ -146,12 +138,12 @@ jobs:
             -d '{
               "embeds": [{
                 "title": "✅ Infrastructure Deploy Success",
-                "description": "PlayGrid '\''${{ inputs.environment }}'\'' infrastructure deployed successfully",
+                "description": "PlayGrid '\''prod'\'' infrastructure deployed successfully",
                 "color": 3066993,
                 "fields": [
                   {
                     "name": "Environment",
-                    "value": "${{ inputs.environment }}",
+                    "value": "prod",
                     "inline": true
                   },
                   {
@@ -177,12 +169,12 @@ jobs:
             -d '{
               "embeds": [{
                 "title": "❌ Infrastructure Deploy Failed",
-                "description": "PlayGrid '\''${{ inputs.environment }}'\'' infrastructure deployment failed",
+                "description": "PlayGrid '\''prod'\'' infrastructure deployment failed",
                 "color": 15158332,
                 "fields": [
                   {
                     "name": "Environment",
-                    "value": "${{ inputs.environment }}",
+                    "value": "prod",
                     "inline": true
                   },
                   {
