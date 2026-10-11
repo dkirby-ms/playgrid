@@ -127,7 +127,11 @@ jobs:
 
       - name: Health Check
         run: |
-          HEALTH_URL="${{ vars.CONTAINER_APP_FQDN }}/health"
+          FQDN=$(az containerapp show \
+            --name "${{ vars.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ vars.RESOURCE_GROUP }}" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          HEALTH_URL="https://${FQDN}/health"
           for attempt in $(seq 1 12); do
             if curl -fs "$HEALTH_URL" | grep -q '"status":"ok"'; then
               echo "Health check passed"
