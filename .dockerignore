@@ -2,6 +2,5 @@ node_modules
 .git
 .github
 docs
-.squad
 *.md
 !README.md
