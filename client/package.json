@@ -8,11 +8,11 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@colyseus/sdk": "^0.17.26",
+    "@colyseus/sdk": "^0.18.5",
     "@eschaton/shared": "file:../shared",
     "pixi.js": "^8.0.0"
   },
   "devDependencies": {
-    "vite": "^6.0.0"
+    "vite": "^8.3.4"
   }
 }

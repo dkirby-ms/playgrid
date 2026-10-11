@@ -57,7 +57,7 @@ More games coming soon, including Backgammon!
    # or: npm run db:up
    ```
 
-   This starts a local PostgreSQL 15 instance on `localhost:5432` with database `playgrid` and persists data in the `postgres-data` Docker volume. The server will run its migrations on startup.
+   This starts a local PostgreSQL 18 instance on `localhost:5433` with database `playgrid` and persists data in the `postgres-data` Docker volume. The server will run its migrations on startup.
 
 4. **Start the dev environment:**
    ```bash
@@ -73,7 +73,7 @@ More games coming soon, including Backgammon!
 
 ### Local PostgreSQL Reference
 
-- **Connection string:** `postgresql://postgres:postgres@localhost:5432/playgrid`
+- **Connection string:** `postgresql://postgres:postgres@localhost:5433/playgrid`
 - **Start DB:** `docker compose up -d postgres`
 - **Stop DB:** `docker compose down`
 - **Follow logs:** `docker compose logs -f postgres`
