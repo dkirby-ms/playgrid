@@ -11,10 +11,6 @@ on:
           - dev
           - uat
           - prod
-      postgres_admin_password:
-        description: 'PostgreSQL admin password (leave empty to use existing)'
-        required: false
-        type: string
       container_app_env_resource_id:
         description: 'Existing Container Apps Environment resource ID to reuse (optional; lets prod target the shared UAT/prod CAE across resource groups)'
         required: false
@@ -49,19 +45,30 @@ jobs:
           echo "✓ Bicep syntax valid"
 
       - name: Run what-if deployment
+        env:
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         run: |
-          POSTGRES_PASSWORD="${{ inputs.postgres_admin_password }}"
           CONTAINER_APP_ENV_RESOURCE_ID="${{ inputs.container_app_env_resource_id }}"
-          if [ -z "$POSTGRES_PASSWORD" ]; then
+          if [ -z "$POSTGRES_ADMIN_PASSWORD" ]; then
             echo "No password provided, skipping what-if (requires password parameter)"
             exit 0
           fi
 
+          umask 077
+          PARAMETERS_FILE="$(mktemp)"
+          trap 'rm -f "$PARAMETERS_FILE"' EXIT
+          jq -n --arg password "$POSTGRES_ADMIN_PASSWORD" '{
+            "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+              "postgresAdminPassword": { "value": $password }
+            }
+          }' > "$PARAMETERS_FILE"
+
           DEPLOYMENT_ARGS=(
             --resource-group "${{ vars.RESOURCE_GROUP }}"
             --template-file infra/main.bicep
-            --parameters environmentName=${{ inputs.environment }}
-            --parameters postgresAdminPassword="$POSTGRES_PASSWORD"
+            --parameters "@$PARAMETERS_FILE" "environmentName=${{ inputs.environment }}"
           )
 
           if [ -n "$CONTAINER_APP_ENV_RESOURCE_ID" ]; then
@@ -86,23 +93,36 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Validate password input
+        env:
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         run: |
-          POSTGRES_PASSWORD="${{ inputs.postgres_admin_password }}"
-          if [ -z "$POSTGRES_PASSWORD" ]; then
+          if [ -z "$POSTGRES_ADMIN_PASSWORD" ]; then
             echo "❌ PostgreSQL password is required for infrastructure deployment"
-            echo "Please provide postgres_admin_password input when triggering workflow"
+            echo "Configure POSTGRES_ADMIN_PASSWORD as a secret for the '${{ inputs.environment }}' GitHub Actions environment"
             exit 1
           fi
 
       - name: Deploy infrastructure
+        env:
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         run: |
           CONTAINER_APP_ENV_RESOURCE_ID="${{ inputs.container_app_env_resource_id }}"
+
+          umask 077
+          PARAMETERS_FILE="$(mktemp)"
+          trap 'rm -f "$PARAMETERS_FILE"' EXIT
+          jq -n --arg password "$POSTGRES_ADMIN_PASSWORD" '{
+            "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+              "postgresAdminPassword": { "value": $password }
+            }
+          }' > "$PARAMETERS_FILE"
 
           DEPLOYMENT_ARGS=(
             --resource-group "${{ vars.RESOURCE_GROUP }}"
             --template-file infra/main.bicep
-            --parameters environmentName=${{ inputs.environment }}
-            --parameters postgresAdminPassword="${{ inputs.postgres_admin_password }}"
+            --parameters "@$PARAMETERS_FILE" "environmentName=${{ inputs.environment }}"
             --output json
           )
 
